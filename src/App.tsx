@@ -1854,6 +1854,28 @@ export default function App() {
           {/* ============================================================== */}
           {currentUser.role === 'admin' && (
             <div className="desktop-layout">
+              {/* MOBILE HEADER */}
+              <header className="mobile-manager-header" style={{ display: 'none', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 1000 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <img src={logo} alt="Ohel Bus Logo" style={{ height: '32px' }} />
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}
+                  >
+                    🌐 {lang === 'he' ? 'English' : 'עברית'}
+                  </button>
+                  <button 
+                    onClick={handleLogout} 
+                    className="btn btn-danger" 
+                    style={{ padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <LogOut size={12} />
+                  </button>
+                </div>
+              </header>
               
               {/* DESKTOP SIDEBAR MENU (Human designed feel) */}
               <aside className="desktop-sidebar">
@@ -2017,7 +2039,7 @@ export default function App() {
                     )}
 
                     {/* Map & Live list grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px', alignItems: 'start' }}>
+                    <div className="dashboard-grid">
                       <LiveMap 
                         locations={activeLocations} 
                         sosAlerts={sosAlerts}
@@ -2269,7 +2291,7 @@ export default function App() {
 
                 {/* TAB 3: USER MANAGEMENT */}
                 {activeTab === 'users' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', alignItems: 'start' }}>
+                  <div className="users-grid">
                     
                     {/* Add user form */}
                     <div className="card">
@@ -2414,7 +2436,7 @@ export default function App() {
 
                 {/* TAB 4: SETTINGS & REAL CLOUD CONNECTION */}
                 {activeTab === 'settings' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
+                  <div className="settings-grid">
                     
                     {/* Settings Form */}
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -2556,6 +2578,19 @@ export default function App() {
                             שלח מייל דמו כעת
                           </button>
                           <button onClick={() => setEmailPreviewType(null)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>סגור</button>
+                        </div>
+                      </div>
+
+                      <div style={{ flex: 1, background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                        <iframe 
+                          srcDoc={emailPreviewHtml} 
+                          title="Email HTML Preview" 
+                          style={{ width: '100%', height: '100%', border: 'none' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Edit User Modal */}
                 {selectedUserForEdit && (
@@ -2631,21 +2666,40 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                        </div>
-                      </div>
-
-                      <div style={{ flex: 1, background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                        <iframe 
-                          srcDoc={emailPreviewHtml} 
-                          title="Email HTML Preview" 
-                          style={{ width: '100%', height: '100%', border: 'none' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
 
               </main>
+
+              {/* MOBILE BOTTOM NAVIGATION */}
+              <nav className="mobile-manager-nav">
+                <button 
+                  onClick={() => setActiveTab('dashboard')} 
+                  className={`bottom-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+                >
+                  <MapPin size={18} />
+                  <span>{t('managerDashboard')}</span>
+                </button>
+                <button 
+                  onClick={() => setActiveTab('history')} 
+                  className={`bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
+                >
+                  <Calendar size={18} />
+                  <span>{t('fleetActivity')}</span>
+                </button>
+                <button 
+                  onClick={() => setActiveTab('users')} 
+                  className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}
+                >
+                  <Users size={18} />
+                  <span>{t('usersManagement')}</span>
+                </button>
+                <button 
+                  onClick={() => setActiveTab('settings')} 
+                  className={`bottom-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+                >
+                  <Settings size={18} />
+                  <span>{t('settings')}</span>
+                </button>
+              </nav>
 
             </div>
           )}
