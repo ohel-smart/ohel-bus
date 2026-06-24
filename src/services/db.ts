@@ -71,7 +71,10 @@ export const LOCATIONS = {
 
 // Default Pre-Populated Users
 const DEFAULT_USERS: User[] = [
-  { id: 'usr_admin', name: 'מנהל', phone: '050-770-7700', role: 'admin', code: '770', createdAt: new Date().toISOString() }
+  { id: 'usr_admin', name: 'מנהל', phone: '050-770-7700', role: 'admin', code: '770', createdAt: new Date().toISOString() },
+  { id: 'drv_777', name: 'נהג 777 (נהג)', phone: '050-777-7777', role: 'driver', code: '777', createdAt: new Date().toISOString() },
+  { id: 'drv_778', name: 'נהג 778 (נהג)', phone: '050-778-7788', role: 'driver', code: '778', createdAt: new Date().toISOString() },
+  { id: 'disp_1000', name: 'סדרן 1000 (סדרן)', phone: '050-100-1000', role: 'dispatcher', code: '1000', createdAt: new Date().toISOString() }
 ];
 
 class DBService {
@@ -104,18 +107,47 @@ class DBService {
         needsReset = true;
       }
     }
-    if (!rawUsers || needsReset) {
-      localStorage.setItem('tp_users', JSON.stringify(DEFAULT_USERS));
-      localStorage.setItem('tp_active_locations', JSON.stringify([]));
+
+    let users = DEFAULT_USERS;
+    if (rawUsers && !needsReset) {
+      try {
+        const parsed = JSON.parse(rawUsers);
+        if (Array.isArray(parsed)) {
+          const userMap = new Map(parsed.map(u => [u.id, u]));
+          DEFAULT_USERS.forEach(u => {
+            if (!userMap.has(u.id)) {
+              userMap.set(u.id, u);
+            }
+          });
+          users = Array.from(userMap.values());
+        }
+      } catch (e) {}
     }
+    localStorage.setItem('tp_users', JSON.stringify(users));
+
+    let locations = this.getInitialActiveLocations();
+    const rawLocs = localStorage.getItem('tp_active_locations');
+    if (rawLocs) {
+      try {
+        const parsed = JSON.parse(rawLocs);
+        if (Array.isArray(parsed)) {
+          const locMap = new Map(parsed.map(l => [l.id, l]));
+          this.getInitialActiveLocations().forEach(l => {
+            if (!locMap.has(l.id)) {
+              locMap.set(l.id, l);
+            }
+          });
+          locations = Array.from(locMap.values());
+        }
+      } catch (e) {}
+    }
+    localStorage.setItem('tp_active_locations', JSON.stringify(locations));
+
     if (!localStorage.getItem('tp_scans')) {
       localStorage.setItem('tp_scans', JSON.stringify([]));
     }
     if (!localStorage.getItem('tp_offline_scans')) {
       localStorage.setItem('tp_offline_scans', JSON.stringify([]));
-    }
-    if (!localStorage.getItem('tp_active_locations')) {
-      localStorage.setItem('tp_active_locations', JSON.stringify(this.getInitialActiveLocations()));
     }
     if (!localStorage.getItem('tp_config')) {
       const defaultConfig: GlobalConfig = { reportEmail: 'manager@transit.pro' };
@@ -133,7 +165,27 @@ class DBService {
   }
 
   private getInitialActiveLocations(): ActiveLocation[] {
-    return [];
+    const now = new Date().toISOString();
+    return [
+      {
+        id: 'drv_777',
+        name: 'נהג 777',
+        role: 'driver',
+        latitude: LOCATIONS['770'].latitude,
+        longitude: LOCATIONS['770'].longitude,
+        status: 'idle',
+        updatedAt: now
+      },
+      {
+        id: 'drv_778',
+        name: 'נהג 778',
+        role: 'driver',
+        latitude: LOCATIONS['770'].latitude,
+        longitude: LOCATIONS['770'].longitude,
+        status: 'idle',
+        updatedAt: now
+      }
+    ];
   }
 
   // --- Firebase Cloud Connection ---
