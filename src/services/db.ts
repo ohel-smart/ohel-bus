@@ -192,20 +192,29 @@ class DBService {
   public getFirebaseConfig(): FirebaseConfig | null {
     const configStr = localStorage.getItem('tp_firebase_config');
     if (configStr) {
+      if (configStr === 'disabled') return null;
       try {
         return JSON.parse(configStr);
       } catch (e) {
         return null;
       }
     }
-    return null;
+    // Default fallback to user's Firebase config
+    return {
+      apiKey: "AIzaSyB6D83wnOoA8oLWn5SFzIIpcbb-f454kDo",
+      authDomain: "ohel-smart.firebaseapp.com",
+      projectId: "ohel-smart",
+      storageBucket: "ohel-smart.firebasestorage.app",
+      messagingSenderId: "48634858514",
+      appId: "1:48634858514:web:94bffc06fc42a1a2cb5ccb"
+    };
   }
 
   public saveFirebaseConfig(config: FirebaseConfig | null) {
     if (config) {
       localStorage.setItem('tp_firebase_config', JSON.stringify(config));
     } else {
-      localStorage.removeItem('tp_firebase_config');
+      localStorage.setItem('tp_firebase_config', 'disabled');
     }
     
     // Terminate old listeners and reload app
