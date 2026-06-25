@@ -4,12 +4,12 @@ import {
   MapPin, Users, Calendar, WifiOff, Settings, QrCode, LogOut, 
   Plus, Trash, Edit, Search, AlertTriangle, Clock, Send, CheckCircle, 
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
-  Mail, Download, Copy
+  Mail, Download, Copy, MessageSquare
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
 import LiveMap from './components/LiveMap';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import logo from './assets/logo.png';
 import './App.css';
 
@@ -590,6 +590,23 @@ export default function App() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [activeLocations, setActiveLocations] = useState<ActiveLocation[]>([]);
   const [isOffline, setIsOffline] = useState(false);
+
+  // Customizable Glassmorphism values
+  const [glassOpacity, setGlassOpacity] = useState(() => {
+    return parseFloat(localStorage.getItem('tp_glass_opacity') || '0.15');
+  });
+  const [glassBlur, setGlassBlur] = useState(() => {
+    return parseInt(localStorage.getItem('tp_glass_blur') || '16');
+  });
+
+  // Apply glass variables to root element
+  useEffect(() => {
+    document.documentElement.style.setProperty('--glass-opacity', glassOpacity.toString());
+    document.documentElement.style.setProperty('--glass-blur', `${glassBlur}px`);
+    document.documentElement.style.setProperty('--glass-border-opacity', (glassOpacity * 0.5).toString());
+    localStorage.setItem('tp_glass_opacity', glassOpacity.toString());
+    localStorage.setItem('tp_glass_blur', glassBlur.toString());
+  }, [glassOpacity, glassBlur]);
   
   // App navigation tab
   const [activeTab, setActiveTab] = useState<string>('');
@@ -615,6 +632,12 @@ export default function App() {
 
   // Settings & Users Admin states
   const [reportEmail, setReportEmail] = useState('');
+  const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState('');
+  const [twilioAccountSid, setTwilioAccountSid] = useState('');
+  const [twilioAuthToken, setTwilioAuthToken] = useState('');
+  const [twilioFromNumber, setTwilioFromNumber] = useState('');
+  const [twilioRecipientSms, setTwilioRecipientSms] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
@@ -677,7 +700,14 @@ export default function App() {
     const unsubscribe = dbService.subscribe(handleUpdate);
 
     // Initial config load
-    setReportEmail(dbService.getConfig().reportEmail);
+    const config = dbService.getConfig();
+    setReportEmail(config.reportEmail || '');
+    setGoogleSheetsUrl(config.googleSheetsUrl || '');
+    setGoogleMapsApiKey(config.googleMapsApiKey || '');
+    setTwilioAccountSid(config.twilioAccountSid || '');
+    setTwilioAuthToken(config.twilioAuthToken || '');
+    setTwilioFromNumber(config.twilioFromNumber || '');
+    setTwilioRecipientSms(config.twilioRecipientSms || '');
 
     return () => unsubscribe();
   }, []);
@@ -694,15 +724,12 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // In-app QR Code Scanner camera handler
+  // In-app QR Code Scanner camera handler (Using Html5Qrcode directly for instant back-camera load)
   useEffect(() => {
     if (!showCameraScanner) return;
 
-    const scanner = new Html5QrcodeScanner(
-      "qr-reader",
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      /* verbose= */ false
-    );
+    const html5QrCode = new Html5Qrcode("qr-reader");
+    const config = { fps: 15, qrbox: { width: 250, height: 250 } };
 
     const onScanSuccess = (decodedText: string) => {
       try {
@@ -712,14 +739,12 @@ export default function App() {
           setSelectedDriverId(driverIdParam);
           setShowCameraScanner(false);
           triggerToast(t('qrSuccess'), 'success');
-          scanner.clear();
         } else {
           const matchedDriver = users.find(u => u.id === decodedText && u.role === 'driver');
           if (matchedDriver) {
             setSelectedDriverId(decodedText);
             setShowCameraScanner(false);
             triggerToast(t('qrSuccess'), 'success');
-            scanner.clear();
           } else {
             triggerToast(t('qrInvalid'), 'danger');
           }
@@ -730,21 +755,28 @@ export default function App() {
           setSelectedDriverId(decodedText);
           setShowCameraScanner(false);
           triggerToast(t('qrSuccess'), 'success');
-          scanner.clear();
         } else {
           triggerToast(t('qrInvalid'), 'danger');
         }
       }
     };
 
-    const onScanFailure = () => {
-      // ignore scanning errors
-    };
-
-    scanner.render(onScanSuccess, onScanFailure);
+    html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      () => {}
+    ).catch(err => {
+      console.error("Camera start error:", err);
+      triggerToast(lang === 'he' ? 'שגיאה בפתיחת המצלמה, אנא ודא הרשאת גישה' : 'Error opening camera, please check permission', 'danger');
+    });
 
     return () => {
-      scanner.clear().catch(err => console.error("Failed to clear scanner", err));
+      if (html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          html5QrCode.clear();
+        }).catch(err => console.error("Failed to stop scanner", err));
+      }
     };
   }, [showCameraScanner, users]);
 
@@ -759,25 +791,28 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Watch position of dispatcher
+  // Watch position of dispatcher or driver
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'dispatcher') {
-      setDispatcherRealCoords(null);
-      return;
-    }
+    if (!currentUser) return;
+    if (currentUser.role !== 'dispatcher' && currentUser.role !== 'driver') return;
 
-    if (navigator.geolocation && gpsSource === 'real') {
+    // Drivers always watch location. Dispatchers only watch if gpsSource is 'real'
+    const shouldWatch = currentUser.role === 'driver' || (currentUser.role === 'dispatcher' && gpsSource === 'real');
+    if (!shouldWatch) return;
+
+    if (navigator.geolocation) {
       const watchId = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords;
-          setDispatcherRealCoords({ latitude, longitude });
+          if (currentUser.role === 'dispatcher') {
+            setDispatcherRealCoords({ latitude, longitude });
+          }
           dbService.updateActiveLocation(currentUser.id, latitude, longitude);
         },
         (err) => {
           console.error("GPS Watch error:", err);
-          triggerToast(t('gpsError'), 'danger');
         },
-        { enableHighAccuracy: true, maximumAge: 10000 }
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
@@ -1106,8 +1141,16 @@ export default function App() {
   };
 
   const handleSaveConfig = () => {
-    dbService.saveConfig({ reportEmail });
-    triggerToast(t('emailUpdated'), 'success');
+    dbService.saveConfig({
+      reportEmail,
+      googleSheetsUrl,
+      googleMapsApiKey,
+      twilioAccountSid,
+      twilioAuthToken,
+      twilioFromNumber,
+      twilioRecipientSms
+    });
+    triggerToast(lang === 'he' ? 'ההגדרות עודכנו בהצלחה' : 'Settings updated successfully', 'success');
   };
 
   // --- Reports Preview Generators ---
@@ -1283,6 +1326,93 @@ export default function App() {
     }).catch(() => {
       triggerToast('Error copying', 'danger');
     });
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!emailPreviewHtml) return;
+    const subject = emailPreviewType === 'daily' 
+      ? `*דו"ח פעילות יומי - אוהל בוס 🚌*`
+      : `*דו"ח נוכחות חודשי - אוהל בוס 🚌*`;
+    
+    let bodyText = `שלום, מצורף דו"ח פעילות מתוך מערכת אוהל בוס.`;
+    if (emailPreviewType === 'daily') {
+      const todayScans = scans.filter(s => s.logicalDate === logicalToday);
+      const totalPassengers = todayScans.reduce((sum, s) => sum + s.passengersCount, 0);
+      bodyText = `${subject}\n-----------------------------------\n*תאריך עבודה:* ${logicalToday}\n*סה"כ נסיעות:* ${todayScans.length}\n*סה"כ נוסעים:* ${totalPassengers}\n\n*פירוט הסריקות:*\n` + 
+        todayScans.map(s => `• *${new Date(s.scannedAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})}* - נהג: ${s.driverName.replace(' (נהג)', '')} | מוצא: ${s.departureLocation === '770' ? '770' : 'אוהל'} | נוסעים: *${s.passengersCount}*`).join('\n');
+    } else {
+      const totalTrips = scans.length;
+      const totalPassengers = scans.reduce((sum, s) => sum + s.passengersCount, 0);
+      bodyText = `${subject}\n-----------------------------------\n*סה"כ נסיעות החודש:* ${totalTrips}\n*סה"כ נוסעים:* ${totalPassengers}\n\nנשלח ממערכת אוהל בוס.`;
+    }
+    
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(bodyText)}`;
+    window.open(whatsappUrl, '_blank');
+    triggerToast(lang === 'he' ? 'פותח וואטסאפ לשיתוף...' : 'Opening WhatsApp for sharing...', 'success');
+  };
+
+  const handleExportScansToCsv = () => {
+    const headers = [
+      lang === 'he' ? 'שעת סריקה' : 'Scan Time',
+      lang === 'he' ? 'תאריך עבודה' : 'Logical Date',
+      lang === 'he' ? 'נהג' : 'Driver',
+      lang === 'he' ? 'סדרן' : 'Dispatcher',
+      lang === 'he' ? 'מוצא' : 'Origin',
+      lang === 'he' ? 'נוסעים שעלו' : 'Passengers',
+      lang === 'he' ? 'מושבים פנויים' : 'Empty Seats',
+      lang === 'he' ? 'קיבולת נהג' : 'Capacity'
+    ];
+    
+    const rows = filteredScans.map(scan => [
+      new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      scan.logicalDate,
+      scan.driverName.replace(' (נהג)', ''),
+      scan.dispatcherName.replace(' (סדרן)', ''),
+      scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel'),
+      scan.passengersCount,
+      scan.remainingSeats,
+      scan.driverCapacity
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `scans_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast(lang === 'he' ? 'הדו"ח יוצא לאקסל בהצלחה' : 'Report exported to Excel successfully', 'success');
+  };
+
+  const handleExportUsersToCsv = () => {
+    const headers = [
+      lang === 'he' ? 'שם' : 'Name',
+      lang === 'he' ? 'טלפון' : 'Phone',
+      lang === 'he' ? 'תפקיד' : 'Role',
+      lang === 'he' ? 'קוד' : 'Passcode',
+      lang === 'he' ? 'קיבולת רכב' : 'Capacity'
+    ];
+    
+    const rows = users.map(u => [
+      u.name,
+      u.phone,
+      u.role === 'admin' ? (lang === 'he' ? 'מנהל' : 'Admin') : u.role === 'dispatcher' ? (lang === 'he' ? 'סדרן' : 'Dispatcher') : (lang === 'he' ? 'נהג' : 'Driver'),
+      u.code,
+      u.capacity || ''
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `users_list_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast(lang === 'he' ? 'רשימת המשתמשים יוצאה בהצלחה' : 'Users list exported successfully', 'success');
   };
 
   const handleOpenMailClient = () => {
@@ -2228,6 +2358,15 @@ export default function App() {
                       
                       {/* Filters */}
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button 
+                          onClick={handleExportScansToCsv}
+                          className="btn btn-secondary"
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '38px', fontSize: '13px' }}
+                        >
+                          <Download size={14} />
+                          {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
+                        </button>
+
                         <div style={{ position: 'relative' }}>
                           <Search size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                           <input 
@@ -2258,60 +2397,118 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="table-container">
-                      <table className="tp-table">
-                        <thead>
-                          <tr>
-                            <th>{t('timeHeader')}</th>
-                            <th>{t('logicalDateHeader')}</th>
-                            <th>{t('driver')}</th>
-                            <th>{t('scannerDispatcherHeader')}</th>
-                            <th>{t('originHeader')}</th>
-                            <th style={{ textAlign: 'center' }}>{t('passengersBoardedHeader')}</th>
-                            <th style={{ textAlign: 'center' }}>{t('emptySeatsHeader')}</th>
-                            <th style={{ textAlign: 'center' }}>{t('actionsHeader')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredScans.length === 0 ? (
+                    <div className="desktop-scans-table">
+                      <div className="table-container">
+                        <table className="tp-table">
+                          <thead>
                             <tr>
-                              <td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                {t('noMatchingScans')}
-                              </td>
+                              <th>{t('timeHeader')}</th>
+                              <th>{t('logicalDateHeader')}</th>
+                              <th>{t('driver')}</th>
+                              <th>{t('scannerDispatcherHeader')}</th>
+                              <th>{t('originHeader')}</th>
+                              <th style={{ textAlign: 'center' }}>{t('passengersBoardedHeader')}</th>
+                              <th style={{ textAlign: 'center' }}>{t('emptySeatsHeader')}</th>
+                              <th style={{ textAlign: 'center' }}>{t('actionsHeader')}</th>
                             </tr>
-                          ) : (
-                            filteredScans.map(scan => (
-                              <tr key={scan.id}>
-                                <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
-                                <td>{lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}</td>
-                                <td><strong>{scan.driverName}</strong></td>
-                                <td>{scan.dispatcherName}</td>
-                                <td>
-                                  <span style={{ color: scan.departureLocation === '770' ? 'var(--accent)' : 'var(--info)', fontWeight: 'bold' }}>
-                                    {scan.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel')}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--success)' }}>{scan.passengersCount}</td>
-                                <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                  {scan.remainingSeats} / {scan.driverCapacity}
-                                </td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                    <button onClick={() => handleEditScanClick(scan)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }}>
-                                      <Edit size={11} />
-                                      {t('edit')}
-                                    </button>
-                                    <button onClick={() => handleDeleteScan(scan.id)} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px' }}>
-                                      <Trash size={11} />
-                                      {t('delete')}
-                                    </button>
-                                  </div>
+                          </thead>
+                          <tbody>
+                            {filteredScans.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                  {t('noMatchingScans')}
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              filteredScans.map(scan => (
+                                <tr key={scan.id}>
+                                  <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                                  <td>{lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}</td>
+                                  <td><strong>{scan.driverName}</strong></td>
+                                  <td>{scan.dispatcherName}</td>
+                                  <td>
+                                    <span style={{ color: scan.departureLocation === '770' ? 'var(--accent)' : 'var(--info)', fontWeight: 'bold' }}>
+                                      {scan.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel')}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--success)' }}>{scan.passengersCount}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                    {scan.remainingSeats} / {scan.driverCapacity}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                      <button onClick={() => handleEditScanClick(scan)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }}>
+                                        <Edit size={11} />
+                                        {t('edit')}
+                                      </button>
+                                      <button onClick={() => handleDeleteScan(scan.id)} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px' }}>
+                                        <Trash size={11} />
+                                        {t('delete')}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile Scans Card List */}
+                    <div className="mobile-scans-cards" style={{ flexDirection: 'column', gap: '16px' }}>
+                      {filteredScans.length === 0 ? (
+                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          {t('noMatchingScans')}
+                        </div>
+                      ) : (
+                        filteredScans.map(scan => (
+                          <div key={scan.id} className="card user-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '10px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                              <span style={{ color: scan.departureLocation === '770' ? 'var(--accent)' : 'var(--info)', fontWeight: 'bold', fontSize: '13px' }}>
+                                {scan.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel')}
+                              </span>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('driver')}</span>
+                                <strong style={{ color: '#fff' }}>{scan.driverName}</strong>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('scannerDispatcherHeader')}</span>
+                                <span style={{ color: '#fff' }}>{scan.dispatcherName}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('passengersBoardedHeader')}</span>
+                                <strong style={{ color: 'var(--success)', fontSize: '15px' }}>{scan.passengersCount}</strong>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('emptySeatsHeader')}</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>{scan.remainingSeats} / {scan.driverCapacity}</span>
+                              </div>
+                            </div>
+                            
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
+                              {lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                              <button onClick={() => handleEditScanClick(scan)} className="btn btn-secondary" style={{ flex: 1, padding: '8px 12px', fontSize: '12px', justifyContent: 'center' }}>
+                                <Edit size={12} />
+                                {t('edit')}
+                              </button>
+                              <button onClick={() => handleDeleteScan(scan.id)} className="btn btn-danger" style={{ flex: 1, padding: '8px 12px', fontSize: '12px', justifyContent: 'center' }}>
+                                <Trash size={12} />
+                                {t('delete')}
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
 
                     {/* EDIT MODAL DIALOG MOCK */}
@@ -2479,9 +2676,19 @@ export default function App() {
 
                     {/* Users list card */}
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', color: '#fff' }}>
-                        {t('usersListTitle')}
-                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>
+                          {t('usersListTitle')}
+                        </h3>
+                        <button 
+                          onClick={handleExportUsersToCsv}
+                          className="btn btn-secondary"
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '12px' }}
+                        >
+                          <Download size={12} />
+                          {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
+                        </button>
+                      </div>
 
                       {/* Desktop Table View */}
                       <div className="table-container desktop-users-table">
@@ -2601,37 +2808,158 @@ export default function App() {
                     
                     {/* Settings Form */}
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', color: '#fff' }}>
-                        {t('emailConfig')}
+                      <h3 style={{ fontSize: '16px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', color: '#fff' }}>
+                        {lang === 'he' ? 'הגדרות מערכת מתקדמות' : 'Advanced System Settings'}
                       </h3>
 
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '20px' }}>
-                        {t('emailConfigSub')}
-                        <br/>- **{t('dailyReportType')}** {t('dailySummaryCronDesc')}
-                        <br/>- **{t('monthlyReportType')}** {t('monthlySummaryCronDesc')}
-                      </p>
-
-                      <div className="form-group" style={{ marginTop: '10px' }}>
+                      {/* 1. Email Config */}
+                      <div className="form-group">
                         <label className="form-label">{t('managerEmail')}</label>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <input 
-                            type="email" 
-                            className="form-input" 
-                            value={reportEmail}
-                            onChange={(e) => setReportEmail(e.target.value)}
-                          />
-                          <button onClick={handleSaveConfig} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>{t('updateEmailButton')}</button>
+                        <input 
+                          type="email" 
+                          className="form-input" 
+                          value={reportEmail}
+                          onChange={(e) => setReportEmail(e.target.value)}
+                          placeholder="manager@example.com"
+                        />
+                      </div>
+
+                      {/* 2. Google Sheets URL */}
+                      <div className="form-group">
+                        <label className="form-label">{lang === 'he' ? 'קישור גוגל שיטס (Apps Script Web App)' : 'Google Sheets Apps Script URL'}</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={googleSheetsUrl}
+                          onChange={(e) => setGoogleSheetsUrl(e.target.value)}
+                          placeholder="https://script.google.com/macros/s/.../exec"
+                        />
+                      </div>
+
+                      {/* 3. Google Maps Key */}
+                      <div className="form-group">
+                        <label className="form-label">{lang === 'he' ? 'מפתח Google Maps API (לזמן נסיעה מדויק)' : 'Google Maps API Key (for precise ETA)'}</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={googleMapsApiKey}
+                          onChange={(e) => setGoogleMapsApiKey(e.target.value)}
+                          placeholder="AIzaSy..."
+                        />
+                      </div>
+
+                      {/* 4. Twilio SMS Integration */}
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '10px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px' }}>
+                          {lang === 'he' ? 'הגדרות Twilio SMS' : 'Twilio SMS Integration'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">Account SID</label>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              value={twilioAccountSid}
+                              onChange={(e) => setTwilioAccountSid(e.target.value)}
+                              placeholder="AC..."
+                            />
+                          </div>
+                          
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">Auth Token</label>
+                            <input 
+                              type="password" 
+                              className="form-input" 
+                              value={twilioAuthToken}
+                              onChange={(e) => setTwilioAuthToken(e.target.value)}
+                              placeholder="••••••••••••••••"
+                            />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label">{lang === 'he' ? 'מספר טלפון שולח (Twilio)' : 'Twilio From Number'}</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                value={twilioFromNumber}
+                                onChange={(e) => setTwilioFromNumber(e.target.value)}
+                                placeholder="+1234567890"
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label className="form-label">{lang === 'he' ? 'טלפון לקבלת התראות (מנהל)' : 'Recipient Phone for Alerts'}</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                value={twilioRecipientSms}
+                                onChange={(e) => setTwilioRecipientSms(e.target.value)}
+                                placeholder="+972..."
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
 
+                      {/* 5. Glassmorphism sliders */}
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '10px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px' }}>
+                          {lang === 'he' ? 'עיצוב זכוכית (Apple Glassmorphism)' : 'Glassmorphism Style Settings'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'שקיפות רקע' : 'Background Opacity'}</span>
+                              <strong style={{ color: 'var(--accent)' }}>{Math.round(glassOpacity * 100)}%</strong>
+                            </div>
+                            <input 
+                              type="range" 
+                              min="0.05" 
+                              max="0.80" 
+                              step="0.05" 
+                              value={glassOpacity} 
+                              onChange={(e) => setGlassOpacity(parseFloat(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent)' }}
+                            />
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עוצמת טשטוש' : 'Blur Intensity'}</span>
+                              <strong style={{ color: 'var(--accent)' }}>{glassBlur}px</strong>
+                            </div>
+                            <input 
+                              type="range" 
+                              min="4" 
+                              max="32" 
+                              step="1" 
+                              value={glassBlur} 
+                              onChange={(e) => setGlassBlur(parseInt(e.target.value))}
+                              style={{ width: '100%', accentColor: 'var(--accent)' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Save All Settings */}
+                      <button onClick={handleSaveConfig} className="btn btn-primary" style={{ width: '100%', marginTop: '10px', justifyContent: 'center' }}>
+                        {lang === 'he' ? 'שמור את כל ההגדרות' : 'Save All Settings'}
+                      </button>
+
+                      {/* Email Simulator inside settings */}
                       <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '10px' }}>
                         <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>{t('emailReportSimulatorTitle')}</h4>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: '18px' }}>
+                          {t('emailConfigSub')}
+                        </p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                           <button 
                             type="button"
                             onClick={() => handleGenerateReportPreview('daily')}
                             className="btn btn-secondary" 
-                            style={{ fontSize: '12px', padding: '10px' }}
+                            style={{ fontSize: '12px', padding: '10px', justifyContent: 'center' }}
                           >
                             <FileText size={12} />
                             {t('showDailyReportButton')}
@@ -2641,7 +2969,7 @@ export default function App() {
                             type="button"
                             onClick={() => handleGenerateReportPreview('monthly')}
                             className="btn btn-secondary" 
-                            style={{ fontSize: '12px', padding: '10px' }}
+                            style={{ fontSize: '12px', padding: '10px', justifyContent: 'center' }}
                           >
                             <Clock size={12} />
                             {t('showMonthlyReportButton')}
@@ -2687,6 +3015,11 @@ export default function App() {
                           <button onClick={handleCopyHtmlReport} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Copy size={12} />
                             <span>{lang === 'he' ? 'העתק תוכן' : 'Copy HTML'}</span>
+                          </button>
+
+                          <button onClick={handleShareWhatsApp} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', borderColor: '#25D366' }}>
+                            <MessageSquare size={12} color="#25D366" />
+                            <span style={{ color: '#25D366', fontWeight: 'bold' }}>{lang === 'he' ? 'שתף בוואטסאפ (חינם)' : 'Share WhatsApp (Free)'}</span>
                           </button>
                         </div>
                       </div>

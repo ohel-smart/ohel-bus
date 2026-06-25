@@ -7,6 +7,13 @@
   --border-color: #1e2433;
   --border-hover: #2e374d;
   
+  /* Glassmorphism custom variables */
+  --glass-opacity: 0.15;
+  --glass-blur: 16px;
+  --glass-border-opacity: 0.08;
+  --glass-bg: rgba(15, 17, 26, var(--glass-opacity));
+  --glass-border: rgba(255, 255, 255, var(--glass-border-opacity));
+  
   --accent: #e2b04e; /* Gold Accent */
   --accent-hover: #cfa143;
   --accent-rgb: 226, 176, 78;
@@ -77,19 +84,21 @@ body {
   flex-direction: column;
 }
 
-/* Solid Flat Cards (Human-Designed / Monday.com style) */
+/* Solid Flat Cards (Human-Designed / Monday.com style) - Upgraded to customizable Glassmorphic look */
 .card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 24px;
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .card:hover {
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-md);
+  border-color: rgba(255, 255, 255, calc(var(--glass-border-opacity) * 2.2));
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
 }
 
 .card-title {
@@ -226,8 +235,10 @@ body {
 
 .desktop-sidebar {
   width: 250px;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border-color);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-left: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
@@ -439,8 +450,10 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px 32px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   height: 72px;
 }
 
@@ -599,6 +612,30 @@ body {
   .mobile-users-cards {
     display: flex !important;
   }
+
+  .desktop-scans-table {
+    display: none !important;
+  }
+
+  .mobile-scans-cards {
+    display: flex !important;
+  }
+  
+  .live-map-card {
+    height: 300px !important;
+  }
+}
+
+.desktop-scans-table {
+  display: block;
+}
+
+.mobile-scans-cards {
+  display: none;
+}
+
+.live-map-card {
+  height: 400px;
 }
 
 .desktop-users-table {

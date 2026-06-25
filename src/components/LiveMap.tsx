@@ -313,7 +313,7 @@ export const LiveMap: React.FC<LiveMapProps> = ({ locations, sosAlerts, onClearS
   }, [locations, sosAlerts, lang]);
 
   return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden', height: '400px', display: 'flex', flexDirection: 'column' }}>
+    <div className="card live-map-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div className="app-header" style={{ padding: '12px 16px', background: 'rgba(11, 15, 25, 0.9)' }}>
         <h3 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ef4444', animation: 'pulse 1.5s infinite' }}></span>
