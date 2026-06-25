@@ -11,7 +11,6 @@ import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direc
 import LiveMap from './components/LiveMap';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import logo from './assets/logo.png';
-import busImage from './assets/bus.png';
 import './App.css';
 
 const TRANSLATIONS = {
@@ -634,6 +633,27 @@ export default function App() {
 
   // Active watch position for GPS streaming
   const [dispatcherRealCoords, setDispatcherRealCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Login screen interactive Apple-style glows
+  const [loginRipples, setLoginRipples] = useState<{ id: string; x: number; y: number }[]>([]);
+  
+  const handleLoginPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const newRipple = {
+      id: Math.random().toString(),
+      x,
+      y
+    };
+
+    setLoginRipples(prev => [...prev, newRipple]);
+
+    setTimeout(() => {
+      setLoginRipples(prev => prev.filter(r => r.id !== newRipple.id));
+    }, 2000);
+  };
 
   // Toast trigger helper
   const triggerToast = (message: string, type: 'success' | 'danger' = 'success') => {
@@ -1350,8 +1370,36 @@ export default function App() {
 
       {/* NO USER SIGNED IN -> SHOW LOGIN SCREEN */}
       {!currentUser ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px 120px 20px', background: '#090a0f', position: 'relative', overflow: 'hidden' }}>
-          <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px 30px', background: '#121620', borderColor: '#202636', position: 'relative' }}>
+        <div 
+          onPointerDown={handleLoginPointerDown}
+          style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            padding: '40px 20px', 
+            background: '#05070c', 
+            position: 'relative', 
+            overflow: 'hidden',
+            userSelect: 'none'
+          }}
+        >
+          {/* Ambient Apple-style shifting glows in the background */}
+          <div className="ambient-glow-1"></div>
+          <div className="ambient-glow-2"></div>
+          <div className="ambient-glow-3"></div>
+
+          {/* Interactive touch-burst glows */}
+          {loginRipples.map(ripple => (
+            <div 
+              key={ripple.id} 
+              className="interactive-glow-blob" 
+              style={{ left: `${ripple.x}px`, top: `${ripple.y}px` }} 
+            />
+          ))}
+
+          <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px 30px', background: 'rgba(18, 22, 32, 0.75)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderColor: 'rgba(32, 38, 54, 0.6)', position: 'relative', zIndex: 10 }}>
             
             {/* Language Switch Button */}
             <button 
@@ -1410,14 +1458,6 @@ export default function App() {
             </form>
 
             {/* Cloud connection status indicator removed */}
-          </div>
-
-          {/* Beautiful animated road and bus at the bottom */}
-          <div className="login-road">
-            <div className="road-curb-top"></div>
-            <div className="road-line"></div>
-            <div className="road-curb-bottom"></div>
-            <img src={busImage} alt="Bus" className="road-bus" />
           </div>
         </div>
       ) : (

@@ -609,104 +609,94 @@ body {
   display: none;
 }
 
-/* Animated Road and Bus at the bottom of the Login Screen */
-.login-road {
+/* Ambient Apple Intelligence style shifting glows in the background */
+.ambient-glow-1 {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 90px;
-  background: linear-gradient(180deg, #181d29 0%, #0d1017 100%);
-  border-top: 4px solid #202636;
-  border-bottom: 4px solid #090b0e;
-  overflow: hidden;
-  z-index: 5;
-  display: flex;
-  align-items: center;
+  top: 10%;
+  left: 15%;
+  width: 450px;
+  height: 450px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 163, 89, 0.18) 0%, rgba(255, 215, 0, 0.05) 50%, transparent 70%);
+  filter: blur(90px);
+  animation: float-blob-1 25s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 1;
 }
 
-/* Concrete curbstones top and bottom */
-.road-curb-top {
+.ambient-glow-2 {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 6px;
-  background: repeating-linear-gradient(
-    90deg,
-    #3a435c 0px,
-    #3a435c 20px,
-    #1f2433 20px,
-    #1f2433 40px
-  );
-  opacity: 0.8;
+  bottom: 5%;
+  right: 10%;
+  width: 550px;
+  height: 550px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(147, 51, 234, 0.15) 0%, rgba(236, 72, 153, 0.05) 50%, transparent 70%);
+  filter: blur(100px);
+  animation: float-blob-2 30s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.road-curb-bottom {
+.ambient-glow-3 {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 6px;
-  background: repeating-linear-gradient(
-    90deg,
-    #3a435c 0px,
-    #3a435c 20px,
-    #1f2433 20px,
-    #1f2433 40px
-  );
-  opacity: 0.8;
+  top: 45%;
+  left: 45%;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.12) 0%, rgba(59, 130, 246, 0.04) 50%, transparent 70%);
+  filter: blur(90px);
+  animation: float-blob-3 22s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 1;
 }
 
-/* Dashed middle line of the road */
-.road-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: repeating-linear-gradient(
-    90deg,
-    #f2a93b 0px,
-    #f2a93b 30px,
-    transparent 30px,
-    transparent 60px
-  );
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0.8;
+@keyframes float-blob-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(80px, 50px) scale(1.1); }
+  100% { transform: translate(-50px, 90px) scale(0.9); }
 }
 
-/* The larger bus driving on the road */
-.road-bus {
-  position: absolute;
-  width: 140px; /* Larger bus as requested */
-  height: auto;
-  bottom: 12px;
-  transform-origin: center center;
-  animation: 
-    drive-road 14s linear infinite, 
-    bus-suspension 0.4s ease-in-out infinite alternate;
+@keyframes float-blob-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-90px, -60px) scale(0.95); }
+  100% { transform: translate(60px, 40px) scale(1.08); }
 }
 
-/* Driving animation from left offscreen to right offscreen */
-@keyframes drive-road {
+@keyframes float-blob-3 {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -80px) scale(1.15); }
+  100% { transform: translate(-60px, 50px) scale(0.85); }
+}
+
+/* Interactive touch-burst gold/aurora glow ripples */
+.interactive-glow-blob {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 163, 89, 0.75) 0%, rgba(236, 72, 153, 0.4) 40%, rgba(6, 182, 212, 0.2) 70%, transparent 100%);
+  filter: blur(40px);
+  transform: translate(-50%, -50%) scale(0.1);
+  opacity: 0.9;
+  pointer-events: none;
+  animation: apple-glow-burst 1.8s cubic-bezier(0.1, 0.8, 0.25, 1) forwards;
+  z-index: 2;
+}
+
+@keyframes apple-glow-burst {
   0% {
-    left: -180px;
-    transform: scaleX(-1);
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 0.9;
+  }
+  30% {
+    background: radial-gradient(circle, rgba(255, 215, 0, 0.6) 0%, rgba(147, 51, 234, 0.5) 45%, rgba(6, 182, 212, 0.3) 70%, transparent 100%);
   }
   100% {
-    left: 100%;
-    transform: scaleX(-1);
-  }
-}
-
-/* Micro-animation for bus wheels/suspension bounce to make it feel alive */
-@keyframes bus-suspension {
-  0% {
-    margin-bottom: 0px;
-  }
-  100% {
-    margin-bottom: 2.5px;
+    transform: translate(-50%, -50%) scale(4.2);
+    filter: blur(90px);
+    opacity: 0;
   }
 }
 
