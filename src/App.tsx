@@ -1350,13 +1350,8 @@ export default function App() {
 
       {/* NO USER SIGNED IN -> SHOW LOGIN SCREEN */}
       {!currentUser ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', background: '#090a0f' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px 120px 20px', background: '#090a0f', position: 'relative', overflow: 'hidden' }}>
           <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px 30px', background: '#121620', borderColor: '#202636', position: 'relative' }}>
-            
-            {/* Animated Bus driving around the login card */}
-            <div className="animated-bus-container">
-              <img src={busImage} alt="Bus" className="animated-bus" />
-            </div>
             
             {/* Language Switch Button */}
             <button 
@@ -1415,6 +1410,14 @@ export default function App() {
             </form>
 
             {/* Cloud connection status indicator removed */}
+          </div>
+
+          {/* Beautiful animated road and bus at the bottom */}
+          <div className="login-road">
+            <div className="road-curb-top"></div>
+            <div className="road-line"></div>
+            <div className="road-curb-bottom"></div>
+            <img src={busImage} alt="Bus" className="road-bus" />
           </div>
         </div>
       ) : (

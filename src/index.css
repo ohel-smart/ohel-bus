@@ -609,72 +609,104 @@ body {
   display: none;
 }
 
-/* Animated Bus Driving around Login Card */
-.animated-bus-container {
+/* Animated Road and Bus at the bottom of the Login Screen */
+.login-road {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 90px;
+  background: linear-gradient(180deg, #181d29 0%, #0d1017 100%);
+  border-top: 4px solid #202636;
+  border-bottom: 4px solid #090b0e;
+  overflow: hidden;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+}
+
+/* Concrete curbstones top and bottom */
+.road-curb-top {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  pointer-events: none;
-  z-index: 10;
-  overflow: visible;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    #3a435c 0px,
+    #3a435c 20px,
+    #1f2433 20px,
+    #1f2433 40px
+  );
+  opacity: 0.8;
 }
 
-.animated-bus {
+.road-curb-bottom {
   position: absolute;
-  width: 55px;
-  height: auto;
-  pointer-events: none;
-  animation: drive-around 15s linear infinite;
-  transform-origin: center center;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    #3a435c 0px,
+    #3a435c 20px,
+    #1f2433 20px,
+    #1f2433 40px
+  );
+  opacity: 0.8;
 }
 
-@keyframes drive-around {
+/* Dashed middle line of the road */
+.road-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #f2a93b 0px,
+    #f2a93b 30px,
+    transparent 30px,
+    transparent 60px
+  );
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.8;
+}
+
+/* The larger bus driving on the road */
+.road-bus {
+  position: absolute;
+  width: 140px; /* Larger bus as requested */
+  height: auto;
+  bottom: 12px;
+  transform-origin: center center;
+  animation: 
+    drive-road 14s linear infinite, 
+    bus-suspension 0.4s ease-in-out infinite alternate;
+}
+
+/* Driving animation from left offscreen to right offscreen */
+@keyframes drive-road {
   0% {
-    left: 100%;
-    top: 100%;
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  20% {
-    left: 0%;
-    top: 100%;
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  25% {
-    left: 0%;
-    top: 100%;
-    transform: translate(-50%, -50%) rotate(90deg);
-  }
-  45% {
-    left: 0%;
-    top: 0%;
-    transform: translate(-50%, -50%) rotate(90deg);
-  }
-  50% {
-    left: 0%;
-    top: 0%;
-    transform: translate(-50%, -50%) rotate(180deg);
-  }
-  70% {
-    left: 100%;
-    top: 0%;
-    transform: translate(-50%, -50%) rotate(180deg);
-  }
-  75% {
-    left: 100%;
-    top: 0%;
-    transform: translate(-50%, -50%) rotate(270deg);
-  }
-  95% {
-    left: 100%;
-    top: 100%;
-    transform: translate(-50%, -50%) rotate(270deg);
+    left: -180px;
+    transform: scaleX(-1);
   }
   100% {
     left: 100%;
-    top: 100%;
-    transform: translate(-50%, -50%) rotate(360deg);
+    transform: scaleX(-1);
+  }
+}
+
+/* Micro-animation for bus wheels/suspension bounce to make it feel alive */
+@keyframes bus-suspension {
+  0% {
+    margin-bottom: 0px;
+  }
+  100% {
+    margin-bottom: 2.5px;
   }
 }
 
