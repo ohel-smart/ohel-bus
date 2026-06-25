@@ -190,16 +190,7 @@ class DBService {
 
   // --- Firebase Cloud Connection ---
   public getFirebaseConfig(): FirebaseConfig | null {
-    const configStr = localStorage.getItem('tp_firebase_config');
-    if (configStr) {
-      if (configStr === 'disabled') return null;
-      try {
-        return JSON.parse(configStr);
-      } catch (e) {
-        return null;
-      }
-    }
-    // Default fallback to user's Firebase config
+    // Unconditionally use the default Firebase configuration for ohel-smart
     return {
       apiKey: "AIzaSyB6D83wnOoA8oLWn5SFzIIpcbb-f454kDo",
       authDomain: "ohel-smart.firebaseapp.com",
