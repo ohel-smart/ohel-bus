@@ -1692,7 +1692,7 @@ export default function App() {
                       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', display: 'inline-block', marginBottom: '20px' }}>
                         <div style={{ border: '2px solid #000', padding: '4px' }}>
                           <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`http://${window.location.host}/scan?driverId=${currentUser.id}`)}`} 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?driverId=${currentUser.id}`)}`} 
                             alt="Driver QR Code" 
                             style={{ display: 'block' }}
                           />
