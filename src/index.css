@@ -591,4 +591,90 @@ body {
     max-width: 100% !important;
     margin: auto !important;
   }
+
+  .desktop-users-table {
+    display: none !important;
+  }
+
+  .mobile-users-cards {
+    display: flex !important;
+  }
 }
+
+.desktop-users-table {
+  display: block;
+}
+
+.mobile-users-cards {
+  display: none;
+}
+
+/* Animated Bus Driving around Login Card */
+.animated-bus-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: visible;
+}
+
+.animated-bus {
+  position: absolute;
+  width: 55px;
+  height: auto;
+  pointer-events: none;
+  animation: drive-around 15s linear infinite;
+  transform-origin: center center;
+}
+
+@keyframes drive-around {
+  0% {
+    left: 100%;
+    top: 100%;
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  20% {
+    left: 0%;
+    top: 100%;
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  25% {
+    left: 0%;
+    top: 100%;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+  45% {
+    left: 0%;
+    top: 0%;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+  50% {
+    left: 0%;
+    top: 0%;
+    transform: translate(-50%, -50%) rotate(180deg);
+  }
+  70% {
+    left: 100%;
+    top: 0%;
+    transform: translate(-50%, -50%) rotate(180deg);
+  }
+  75% {
+    left: 100%;
+    top: 0%;
+    transform: translate(-50%, -50%) rotate(270deg);
+  }
+  95% {
+    left: 100%;
+    top: 100%;
+    transform: translate(-50%, -50%) rotate(270deg);
+  }
+  100% {
+    left: 100%;
+    top: 100%;
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+

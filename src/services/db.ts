@@ -700,6 +700,26 @@ class DBService {
     }
   }
 
+  public async sendEmail(to: string, subject: string, html: string) {
+    if (this.firebaseDb) {
+      try {
+        const mailCol = collection(this.firebaseDb, 'mail');
+        const newMailDoc = doc(mailCol);
+        await setDoc(newMailDoc, {
+          to: to,
+          message: {
+            subject: subject,
+            html: html
+          },
+          createdAt: new Date().toISOString()
+        });
+        console.log("Email queued in Firestore successfully.");
+      } catch (e) {
+        console.error("Firebase sendEmail error:", e);
+      }
+    }
+  }
+
   // --- GPS Driving Simulation Engine ---
   private startSimulation() {
     setInterval(async () => {

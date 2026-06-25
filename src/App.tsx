@@ -3,13 +3,15 @@ import confetti from 'canvas-confetti';
 import { 
   MapPin, Users, Calendar, WifiOff, Settings, QrCode, LogOut, 
   Plus, Trash, Edit, Search, AlertTriangle, Clock, Send, CheckCircle, 
-  RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon, Database
+  RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
+  Mail, Download, Copy
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
-import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, FirebaseConfig } from './services/db';
+import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
 import LiveMap from './components/LiveMap';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import logo from './assets/logo.png';
+import busImage from './assets/bus.png';
 import './App.css';
 
 const TRANSLATIONS = {
@@ -488,6 +490,70 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c; // distance in km
 };
 
+// Hebrew Date Formatter Helper
+const formatHebrewAndGregorianDate = (dateInput: Date | string): string => {
+  const date = typeof dateInput === 'string' ? new Date(dateInput + 'T12:00:00') : dateInput;
+  if (isNaN(date.getTime())) return typeof dateInput === 'string' ? dateInput : '';
+  
+  try {
+    const dayStr = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { day: 'numeric' }).format(date);
+    const monthStr = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { month: 'long' }).format(date);
+    const yearStr = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', { year: 'numeric' }).format(date);
+    
+    const dayNum = parseInt(dayStr.replace(/[^0-9]/g, '')) || date.getDate();
+    const yearNum = parseInt(yearStr.replace(/[^0-9]/g, '')) || 5786;
+    
+    const gematriaMap: { [key: number]: string } = {
+      1: "א'", 2: "ב'", 3: "ג'", 4: "ד'", 5: "ה'", 6: "ו'", 7: "ז'", 8: "ח'", 9: "ט'",
+      10: "י'", 11: 'י"א', 12: 'י"ב', 13: 'י"ג', 14: 'י"ד', 15: 'ט"ו', 16: 'ט"ז',
+      17: 'י"ז', 18: 'י"ח', 19: 'י"ט', 20: "כ'", 21: 'כ"א', 22: 'כ"ב', 23: 'כ"ג',
+      24: 'כ"ד', 25: 'כ"ה', 26: 'כ"ו', 27: 'כ"ז', 28: 'כ"ח', 29: 'כ"ט', 30: "ל'"
+    };
+    
+    const dayHeb = gematriaMap[dayNum] || dayStr;
+    
+    // Year gematria
+    const thousandRem = yearNum % 1000;
+    const hundreds = Math.floor(thousandRem / 100);
+    const tens = Math.floor((thousandRem % 100) / 10);
+    const units = thousandRem % 10;
+    
+    let yearHeb = '';
+    if (hundreds === 7) yearHeb += 'תש';
+    else if (hundreds === 8) yearHeb += 'תת';
+    
+    const tensGematria: { [key: number]: string } = {
+      1: 'י', 2: 'כ', 3: 'ל', 4: 'מ', 5: 'נ', 6: 'ס', 7: 'ע', 8: 'פ', 9: 'צ'
+    };
+    
+    const unitsGematria: { [key: number]: string } = {
+      1: 'א', 2: 'ב', 3: 'ג', 4: 'ד', 5: 'ה', 6: 'ו', 7: 'ז', 8: 'ח', 9: 'ט'
+    };
+    
+    const lastPartVal = (tens * 10) + units;
+    let lastPart = '';
+    if (lastPartVal === 15) lastPart = 'טו';
+    else if (lastPartVal === 16) lastPart = 'טז';
+    else lastPart = (tensGematria[tens] || '') + (unitsGematria[units] || '');
+    
+    if (lastPart.length === 1) yearHeb += lastPart + "'";
+    else if (lastPart.length > 1) yearHeb += lastPart.slice(0, -1) + '"' + lastPart.slice(-1);
+    else yearHeb += "'";
+    
+    let monthPref = monthStr;
+    if (!monthStr.startsWith('ב')) {
+      monthPref = 'ב' + monthStr;
+    }
+    
+    const hebrewFull = `${dayHeb} ${monthPref} ${yearHeb}`;
+    const gregFull = date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    
+    return `${hebrewFull} (${gregFull})`;
+  } catch (e) {
+    return date.toLocaleDateString('he-IL');
+  }
+};
+
 export default function App() {
   // Internationalization (Language Switcher)
   const [lang, setLang] = useState<'he' | 'en'>('he');
@@ -509,13 +575,22 @@ export default function App() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  // Authentication & Session
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Authentication & Session persistent initialization
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('tp_current_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [activeLocations, setActiveLocations] = useState<ActiveLocation[]>([]);
   const [isOffline, setIsOffline] = useState(false);
-  const [isFirebaseActive, setIsFirebaseActive] = useState(false);
   
   // App navigation tab
   const [activeTab, setActiveTab] = useState<string>('');
@@ -553,15 +628,6 @@ export default function App() {
   const [editUserCode, setEditUserCode] = useState('');
   const [editUserRole, setEditUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
   const [editUserCapacity, setEditUserCapacity] = useState<number>(15);
-
-  // Cloud Config Inputs
-  const [apiKey, setApiKey] = useState('');
-  const [authDomain, setAuthDomain] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [storageBucket, setStorageBucket] = useState('');
-  const [messagingSenderId, setMessagingSenderId] = useState('');
-  const [appId, setAppId] = useState('');
-
   // Email Reports Simulator state
   const [emailPreviewType, setEmailPreviewType] = useState<'daily' | 'monthly' | null>(null);
   const [emailPreviewHtml, setEmailPreviewHtml] = useState<string>('');
@@ -585,7 +651,6 @@ export default function App() {
       setScans(dbService.getScans());
       setActiveLocations(dbService.getActiveLocations());
       setIsOffline(dbService.isOffline());
-      setIsFirebaseActive(dbService.isFirebaseConnected());
     };
 
     handleUpdate();
@@ -593,17 +658,6 @@ export default function App() {
 
     // Initial config load
     setReportEmail(dbService.getConfig().reportEmail);
-
-    // Load active Firebase configs
-    const fb = dbService.getFirebaseConfig();
-    if (fb) {
-      setApiKey(fb.apiKey);
-      setAuthDomain(fb.authDomain);
-      setProjectId(fb.projectId);
-      setStorageBucket(fb.storageBucket);
-      setMessagingSenderId(fb.messagingSenderId);
-      setAppId(fb.appId);
-    }
 
     return () => unsubscribe();
   }, []);
@@ -817,6 +871,7 @@ export default function App() {
     }
     const user = dbService.loginWithCode(loginCode.trim());
     if (user) {
+      localStorage.setItem('tp_current_user', JSON.stringify(user));
       setCurrentUser(user);
       setLoginCode('');
       triggerToast(t('welcomeUser', { name: user.name }), 'success');
@@ -826,6 +881,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('tp_current_user');
     setCurrentUser(null);
     triggerToast(t('logoutSuccess'), 'success');
   };
@@ -1022,6 +1078,7 @@ export default function App() {
     triggerToast(lang === 'he' ? `המשתמש ${editUserName} עודכן בהצלחה` : `User ${editUserName} updated successfully`, 'success');
     
     if (currentUser && currentUser.id === selectedUserForEdit.id) {
+      localStorage.setItem('tp_current_user', JSON.stringify(updatedUser));
       setCurrentUser(updatedUser);
     }
     
@@ -1031,40 +1088,6 @@ export default function App() {
   const handleSaveConfig = () => {
     dbService.saveConfig({ reportEmail });
     triggerToast(t('emailUpdated'), 'success');
-  };
-
-  // --- Real Cloud Cloud Config Management ---
-  const handleSaveFirebaseConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiKey || !projectId || !authDomain || !appId) {
-      triggerToast(t('firebaseConfigRequired'), 'danger');
-      return;
-    }
-
-    const config: FirebaseConfig = {
-      apiKey,
-      authDomain,
-      projectId,
-      storageBucket,
-      messagingSenderId,
-      appId
-    };
-
-    dbService.saveFirebaseConfig(config);
-    triggerToast(t('firebaseConfigSaved'), 'success');
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
-  };
-
-  const handleDisconnectFirebase = () => {
-    if (window.confirm(t('confirmDisconnectFirebase'))) {
-      dbService.saveFirebaseConfig(null);
-      triggerToast(t('firebaseDisconnected'), 'success');
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-    }
   };
 
   // --- Reports Preview Generators ---
@@ -1098,7 +1121,7 @@ export default function App() {
           <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
             <div style="background: #0f172a; padding: 24px; text-align: center; color: #ffffff;">
               <h2 style="margin: 0; font-size: 24px; letter-spacing: 1px; color: #f59e0b;">אוהל בוס</h2>
-              <p style="margin: 5px 0 0 0; font-size: 14px; color: #94a3b8;">דו"ח פעילות יומי מרוכז - יום עבודה קלנדרי ${logicalToday}</p>
+              <p style="margin: 5px 0 0 0; font-size: 14px; color: #94a3b8;">דו"ח פעילות יומי מרוכז - ${formatHebrewAndGregorianDate(logicalToday)}</p>
             </div>
             <div style="padding: 24px;">
               <div style="display: flex; justify-content: space-around; margin-bottom: 24px; background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #edf2f7; text-align: center;">
@@ -1112,7 +1135,10 @@ export default function App() {
                 </div>
                 <div style="flex: 1;">
                   <span style="font-size: 12px; color: #64748b; display: block;">תאריך דוח</span>
-                  <strong style="font-size: 14px; color: #0f172a; line-height: 28px;">${dateStr}</strong>
+                  <strong style="font-size: 13px; color: #0f172a; line-height: 20px; display: block; margin-top: 4px;">
+                    ${dateStr} <br/>
+                    <span style="font-size: 11px; color: #64748b; font-weight: normal;">${formatHebrewAndGregorianDate(logicalToday).split(' (')[0]}</span>
+                  </strong>
                 </div>
               </div>
               <h3 style="font-size: 16px; color: #0f172a; border-bottom: 2px solid #edf2f7; padding-bottom: 8px; margin-bottom: 12px;">פירוט נסיעות היום:</h3>
@@ -1158,7 +1184,10 @@ export default function App() {
 
           tableRows += `
             <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 10px; text-align: right;">${date}</td>
+              <td style="padding: 10px; text-align: right; line-height: 18px;">
+                ${date}<br/>
+                <span style="font-size: 11px; color: #64748b;">${formatHebrewAndGregorianDate(date).split(' (')[0]}</span>
+              </td>
               <td style="padding: 10px; text-align: right;"><b>${dispName}</b></td>
               <td style="padding: 10px; text-align: center;">${firstStr}</td>
               <td style="padding: 10px; text-align: center;">${lastStr}</td>
@@ -1214,7 +1243,54 @@ export default function App() {
     }
   };
 
+  const handleDownloadHtmlReport = () => {
+    if (!emailPreviewHtml) return;
+    const blob = new Blob([emailPreviewHtml], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `report_${emailPreviewType}_${new Date().toISOString().split('T')[0]}.html`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast(lang === 'he' ? 'קובץ הדו"ח הורד בהצלחה' : 'Report HTML file downloaded successfully', 'success');
+  };
+
+  const handleCopyHtmlReport = () => {
+    if (!emailPreviewHtml) return;
+    navigator.clipboard.writeText(emailPreviewHtml).then(() => {
+      triggerToast(lang === 'he' ? 'קוד ה-HTML הועתק ללוח' : 'HTML code copied to clipboard', 'success');
+    }).catch(() => {
+      triggerToast('Error copying', 'danger');
+    });
+  };
+
+  const handleOpenMailClient = () => {
+    if (!emailPreviewHtml) return;
+    const subject = emailPreviewType === 'daily' 
+      ? `דו"ח פעילות יומי - אוהל בוס (${logicalToday})`
+      : `דו"ח נוכחות חודשי - אוהל בוס`;
+    
+    let bodyText = `שלום,\n\nמצורף דו"ח פעילות מתוך מערכת אוהל בוס.\n\nאנא מצא את הדו"ח המלא בקובץ המצורף או בכתובת המערכת.\n\nבברכה,\nמערכת אוהל בוס.`;
+    if (emailPreviewType === 'daily') {
+      const todayScans = scans.filter(s => s.logicalDate === logicalToday);
+      const totalPassengers = todayScans.reduce((sum, s) => sum + s.passengersCount, 0);
+      bodyText = `דו"ח פעילות יומי - אוהל בוס\n=========================\nתאריך עבודה: ${logicalToday}\nסה"כ נסיעות: ${todayScans.length}\nסה"כ נוסעים: ${totalPassengers}\n\nפירוט:\n` + 
+        todayScans.map(s => `- ${new Date(s.scannedAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})}: נהג: ${s.driverName}, מוצא: ${s.departureLocation === '770' ? '770' : 'אוהל'}, נוסעים: ${s.passengersCount}`).join('\n');
+    }
+    
+    const mailtoUrl = `mailto:${encodeURIComponent(reportEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    window.open(mailtoUrl, '_blank');
+    triggerToast(lang === 'he' ? 'פותח יישום מייל מקומי...' : 'Opening local mail client...', 'success');
+  };
+
   const handleSendMockEmail = () => {
+    const subject = emailPreviewType === 'daily' 
+      ? (lang === 'he' ? "דו\"ח יומי מרוכז - אוהל בוס" : "Daily Summary Report - Ohel Bus")
+      : (lang === 'he' ? "דו\"ח נוכחות חודשי - אוהל בוס" : "Monthly Attendance Report - Ohel Bus");
+
+    dbService.sendEmail(reportEmail, subject, emailPreviewHtml);
+
     triggerToast(t('mockEmailSent', { email: reportEmail }), 'success');
     confetti({ particleCount: 50, spread: 40 });
     setEmailPreviewType(null);
@@ -1277,6 +1353,11 @@ export default function App() {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', background: '#090a0f' }}>
           <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px 30px', background: '#121620', borderColor: '#202636', position: 'relative' }}>
             
+            {/* Animated Bus driving around the login card */}
+            <div className="animated-bus-container">
+              <img src={busImage} alt="Bus" className="animated-bus" />
+            </div>
+            
             {/* Language Switch Button */}
             <button 
               onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
@@ -1333,12 +1414,7 @@ export default function App() {
               </button>
             </form>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '28px', fontSize: '11px', color: 'var(--text-muted)' }}>
-              <Database size={11} />
-              <span>
-                {isFirebaseActive ? t('connectedCloud') : t('connectedLocal')}
-              </span>
-            </div>
+            {/* Cloud connection status indicator removed */}
           </div>
         </div>
       ) : (
@@ -1361,20 +1437,17 @@ export default function App() {
                 <button 
                   onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
                   style={{ 
-                    background: 'rgba(255,255,255,0.03)', 
+                    background: 'rgba(255,255,255,0.05)', 
                     border: '1px solid var(--border-color)', 
                     borderRadius: '6px',
-                    padding: '4px 8px',
-                    color: 'var(--text-secondary)', 
+                    padding: '4px 10px',
+                    color: '#fff', 
                     cursor: 'pointer', 
                     fontSize: '11px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '4px' 
+                    fontWeight: 'bold'
                   }}
                 >
-                  <span>🌐</span>
-                  <span>{lang === 'he' ? 'English' : 'עברית'}</span>
+                  {lang === 'he' ? 'EN' : 'עב'}
                 </button>
                 
                 <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
@@ -1553,7 +1626,9 @@ export default function App() {
                   <div className="card" style={{ padding: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                       <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{t('myScansTodayTitle')}</h3>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('logicalDateLabel', { date: logicalToday })}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {lang === 'he' ? `תאריך עבודה: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalDateLabel', { date: logicalToday })}
+                      </span>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px', textAlign: 'center' }}>
@@ -1645,20 +1720,17 @@ export default function App() {
                 <button 
                   onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
                   style={{ 
-                    background: 'rgba(255,255,255,0.03)', 
+                    background: 'rgba(255,255,255,0.05)', 
                     border: '1px solid var(--border-color)', 
                     borderRadius: '6px',
-                    padding: '4px 8px',
-                    color: 'var(--text-secondary)', 
+                    padding: '4px 10px',
+                    color: '#fff', 
                     cursor: 'pointer', 
                     fontSize: '11px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '4px' 
+                    fontWeight: 'bold'
                   }}
                 >
-                  <span>🌐</span>
-                  <span>{lang === 'he' ? 'English' : 'עברית'}</span>
+                  {lang === 'he' ? 'EN' : 'עב'}
                 </button>
                 
                 <div>
@@ -1771,7 +1843,9 @@ export default function App() {
                   <div className="card" style={{ padding: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                       <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{t('myTripsTodayTitle')}</h3>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('logicalDateLabel', { date: logicalToday })}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {lang === 'he' ? `תאריך עבודה: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalDateLabel', { date: logicalToday })}
+                      </span>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px', textAlign: 'center' }}>
@@ -1863,9 +1937,9 @@ export default function App() {
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button 
                     onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 10px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 10px', color: '#fff', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
-                    🌐 {lang === 'he' ? 'English' : 'עברית'}
+                    {lang === 'he' ? 'EN' : 'עב'}
                   </button>
                   <button 
                     onClick={handleLogout} 
@@ -1879,39 +1953,28 @@ export default function App() {
               
               {/* DESKTOP SIDEBAR MENU (Human designed feel) */}
               <aside className="desktop-sidebar">
-                <div style={{ marginBottom: '24px', textAlign: 'center' }}>
-                  <img src={logo} alt="Ohel Bus Logo" style={{ width: '100%', height: 'auto', maxWidth: '170px' }} />
+                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                  <img src={logo} alt="Ohel Bus Logo" style={{ height: '36px', width: 'auto', maxWidth: '120px' }} />
+                  <button 
+                    onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
+                    style={{ 
+                      background: 'rgba(255,255,255,0.05)', 
+                      border: '1px solid var(--border-color)', 
+                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      color: '#fff', 
+                      cursor: 'pointer', 
+                      fontSize: '11px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {lang === 'he' ? 'EN' : 'עב'}
+                  </button>
                 </div>
 
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px', marginBottom: '20px' }}>
                   <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('connectedUser')}</span>
                   <strong style={{ color: '#fff', fontSize: '13px' }}>{currentUser.name.replace(' (מנהל)', '')}</strong>
-                  <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '9px', marginTop: '4px' }}>
-                    {isFirebaseActive ? t('connectedCloud') : t('connectedLocal')}
-                  </span>
-                  
-                  {/* Language switch button inside manager info card */}
-                  <button 
-                    onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
-                    style={{ 
-                      marginTop: '8px',
-                      width: '100%',
-                      background: 'rgba(255,255,255,0.03)', 
-                      border: '1px solid var(--border-color)', 
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      color: 'var(--text-secondary)', 
-                      cursor: 'pointer', 
-                      fontSize: '11px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      gap: '4px' 
-                    }}
-                  >
-                    <span>🌐</span>
-                    <span>{lang === 'he' ? 'English' : 'עברית'}</span>
-                  </button>
                 </div>
 
                 <nav className="sidebar-nav">
@@ -1968,9 +2031,9 @@ export default function App() {
                         <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#fff' }}>{t('managerDashboardTitle')}</h2>
                         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('managerDashboardSubtitle')}</p>
                       </div>
-                      <div style={{ fontSize: '14px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                        {t('logicalWorkDateText', { date: logicalToday })}
-                      </div>
+                       <div style={{ fontSize: '14px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                         {lang === 'he' ? `תאריך עבודה לוגי: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalWorkDateText', { date: logicalToday })}
+                       </div>
                     </div>
 
                     {/* Stats Widget Row */}
@@ -2088,12 +2151,17 @@ export default function App() {
 
                                 <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
                                   {drv.status === 'en_route' ? (
-                                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: drv.direction === 'to_ohel' ? 'var(--accent)' : 'var(--info)', display: 'block' }}>
-                                      {t('etaNotice', { eta: drv.etaMinutes || '?' })}
-                                    </span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: lang === 'he' ? 'flex-end' : 'flex-start' }}>
+                                      <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)' }}>
+                                        {lang === 'he' ? `זמן נסיעה נותר: כ-${drv.etaMinutes || 25} דקות` : `Remaining: ~${drv.etaMinutes || 25} min`}
+                                      </span>
+                                      <span style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                        {lang === 'he' ? '(לפי עומס תנועה)' : '(via Google Maps)'}
+                                      </span>
+                                    </div>
                                   ) : (
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      -
+                                      {lang === 'he' ? 'לא בנסיעה / ממתין' : 'Not en route / Idle'}
                                     </span>
                                   )}
                                 </div>
@@ -2172,7 +2240,7 @@ export default function App() {
                             filteredScans.map(scan => (
                               <tr key={scan.id}>
                                 <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
-                                <td>{scan.logicalDate}</td>
+                                <td>{lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}</td>
                                 <td><strong>{scan.driverName}</strong></td>
                                 <td>{scan.dispatcherName}</td>
                                 <td>
@@ -2372,7 +2440,8 @@ export default function App() {
                         {t('usersListTitle')}
                       </h3>
 
-                      <div className="table-container">
+                      {/* Desktop Table View */}
+                      <div className="table-container desktop-users-table">
                         <table className="tp-table">
                           <thead>
                             <tr>
@@ -2430,13 +2499,62 @@ export default function App() {
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Mobile Cards View */}
+                      <div className="mobile-users-cards" style={{ flexDirection: 'column', gap: '12px' }}>
+                        {users.map(u => (
+                          <div key={u.id} className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <strong style={{ fontSize: '15px', color: '#fff' }}>{u.name}</strong>
+                              <span className={`badge ${
+                                u.role === 'admin' ? 'badge-danger' : u.role === 'dispatcher' ? 'badge-success' : 'badge-warning'
+                              }`}>
+                                {u.role === 'admin' ? t('adminRole') : u.role === 'dispatcher' ? t('dispatcherRole') : t('driverRole')}
+                              </span>
+                            </div>
+                            
+                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <div><strong>{lang === 'he' ? 'טלפון:' : 'Phone:'}</strong> {u.phone}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <strong>{lang === 'he' ? 'קוד כניסה:' : 'Passcode:'}</strong>
+                                <span style={{ background: '#0f172a', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
+                                  {u.code}
+                                </span>
+                              </div>
+                              {u.role === 'driver' && (
+                                <div><strong>{lang === 'he' ? 'קיבולת:' : 'Capacity:'}</strong> {t('seatsCountText', { count: u.capacity })}</div>
+                              )}
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                              <button 
+                                onClick={() => handleEditUserClick(u)} 
+                                className="btn btn-secondary" 
+                                style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }} 
+                              >
+                                <Edit size={14} />
+                                {t('edit')}
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteUser(u.id)} 
+                                className="btn btn-danger" 
+                                style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }} 
+                                disabled={u.id === 'usr_admin'} 
+                              >
+                                <Trash size={14} />
+                                {t('delete')}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* TAB 4: SETTINGS & REAL CLOUD CONNECTION */}
+                {/* TAB 4: SETTINGS */}
                 {activeTab === 'settings' && (
-                  <div className="settings-grid">
+                  <div style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
                     
                     {/* Settings Form */}
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -2467,6 +2585,7 @@ export default function App() {
                         <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>{t('emailReportSimulatorTitle')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                           <button 
+                            type="button"
                             onClick={() => handleGenerateReportPreview('daily')}
                             className="btn btn-secondary" 
                             style={{ fontSize: '12px', padding: '10px' }}
@@ -2476,6 +2595,7 @@ export default function App() {
                           </button>
                           
                           <button 
+                            type="button"
                             onClick={() => handleGenerateReportPreview('monthly')}
                             className="btn btn-secondary" 
                             style={{ fontSize: '12px', padding: '10px' }}
@@ -2487,97 +2607,44 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* REAL CLOUD DATABASE CONNECTION (NO BS / NO FAKE DETAILS) */}
-                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Database size={16} color="var(--accent)" />
-                        {t('firebaseHeader')}
-                      </h3>
-
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '18px' }}>
-                        {t('firebaseDesc')}
-                      </p>
-
-                      {isFirebaseActive ? (
-                        <div style={{ background: 'var(--success-bg)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '12px 16px', borderRadius: '8px', fontSize: '13px' }}>
-                          <span style={{ color: '#a7f3d0', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>{t('firebaseActiveStatus')}</span>
-                          <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '11px', lineHeight: '16px' }}>
-                            {t('firebaseConnectedProject', { projectId })}
-                            <br/>{t('firebaseConnectedDesc')}
-                          </span>
-                          <button 
-                            onClick={handleDisconnectFirebase}
-                            className="btn btn-danger"
-                            style={{ width: '100%', marginTop: '12px', padding: '8px', fontSize: '12px' }}
-                          >
-                            {t('firebaseDisconnectButton')}
-                          </button>
-                        </div>
-                      ) : (
-                        <form onSubmit={handleSaveFirebaseConfig} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <span style={{ color: '#fde68a', fontWeight: '600', fontSize: '12px', display: 'block' }}>
-                            {t('firebaseLocalNotice')}
-                          </span>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>apiKey *</label>
-                              <input type="text" className="form-input" style={{ fontSize: '12px', padding: '6px 10px' }} value={apiKey} onChange={e => setApiKey(e.target.value)} required />
-                            </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>projectId *</label>
-                              <input type="text" className="form-input" style={{ fontSize: '12px', padding: '6px 10px' }} value={projectId} onChange={e => setProjectId(e.target.value)} required />
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>authDomain *</label>
-                              <input type="text" className="form-input" style={{ fontSize: '12px', padding: '6px 10px' }} value={authDomain} onChange={e => setAuthDomain(e.target.value)} required />
-                            </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>appId *</label>
-                              <input type="text" className="form-input" style={{ fontSize: '12px', padding: '6px 10px' }} value={appId} onChange={e => setAppId(e.target.value)} required />
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>storageBucket</label>
-                              <input type="text" className="form-input" style={{ fontSize: '12px', padding: '6px 10px' }} value={storageBucket} onChange={e => setStorageBucket(e.target.value)} />
-                            </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>messagingSenderId</label>
-                              <input type="text" className="form-input" style={{ fontSize: '12px', padding: '6px 10px' }} value={messagingSenderId} onChange={e => setMessagingSenderId(e.target.value)} />
-                            </div>
-                          </div>
-
-                          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px', padding: '10px', fontSize: '13px', color: '#000' }}>
-                            <Database size={14} />
-                            {t('firebaseSaveButton')}
-                          </button>
-                        </form>
-                      )}
-                    </div>
-
                   </div>
                 )}
 
                 {/* Email HTML Preview Modal */}
                 {emailPreviewType && (
-                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', padding: '40px 20px', zIndex: 4000 }}>
-                    <div className="card" style={{ maxWidth: '700px', width: '100%', margin: 'auto', display: 'flex', flexDirection: 'column', height: '90%', overflow: 'hidden', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', padding: '16px', zIndex: 4000 }}>
+                    <div className="card" style={{ maxWidth: '750px', width: '100%', margin: 'auto', display: 'flex', flexDirection: 'column', height: '92%', overflow: 'hidden', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', padding: '16px' }}>
                       
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', marginBottom: '14px' }}>
-                        <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>
-                          תצוגה מקדימה של מייל הדו"ח ({emailPreviewType === 'daily' ? 'דו"ח יומי מרוכז' : 'דו"ח שעות חודשי'})
-                        </h3>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button onClick={handleSendMockEmail} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '13px', color: '#000' }}>
-                            <Send size={14} />
-                            שלח מייל דמו כעת
+                      <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>
+                            {lang === 'he' ? `תצוגה מקדימה: ${emailPreviewType === 'daily' ? 'דו"ח יומי' : 'דו"ח חודשי'}` : `Report Preview: ${emailPreviewType === 'daily' ? 'Daily' : 'Monthly'}`}
+                          </h3>
+                          <button onClick={() => setEmailPreviewType(null)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }}>
+                            {lang === 'he' ? 'סגור' : 'Close'}
                           </button>
-                          <button onClick={() => setEmailPreviewType(null)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '13px' }}>סגור</button>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button onClick={handleSendMockEmail} className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '12px', color: '#000', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Send size={12} />
+                            <span>{lang === 'he' ? 'שלח בענן' : 'Send via Cloud'}</span>
+                          </button>
+
+                          <button onClick={handleOpenMailClient} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'var(--info)' }}>
+                            <Mail size={12} color="var(--info)" />
+                            <span>{lang === 'he' ? 'פתח ביישום מייל' : 'Open in Mail Client'}</span>
+                          </button>
+
+                          <button onClick={handleDownloadHtmlReport} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Download size={12} />
+                            <span>{lang === 'he' ? 'הורד קובץ HTML' : 'Download HTML'}</span>
+                          </button>
+
+                          <button onClick={handleCopyHtmlReport} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Copy size={12} />
+                            <span>{lang === 'he' ? 'העתק תוכן' : 'Copy HTML'}</span>
+                          </button>
                         </div>
                       </div>
 
