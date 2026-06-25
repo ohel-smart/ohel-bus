@@ -240,12 +240,25 @@ class DBService {
         if (usersList.length === 0) {
           this.uploadDefaultDataToFirebase(db);
         } else {
+          // Self-healing: ensure default users are always present in the database
+          const userMap = new Map(usersList.map(u => [u.id, u]));
+          DEFAULT_USERS.forEach(defUser => {
+            if (!userMap.has(defUser.id)) {
+              usersList.push(defUser);
+              setDoc(doc(db, 'users', defUser.id), defUser).catch(err => {
+                console.error("Failed to write default user to Firebase:", err);
+              });
+            }
+          });
+          
           this.usersCache = usersList;
           localStorage.setItem('tp_users', JSON.stringify(usersList));
           this.notify();
         }
       }, (error: any) => {
-        console.error("Firebase users listener error:", error);
+        console.error("Firebase users listener error, falling back to local mode:", error);
+        this.disconnectFirebase();
+        this.notify();
       });
       this.firebaseUnsubscribes.push(unsubUsers);
 
@@ -258,6 +271,10 @@ class DBService {
         });
         this.scansCache = scansList;
         localStorage.setItem('tp_scans', JSON.stringify(scansList));
+        this.notify();
+      }, (error: any) => {
+        console.error("Firebase scans listener error, falling back to local mode:", error);
+        this.disconnectFirebase();
         this.notify();
       });
       this.firebaseUnsubscribes.push(unsubScans);
@@ -272,6 +289,10 @@ class DBService {
         this.activeLocationsCache = locList;
         localStorage.setItem('tp_active_locations', JSON.stringify(locList));
         this.notify();
+      }, (error: any) => {
+        console.error("Firebase locations listener error, falling back to local mode:", error);
+        this.disconnectFirebase();
+        this.notify();
       });
       this.firebaseUnsubscribes.push(unsubLoc);
 
@@ -285,6 +306,10 @@ class DBService {
             this.notify();
           }
         });
+      }, (error: any) => {
+        console.error("Firebase settings listener error, falling back to local mode:", error);
+        this.disconnectFirebase();
+        this.notify();
       });
       this.firebaseUnsubscribes.push(unsubConfig);
 
