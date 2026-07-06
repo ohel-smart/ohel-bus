@@ -59,7 +59,7 @@ export const LOCATIONS = {
 };
 
 // Fallback Default Web App URL
-const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbwBDFDOITw1G9TRo05flrcGGMB05SNQzkZLnLgKHSF6u6JohWdJvctnNyv8j-0AYa9S/exec";
+const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbzgGtU1PUlLNqCfbol9b68tXDo5m6vIBZBdrIqsonDZml8dVCnTUHkTPqC_-y6O_Jl1/exec";
 
 // Default Pre-Populated Users (Used as offline/local fallback)
 const DEFAULT_USERS: User[] = [
@@ -98,7 +98,9 @@ class DBService {
     
     this.configCache = {
       reportEmail: rawConfig.reportEmail || 'manager@transit.pro',
-      googleSheetsUrl: rawConfig.googleSheetsUrl || DEFAULT_SHEETS_URL,
+      googleSheetsUrl: rawConfig.googleSheetsUrl && !rawConfig.googleSheetsUrl.includes("AKfycbwBDFDOITw1G9TRo05flrcGGMB05SNQzkZLnLgKHSF6u6JohWdJvctnNyv8j-0AYa9S") && !rawConfig.googleSheetsUrl.includes("AKfycbytfHnxo1rsPmmx7bjFTlgWc4h2MJrYce5E_r5MBV64ouNcrLppm90aCsW40GRlNWWT")
+        ? rawConfig.googleSheetsUrl 
+        : DEFAULT_SHEETS_URL,
       googleMapsApiKey: rawConfig.googleMapsApiKey || '',
       twilioAccountSid: rawConfig.twilioAccountSid || '',
       twilioAuthToken: rawConfig.twilioAuthToken || '',
