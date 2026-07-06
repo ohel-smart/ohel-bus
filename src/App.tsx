@@ -1504,6 +1504,7 @@ export default function App() {
           onPointerDown={handleLoginPointerDown}
           style={{ 
             flex: 1, 
+            minHeight: '100dvh',
             display: 'flex', 
             flexDirection: 'column', 
             alignItems: 'center', 
@@ -1529,31 +1530,34 @@ export default function App() {
             />
           ))}
 
+          {/* Language Switch Button (Top Left of Page) */}
+          <button 
+            onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
+            style={{ 
+              position: 'absolute', 
+              left: '20px', 
+              top: '20px', 
+              background: 'rgba(255,255,255,0.03)', 
+              border: '1px solid var(--border-color)', 
+              borderRadius: '6px',
+              padding: '6px 12px',
+              color: 'var(--text-secondary)', 
+              cursor: 'pointer', 
+              fontSize: '12px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              zIndex: 20,
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)'
+            }}
+          >
+            <span>🌐</span>
+            <span>{lang === 'he' ? 'English' : 'עברית'}</span>
+          </button>
+
           <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px 30px', background: 'rgba(18, 22, 32, 0.75)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderColor: 'rgba(32, 38, 54, 0.6)', position: 'relative', zIndex: 10 }}>
             
-            {/* Language Switch Button */}
-            <button 
-              onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
-              style={{ 
-                position: 'absolute', 
-                left: '20px', 
-                top: '20px', 
-                background: 'rgba(255,255,255,0.03)', 
-                border: '1px solid var(--border-color)', 
-                borderRadius: '6px',
-                padding: '4px 8px',
-                color: 'var(--text-secondary)', 
-                cursor: 'pointer', 
-                fontSize: '11px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '4px' 
-              }}
-            >
-              <span>🌐</span>
-              <span>{lang === 'he' ? 'English' : 'עברית'}</span>
-            </button>
-
             {/* Horizontal Brand Logo */}
             <div style={{ marginBottom: '24px' }}>
               <img src={logo} alt="Ohel Bus Logo" style={{ maxWidth: '240px', width: '100%', height: 'auto' }} />

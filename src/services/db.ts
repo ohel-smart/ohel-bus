@@ -1,11 +1,3 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getFirestore, collection, doc, setDoc, 
-  updateDoc, deleteDoc, onSnapshot, query, 
-  Firestore
-} from 'firebase/firestore';
-import type { Unsubscribe } from 'firebase/firestore';
-
 // Types Definitions
 export type UserRole = 'admin' | 'driver' | 'dispatcher';
 export type DriverStatus = 'idle' | 'en_route' | 'break';
@@ -60,22 +52,16 @@ export interface GlobalConfig {
   twilioRecipientSms?: string;
 }
 
-export interface FirebaseConfig {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket: string;
-  messagingSenderId: string;
-  appId: string;
-}
-
 // Coordinates
 export const LOCATIONS = {
   '770': { latitude: 40.6690, longitude: -73.9429, name: '770 (קראון הייטס)' },
   'Ohel': { latitude: 40.7061, longitude: -73.7291, name: 'אוהל חב"ד (קווינס)' }
 };
 
-// Default Pre-Populated Users
+// Fallback Default Web App URL
+const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbwBDFDOITw1G9TRo05flrcGGMB05SNQzkZLnLgKHSF6u6JohWdJvctnNyv8j-0AYa9S/exec";
+
+// Default Pre-Populated Users (Used as offline/local fallback)
 const DEFAULT_USERS: User[] = [
   { id: 'usr_admin', name: 'מנהל', phone: '050-770-7700', role: 'admin', code: '770', createdAt: new Date().toISOString() },
   { id: 'drv_777', name: 'נהג 777 (נהג)', phone: '050-777-7777', role: 'driver', code: '777', createdAt: new Date().toISOString() },
@@ -85,89 +71,41 @@ const DEFAULT_USERS: User[] = [
 
 class DBService {
   private listeners: Set<() => void> = new Set();
-  private firebaseDb: Firestore | null = null;
-  private firebaseUnsubscribes: Unsubscribe[] = [];
   
-  // Local cache when Firebase is active
+  // Local cache
   private usersCache: User[] = [];
   private scansCache: Scan[] = [];
   private activeLocationsCache: ActiveLocation[] = [];
-  private configCache: GlobalConfig = { reportEmail: 'manager@transit.pro' };
+  private configCache: GlobalConfig = { reportEmail: 'manager@transit.pro', googleSheetsUrl: DEFAULT_SHEETS_URL };
 
   constructor() {
     this.initDatabase();
-    this.initFirebase();
+    this.fetchDataFromSheets();
     this.startSimulation();
+    
+    // Periodically poll Google Sheets for updates (every 10 seconds)
+    setInterval(() => {
+      this.fetchDataFromSheets();
+    }, 10000);
   }
 
   private initDatabase() {
-    const rawUsers = localStorage.getItem('tp_users');
-    let needsReset = false;
-    if (rawUsers) {
-      try {
-        const parsed = JSON.parse(rawUsers);
-        if (Array.isArray(parsed) && parsed.length > 0 && !parsed[0].code) {
-          needsReset = true;
-        }
-      } catch (e) {
-        needsReset = true;
-      }
-    }
-
-    let users = DEFAULT_USERS;
-    if (rawUsers && !needsReset) {
-      try {
-        const parsed = JSON.parse(rawUsers);
-        if (Array.isArray(parsed)) {
-          const userMap = new Map(parsed.map(u => [u.id, u]));
-          DEFAULT_USERS.forEach(u => {
-            if (!userMap.has(u.id)) {
-              userMap.set(u.id, u);
-            }
-          });
-          users = Array.from(userMap.values());
-        }
-      } catch (e) {}
-    }
-    localStorage.setItem('tp_users', JSON.stringify(users));
-
-    let locations = this.getInitialActiveLocations();
-    const rawLocs = localStorage.getItem('tp_active_locations');
-    if (rawLocs) {
-      try {
-        const parsed = JSON.parse(rawLocs);
-        if (Array.isArray(parsed)) {
-          const locMap = new Map(parsed.map(l => [l.id, l]));
-          this.getInitialActiveLocations().forEach(l => {
-            if (!locMap.has(l.id)) {
-              locMap.set(l.id, l);
-            }
-          });
-          locations = Array.from(locMap.values());
-        }
-      } catch (e) {}
-    }
-    localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-
-    if (!localStorage.getItem('tp_scans')) {
-      localStorage.setItem('tp_scans', JSON.stringify([]));
-    }
-    if (!localStorage.getItem('tp_offline_scans')) {
-      localStorage.setItem('tp_offline_scans', JSON.stringify([]));
-    }
-    if (!localStorage.getItem('tp_config')) {
-      const defaultConfig: GlobalConfig = { reportEmail: 'manager@transit.pro' };
-      localStorage.setItem('tp_config', JSON.stringify(defaultConfig));
-    }
-    if (localStorage.getItem('tp_is_offline') === null) {
-      localStorage.setItem('tp_is_offline', 'false');
-    }
-    
-    // Load local caches initially and filter out deleted items
+    // Load local storage cache initially
     const rawUsersList = JSON.parse(localStorage.getItem('tp_users') || '[]');
     const rawScansList = JSON.parse(localStorage.getItem('tp_scans') || '[]');
     const rawLocsList = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
+    const rawConfig = JSON.parse(localStorage.getItem('tp_config') || '{}');
     
+    this.configCache = {
+      reportEmail: rawConfig.reportEmail || 'manager@transit.pro',
+      googleSheetsUrl: rawConfig.googleSheetsUrl || DEFAULT_SHEETS_URL,
+      googleMapsApiKey: rawConfig.googleMapsApiKey || '',
+      twilioAccountSid: rawConfig.twilioAccountSid || '',
+      twilioAuthToken: rawConfig.twilioAuthToken || '',
+      twilioFromNumber: rawConfig.twilioFromNumber || '',
+      twilioRecipientSms: rawConfig.twilioRecipientSms || ''
+    };
+
     let deletedUsers: string[] = [];
     let deletedScans: string[] = [];
     try {
@@ -175,10 +113,14 @@ class DBService {
       deletedScans = JSON.parse(localStorage.getItem('tp_deleted_scans') || '[]');
     } catch (e) {}
 
-    this.usersCache = rawUsersList.filter((u: User) => !deletedUsers.includes(u.id));
+    // Populate cache with default or local stored data
+    this.usersCache = rawUsersList.length > 0 
+      ? rawUsersList.filter((u: User) => !deletedUsers.includes(u.id))
+      : DEFAULT_USERS;
     this.scansCache = rawScansList.filter((s: Scan) => !deletedScans.includes(s.id));
-    this.activeLocationsCache = rawLocsList.filter((l: ActiveLocation) => !deletedUsers.includes(l.id));
-    this.configCache = JSON.parse(localStorage.getItem('tp_config') || '{"reportEmail": "manager@transit.pro"}');
+    this.activeLocationsCache = rawLocsList.length > 0
+      ? rawLocsList.filter((l: ActiveLocation) => !deletedUsers.includes(l.id))
+      : this.getInitialActiveLocations();
   }
 
   private getInitialActiveLocations(): ActiveLocation[] {
@@ -207,197 +149,41 @@ class DBService {
     ];
   }
 
-  // --- Firebase Cloud Connection ---
-  public getFirebaseConfig(): FirebaseConfig | null {
-    // Unconditionally use the default Firebase configuration for ohel-smart
-    return {
-      apiKey: "AIzaSyB6D83wnOoA8oLWn5SFzIIpcbb-f454kDo",
-      authDomain: "ohel-smart.firebaseapp.com",
-      projectId: "ohel-smart",
-      storageBucket: "ohel-smart.firebasestorage.app",
-      messagingSenderId: "48634858514",
-      appId: "1:48634858514:web:94bffc06fc42a1a2cb5ccb"
-    };
-  }
-
-  public saveFirebaseConfig(config: FirebaseConfig | null) {
-    if (config) {
-      localStorage.setItem('tp_firebase_config', JSON.stringify(config));
-    } else {
-      localStorage.setItem('tp_firebase_config', 'disabled');
-    }
-    
-    // Terminate old listeners and reload app
-    this.disconnectFirebase();
-    this.initFirebase();
-    this.notify();
-  }
-
-  public isFirebaseConnected(): boolean {
-    return this.firebaseDb !== null;
-  }
-
-  private initFirebase() {
-    const config = this.getFirebaseConfig();
-    if (!config) return;
+  // --- Google Sheets Integration Fetching (GET) ---
+  public async fetchDataFromSheets() {
+    const url = this.configCache.googleSheetsUrl;
+    if (!url) return;
 
     try {
-      // Initialize Firebase App
-      const app = getApps().length === 0 ? initializeApp(config) : getApp();
-      const db = getFirestore(app);
-      this.firebaseDb = db;
-
-      // 1. Subscribe to users collection
-      const usersQuery = query(collection(db, 'users'));
-      const unsubUsers = onSnapshot(usersQuery, (snapshot: any) => {
-        const usersList: User[] = [];
-        snapshot.forEach((doc: any) => {
-          usersList.push(doc.data() as User);
-        });
-        
-        // If collection in cloud is completely empty, upload default users
-        if (usersList.length === 0) {
-          this.uploadDefaultDataToFirebase(db);
-        } else {
-          // Self-healing: ensure default users are always present in the database (unless explicitly deleted)
-          let deletedDefaults: string[] = [];
-          let deletedUsers: string[] = [];
-          try {
-            deletedDefaults = JSON.parse(localStorage.getItem('tp_deleted_defaults') || '[]');
-            deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-          } catch (e) {}
-          
-          const userMap = new Map(usersList.map(u => [u.id, u]));
-          DEFAULT_USERS.forEach(defUser => {
-            if (!userMap.has(defUser.id) && !deletedDefaults.includes(defUser.id)) {
-              usersList.push(defUser);
-              setDoc(doc(db, 'users', defUser.id), defUser).catch(err => {
-                console.error("Failed to write default user to Firebase:", err);
-              });
-            }
-          });
-          
-          const filteredUsersList = usersList.filter(u => !deletedUsers.includes(u.id));
-          this.usersCache = filteredUsersList;
-          localStorage.setItem('tp_users', JSON.stringify(filteredUsersList));
-          this.notify();
-        }
-      }, (error: any) => {
-        console.error("Firebase users listener error, falling back to local mode:", error);
-        this.disconnectFirebase();
-        this.notify();
-      });
-      this.firebaseUnsubscribes.push(unsubUsers);
-
-      // 2. Subscribe to scans collection
-      const scansQuery = query(collection(db, 'scans'));
-      const unsubScans = onSnapshot(scansQuery, (snapshot: any) => {
-        const scansList: Scan[] = [];
-        snapshot.forEach((doc: any) => {
-          scansList.push(doc.data() as Scan);
-        });
-        
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && !data.error) {
+        let deletedUsers: string[] = [];
         let deletedScans: string[] = [];
         try {
+          deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
           deletedScans = JSON.parse(localStorage.getItem('tp_deleted_scans') || '[]');
         } catch (e) {}
-        
-        const filteredScansList = scansList.filter(s => !deletedScans.includes(s.id));
-        this.scansCache = filteredScansList;
-        localStorage.setItem('tp_scans', JSON.stringify(filteredScansList));
+
+        if (Array.isArray(data.users)) {
+          const filteredUsers = data.users.filter((u: User) => !deletedUsers.includes(u.id));
+          this.usersCache = filteredUsers;
+          localStorage.setItem('tp_users', JSON.stringify(filteredUsers));
+        }
+        if (Array.isArray(data.scans)) {
+          const filteredScans = data.scans.filter((s: Scan) => !deletedScans.includes(s.id));
+          this.scansCache = filteredScans;
+          localStorage.setItem('tp_scans', JSON.stringify(filteredScans));
+        }
+        if (Array.isArray(data.activeLocations)) {
+          const filteredLocs = data.activeLocations.filter((l: ActiveLocation) => !deletedUsers.includes(l.id));
+          this.activeLocationsCache = filteredLocs;
+          localStorage.setItem('tp_active_locations', JSON.stringify(filteredLocs));
+        }
         this.notify();
-      }, (error: any) => {
-        console.error("Firebase scans listener error, falling back to local mode:", error);
-        this.disconnectFirebase();
-        this.notify();
-      });
-      this.firebaseUnsubscribes.push(unsubScans);
-
-      // 3. Subscribe to active locations collection
-      const locQuery = query(collection(db, 'active_locations'));
-      const unsubLoc = onSnapshot(locQuery, (snapshot: any) => {
-        const locList: ActiveLocation[] = [];
-        snapshot.forEach((doc: any) => {
-          locList.push(doc.data() as ActiveLocation);
-        });
-        
-        let deletedUsers: string[] = [];
-        try {
-          deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-        } catch (e) {}
-        
-        const filteredLocList = locList.filter(l => !deletedUsers.includes(l.id));
-        this.activeLocationsCache = filteredLocList;
-        localStorage.setItem('tp_active_locations', JSON.stringify(filteredLocList));
-        this.notify();
-      }, (error: any) => {
-        console.error("Firebase locations listener error, falling back to local mode:", error);
-        this.disconnectFirebase();
-        this.notify();
-      });
-      this.firebaseUnsubscribes.push(unsubLoc);
-
-      // 4. Subscribe to settings collection
-      const configQuery = query(collection(db, 'settings'));
-      const unsubConfig = onSnapshot(configQuery, (snapshot: any) => {
-        snapshot.forEach((doc: any) => {
-          if (doc.id === 'global_config') {
-            this.configCache = doc.data() as GlobalConfig;
-            localStorage.setItem('tp_config', JSON.stringify(this.configCache));
-            this.notify();
-          }
-        });
-      }, (error: any) => {
-        console.error("Firebase settings listener error, falling back to local mode:", error);
-        this.disconnectFirebase();
-        this.notify();
-      });
-      this.firebaseUnsubscribes.push(unsubConfig);
-
-    } catch (e) {
-      console.error("Failed to initialize Firebase:", e);
-      this.firebaseDb = null;
-    }
-  }
-
-  private disconnectFirebase() {
-    this.firebaseUnsubscribes.forEach(unsub => {
-      try {
-        unsub();
-      } catch (e) {}
-    });
-    this.firebaseUnsubscribes = [];
-    this.firebaseDb = null;
-    
-    // Reload local storage cache
-    this.initDatabase();
-  }
-
-  private async uploadDefaultDataToFirebase(db: any) {
-    // Write defaults to Firebase on first connection
-    try {
-      const localUsers: User[] = JSON.parse(localStorage.getItem('tp_users') || JSON.stringify(DEFAULT_USERS));
-      const localLocations: ActiveLocation[] = JSON.parse(localStorage.getItem('tp_active_locations') || JSON.stringify(this.getInitialActiveLocations()));
-      const localConfig: GlobalConfig = JSON.parse(localStorage.getItem('tp_config') || '{"reportEmail": "manager@transit.pro"}');
-      const localScans: Scan[] = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-
-      // Upload users
-      for (const u of localUsers) {
-        await setDoc(doc(db, 'users', u.id), u);
-      }
-      // Upload active locations
-      for (const loc of localLocations) {
-        await setDoc(doc(db, 'active_locations', loc.id), loc);
-      }
-      // Upload settings
-      await setDoc(doc(db, 'settings', 'global_config'), localConfig);
-      
-      // Upload scans
-      for (const scan of localScans) {
-        await setDoc(doc(db, 'scans', scan.id), scan);
       }
     } catch (e) {
-      console.error("Error uploading defaults to Firebase:", e);
+      console.error("Failed to fetch data from Google Sheets:", e);
     }
   }
 
@@ -429,23 +215,20 @@ class DBService {
   private async syncOfflineScans() {
     const offlineScans: Scan[] = JSON.parse(localStorage.getItem('tp_offline_scans') || '[]');
     if (offlineScans.length > 0) {
-      if (this.firebaseDb) {
-        // Real cloud write
-        for (const scan of offlineScans) {
-          try {
-            await setDoc(doc(this.firebaseDb, 'scans', scan.id), scan);
-          } catch (e) {
-            console.error("Sync to cloud error:", e);
-          }
-        }
-      } else {
-        // Local storage write
-        const scans = this.getScans();
-        localStorage.setItem('tp_scans', JSON.stringify([...scans, ...offlineScans]));
+      const scans = this.getScans();
+      const newScans = [...scans, ...offlineScans];
+      localStorage.setItem('tp_scans', JSON.stringify(newScans));
+      this.scansCache = newScans;
+      
+      // Upload offline scans
+      for (const scan of offlineScans) {
+        this.syncToGoogleSheets('syncScan', scan);
       }
       
       localStorage.setItem('tp_offline_scans', JSON.stringify([]));
       this.notify();
+      
+      setTimeout(() => this.fetchDataFromSheets(), 1500);
     }
   }
 
@@ -468,7 +251,7 @@ class DBService {
   }
 
   public async saveUser(user: User) {
-    // 1. Update local storage and cache immediately so the change is instantaneous
+    // 1. Update local storage and cache immediately (Zero-Lag UI)
     const users = JSON.parse(localStorage.getItem('tp_users') || '[]');
     const index = users.findIndex((u: User) => u.id === user.id);
     if (index >= 0) {
@@ -507,34 +290,15 @@ class DBService {
     }
     this.notify();
 
-    // 2. Sync with Firebase and Google Sheets
+    // 2. Sync in background with Google Sheets
     this.syncToGoogleSheets('syncUser', user);
-    if (this.firebaseDb) {
-      try {
-        await setDoc(doc(this.firebaseDb, 'users', user.id), user);
-        
-        if (user.role === 'driver' || user.role === 'dispatcher') {
-          const locDoc: ActiveLocation = {
-            id: user.id,
-            name: user.name.replace(' (נהג)', '').replace(' (סדרן)', '').replace(' (מנהל)', ''),
-            role: user.role as 'driver' | 'dispatcher',
-            latitude: LOCATIONS['770'].latitude,
-            longitude: LOCATIONS['770'].longitude,
-            status: user.role === 'driver' ? 'idle' : undefined,
-            updatedAt: new Date().toISOString()
-          };
-          await setDoc(doc(this.firebaseDb, 'active_locations', user.id), locDoc);
-        } else {
-          await deleteDoc(doc(this.firebaseDb, 'active_locations', user.id));
-        }
-      } catch (e) {
-        console.error("Firebase save user error:", e);
-      }
-    }
+    
+    // Refresh cache from Sheets in 1.5 seconds to align spreadsheets formula columns
+    setTimeout(() => this.fetchDataFromSheets(), 1500);
   }
 
   public async deleteUser(userId: string) {
-    // 1. Update local storage and cache immediately so the change is instantaneous
+    // 1. Update local storage and cache immediately (Zero-Lag UI)
     let users = JSON.parse(localStorage.getItem('tp_users') || '[]');
     users = users.filter((u: User) => u.id !== userId);
     localStorage.setItem('tp_users', JSON.stringify(users));
@@ -570,14 +334,8 @@ class DBService {
 
     // 2. Sync in background
     this.syncToGoogleSheets('deleteUser', { id: userId });
-    if (this.firebaseDb) {
-      try {
-        await deleteDoc(doc(this.firebaseDb, 'users', userId));
-        await deleteDoc(doc(this.firebaseDb, 'active_locations', userId));
-      } catch (e) {
-        console.error("Firebase delete user error:", e);
-      }
-    }
+    
+    setTimeout(() => this.fetchDataFromSheets(), 1500);
   }
 
   // --- Scans CRUD ---
@@ -619,12 +377,6 @@ class DBService {
       const offlineScans: Scan[] = JSON.parse(localStorage.getItem('tp_offline_scans') || '[]');
       offlineScans.push(newScan);
       localStorage.setItem('tp_offline_scans', JSON.stringify(offlineScans));
-    } else if (this.firebaseDb) {
-      try {
-        await setDoc(doc(this.firebaseDb, 'scans', newScan.id), newScan);
-      } catch (e) {
-        console.error("Firebase write scan error:", e);
-      }
     } else {
       const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
       scans.push(newScan);
@@ -640,6 +392,8 @@ class DBService {
     this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection);
 
     this.notify();
+    
+    setTimeout(() => this.fetchDataFromSheets(), 1500);
     return newScan;
   }
 
@@ -649,28 +403,23 @@ class DBService {
       remainingSeats: Math.max(0, updatedScan.driverCapacity - updatedScan.passengersCount)
     };
 
-    if (this.firebaseDb) {
-      try {
-        await setDoc(doc(this.firebaseDb, 'scans', freshScan.id), freshScan);
-      } catch (e) {
-        console.error("Firebase update scan error:", e);
-      }
-    } else {
-      const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-      const index = scans.findIndex((s: Scan) => s.id === freshScan.id);
-      if (index >= 0) {
-        scans[index] = freshScan;
-        localStorage.setItem('tp_scans', JSON.stringify(scans));
-        this.scansCache = scans;
-        this.notify();
-      }
+    const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
+    const index = scans.findIndex((s: Scan) => s.id === freshScan.id);
+    if (index >= 0) {
+      scans[index] = freshScan;
+      localStorage.setItem('tp_scans', JSON.stringify(scans));
+      this.scansCache = scans;
+      this.notify();
     }
+    
     // Sync to Google Sheets
     this.syncToGoogleSheets('syncScan', freshScan);
+    
+    setTimeout(() => this.fetchDataFromSheets(), 1500);
   }
 
   public async deleteScan(scanId: string) {
-    // 1. Update local storage and cache immediately so the change is instantaneous
+    // 1. Update local storage and cache immediately (Zero-Lag UI)
     let scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
     scans = scans.filter((s: Scan) => s.id !== scanId);
     localStorage.setItem('tp_scans', JSON.stringify(scans));
@@ -689,13 +438,8 @@ class DBService {
 
     // 2. Sync in background
     this.syncToGoogleSheets('deleteScan', { id: scanId });
-    if (this.firebaseDb) {
-      try {
-        await deleteDoc(doc(this.firebaseDb, 'scans', scanId));
-      } catch (e) {
-        console.error("Firebase delete scan error:", e);
-      }
-    }
+    
+    setTimeout(() => this.fetchDataFromSheets(), 1500);
   }
 
   // --- Active Locations ---
@@ -724,40 +468,23 @@ class DBService {
       }
     }
 
-    if (this.firebaseDb) {
-      try {
-        const updateData: any = {
-          latitude: lat,
-          longitude: lng,
-          updatedAt: new Date().toISOString(),
-          ...finalFields
-        };
-        await updateDoc(doc(this.firebaseDb, 'active_locations', userId), updateData);
-        // Sync location state to Google Sheets on status changes
-        if (driverFields?.status || driverFields?.direction) {
-          this.syncToGoogleSheets('syncLocation', { id: userId, name: loc?.name || '', role: loc?.role || 'driver', latitude: lat, longitude: lng, ...finalFields });
-        }
-      } catch (e) {
-        console.error("Firebase update location error:", e);
-      }
-    } else {
-      const locationsList = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-      const index = locationsList.findIndex((l: ActiveLocation) => l.id === userId);
-      if (index >= 0) {
-        locationsList[index] = {
-          ...locationsList[index],
-          latitude: lat,
-          longitude: lng,
-          updatedAt: new Date().toISOString(),
-          ...finalFields
-        };
-        localStorage.setItem('tp_active_locations', JSON.stringify(locationsList));
-        this.activeLocationsCache = locationsList;
-        this.notify();
-        // Sync location state to Google Sheets on status changes
-        if (driverFields?.status || driverFields?.direction) {
-          this.syncToGoogleSheets('syncLocation', locationsList[index]);
-        }
+    const locationsList = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
+    const index = locationsList.findIndex((l: ActiveLocation) => l.id === userId);
+    if (index >= 0) {
+      locationsList[index] = {
+        ...locationsList[index],
+        latitude: lat,
+        longitude: lng,
+        updatedAt: new Date().toISOString(),
+        ...finalFields
+      };
+      localStorage.setItem('tp_active_locations', JSON.stringify(locationsList));
+      this.activeLocationsCache = locationsList;
+      this.notify();
+      
+      // Sync location state to Google Sheets on status changes
+      if (driverFields?.status || driverFields?.direction) {
+        this.syncToGoogleSheets('syncLocation', locationsList[index]);
       }
     }
   }
@@ -765,61 +492,37 @@ class DBService {
   public async updateDriverTripState(driverId: string, status: DriverStatus, direction: Direction) {
     let lat = 0;
     let lng = 0;
-    let hasLocation = false;
     
     if (status === 'en_route' && direction) {
       const start = direction === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
       lat = start.latitude;
       lng = start.longitude;
-      hasLocation = true;
     }
 
     const computedEta = (status === 'en_route' && direction) ? await this.getRouteEtaMinutes(lat, lng, direction) : undefined;
 
-    if (this.firebaseDb) {
-      try {
-        const updateData: any = {
-          status,
-          direction: direction || null,
-          etaMinutes: computedEta || null,
-          updatedAt: new Date().toISOString(),
-          isSimulated: true // reset simulated flag for movements
-        };
-        
-        if (hasLocation) {
-          updateData.latitude = lat;
-          updateData.longitude = lng;
-        }
-
-        await updateDoc(doc(this.firebaseDb, 'active_locations', driverId), updateData);
-        
-        const loc = this.getActiveLocations().find(l => l.id === driverId);
-        this.syncToGoogleSheets('syncLocation', { id: driverId, name: loc?.name || '', role: 'driver', latitude: lat || loc?.latitude || 0, longitude: lng || loc?.longitude || 0, ...updateData });
-      } catch (e) {
-        console.error("Firebase update driver state error:", e);
+    const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
+    const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
+    if (index >= 0) {
+      locations[index].status = status;
+      locations[index].direction = direction;
+      (locations[index] as any).isSimulated = true; // reset simulated flag
+      if (status === 'en_route' && direction) {
+        const start = direction === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
+        locations[index].latitude = start.latitude;
+        locations[index].longitude = start.longitude;
+        locations[index].etaMinutes = computedEta;
+      } else {
+        locations[index].direction = null;
+        locations[index].etaMinutes = undefined;
       }
-    } else {
-      const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-      const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
-      if (index >= 0) {
-        locations[index].status = status;
-        locations[index].direction = direction;
-        (locations[index] as any).isSimulated = true; // reset simulated flag
-        if (status === 'en_route' && direction) {
-          const start = direction === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
-          locations[index].latitude = start.latitude;
-          locations[index].longitude = start.longitude;
-          locations[index].etaMinutes = computedEta;
-        } else {
-          locations[index].direction = null;
-          locations[index].etaMinutes = undefined;
-        }
-        locations[index].updatedAt = new Date().toISOString();
-        localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-        this.activeLocationsCache = locations;
-        this.notify();
-        this.syncToGoogleSheets('syncLocation', locations[index]);
-      }
+      locations[index].updatedAt = new Date().toISOString();
+      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
+      this.activeLocationsCache = locations;
+      this.notify();
+      
+      // Sync in background
+      this.syncToGoogleSheets('syncLocation', locations[index]);
     }
   }
 
@@ -829,37 +532,20 @@ class DBService {
   }
 
   public async saveConfig(config: GlobalConfig) {
-    if (this.firebaseDb) {
-      try {
-        await setDoc(doc(this.firebaseDb, 'settings', 'global_config'), config);
-      } catch (e) {
-        console.error("Firebase save config error:", e);
-      }
-    } else {
-      localStorage.setItem('tp_config', JSON.stringify(config));
-      this.configCache = config;
-      this.notify();
-    }
+    localStorage.setItem('tp_config', JSON.stringify(config));
+    this.configCache = config;
+    this.notify();
+    
+    // Reload local settings
+    this.initDatabase();
+    
+    // Sync settings to Sheets
+    this.syncToGoogleSheets('syncConfig', config);
   }
 
   public async sendEmail(to: string, subject: string, html: string) {
-    if (this.firebaseDb) {
-      try {
-        const mailCol = collection(this.firebaseDb, 'mail');
-        const newMailDoc = doc(mailCol);
-        await setDoc(newMailDoc, {
-          to: to,
-          message: {
-            subject: subject,
-            html: html
-          },
-          createdAt: new Date().toISOString()
-        });
-        console.log("Email queued in Firestore successfully.");
-      } catch (e) {
-        console.error("Firebase sendEmail error:", e);
-      }
-    }
+    // Send email using Google Apps Script webhook
+    this.syncToGoogleSheets('sendEmail', { to, subject, html });
   }
 
   // --- GPS Driving Simulation Engine ---
@@ -908,24 +594,16 @@ class DBService {
           
           updatedFields.updatedAt = new Date().toISOString();
           
-          if (this.firebaseDb) {
-            try {
-              await updateDoc(doc(this.firebaseDb, 'active_locations', loc.id), updatedFields);
-            } catch (e) {
-              console.error("Firebase simulation sync error:", e);
-            }
-          } else {
-            // Local sync
-            const index = locations.findIndex((l: ActiveLocation) => l.id === loc.id);
-            if (index >= 0) {
-              locations[index] = { ...locations[index], ...updatedFields };
-            }
-            changed = true;
+          // Local sync
+          const index = locations.findIndex((l: ActiveLocation) => l.id === loc.id);
+          if (index >= 0) {
+            locations[index] = { ...locations[index], ...updatedFields };
           }
+          changed = true;
         }
       }
 
-      if (changed && !this.firebaseDb) {
+      if (changed) {
         localStorage.setItem('tp_active_locations', JSON.stringify(locations));
         this.activeLocationsCache = locations;
         this.notify();
@@ -950,24 +628,16 @@ class DBService {
       }
     }
 
-    if (this.firebaseDb) {
-      try {
-        await updateDoc(doc(this.firebaseDb, 'active_locations', driverId), {
-          sosAlert: isSOSNow,
-          updatedAt: new Date().toISOString()
-        });
-      } catch (e) {
-        console.error("Firebase trigger SOS error:", e);
-      }
-    } else {
-      const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
-      if (index >= 0) {
-        (locations[index] as any).sosAlert = isSOSNow;
-        locations[index].updatedAt = new Date().toISOString();
-        localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-        this.activeLocationsCache = locations;
-        this.notify();
-      }
+    const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
+    if (index >= 0) {
+      (locations[index] as any).sosAlert = isSOSNow;
+      locations[index].updatedAt = new Date().toISOString();
+      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
+      this.activeLocationsCache = locations;
+      this.notify();
+      
+      // Sync in background
+      this.syncToGoogleSheets('syncLocation', locations[index]);
     }
   }
 
@@ -979,7 +649,6 @@ class DBService {
   }
 
   public async clearSOSAlert(driverId: string) {
-    // Clear SOS SMS alert if desired
     const locations = this.getActiveLocations();
     const loc = locations.find(l => l.id === driverId);
     if (loc) {
@@ -990,24 +659,16 @@ class DBService {
       }
     }
 
-    if (this.firebaseDb) {
-      try {
-        await updateDoc(doc(this.firebaseDb, 'active_locations', driverId), {
-          sosAlert: false,
-          updatedAt: new Date().toISOString()
-        });
-      } catch (e) {
-        console.error("Firebase clear SOS error:", e);
-      }
-    } else {
-      const index = locations.findIndex(l => l.id === driverId);
-      if (index >= 0) {
-        (locations[index] as any).sosAlert = false;
-        locations[index].updatedAt = new Date().toISOString();
-        localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-        this.activeLocationsCache = locations;
-        this.notify();
-      }
+    const index = locations.findIndex(l => l.id === driverId);
+    if (index >= 0) {
+      (locations[index] as any).sosAlert = false;
+      locations[index].updatedAt = new Date().toISOString();
+      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
+      this.activeLocationsCache = locations;
+      this.notify();
+      
+      // Sync in background
+      this.syncToGoogleSheets('syncLocation', locations[index]);
     }
   }
 
@@ -1041,6 +702,7 @@ class DBService {
 
     return attendance;
   }
+
   // --- GPS Location & Distance Helpers ---
   public calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371; // Earth radius in km
