@@ -992,23 +992,15 @@ export default function App() {
       });
   }, [scans, currentUser]);
 
-  const lastScan = useMemo(() => {
-    if (!currentUser || currentUser.role !== 'driver') return null;
-    return scans
-      .filter(s => s.driverId === currentUser.id)
-      .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime())[0] || null;
-  }, [scans, currentUser]);
+
 
   const shouldShowQrEvenEnRoute = useMemo(() => {
     const loc = activeLocations.find(l => l.id === currentUser?.id);
-    if (!loc || loc.status !== 'en_route' || !lastScan) return false;
+    if (!loc || loc.status !== 'en_route') return false;
     
-    const scannedTime = new Date(lastScan.scannedAt).getTime();
-    const elapsedMins = (Date.now() - scannedTime) / 60000;
-    
-    const initialEta = loc.etaMinutes || 40;
-    return elapsedMins >= (initialEta / 2);
-  }, [activeLocations, currentUser, lastScan]);
+    // Only allow scanning again and show QR when 5 minutes or less from arrival
+    return loc.etaMinutes !== undefined && loc.etaMinutes <= 5;
+  }, [activeLocations, currentUser]);
 
   const activeArrivalsTo770 = useMemo(() => {
     return activeLocations
