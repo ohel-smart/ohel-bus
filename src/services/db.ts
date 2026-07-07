@@ -29,6 +29,7 @@ export interface Scan {
   departureLocation: DepartureLocation;
   etaMinutes?: number;
   expectedArrivalTime?: string;
+  actualArrivalTime?: string;
 }
 
 export interface ActiveLocation {
@@ -80,7 +81,6 @@ class DBService {
   // Local cache
   private usersCache: User[] = [];
   private scansCache: Scan[] = [];
-  private activeLocationsCache: ActiveLocation[] = [];
   private configCache: GlobalConfig = { reportEmail: 'manager@transit.pro', googleSheetsUrl: DEFAULT_SHEETS_URL };
 
   constructor() {
@@ -98,7 +98,6 @@ class DBService {
     // Load local storage cache initially
     const rawUsersList = JSON.parse(localStorage.getItem('tp_users') || '[]');
     const rawScansList = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-    const rawLocsList = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
     const rawConfig = JSON.parse(localStorage.getItem('tp_config') || '{}');
     
     this.configCache = {
@@ -133,9 +132,6 @@ class DBService {
     this.scansCache = rawScansList
       .filter((s: Scan) => !deletedScans.includes(s.id))
       .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
-    this.activeLocationsCache = rawLocsList.length > 0
-      ? rawLocsList.filter((l: ActiveLocation) => !deletedUsers.includes(l.id))
-      : this.getInitialActiveLocations();
   }
 
   private cleanDate(dateStr: string): string {
@@ -152,31 +148,7 @@ class DBService {
     return trimmed;
   }
 
-  private getInitialActiveLocations(): ActiveLocation[] {
-    const now = new Date().toISOString();
-    return [
-      {
-        id: 'drv_777',
-        name: 'נהג 777',
-        role: 'driver',
-        latitude: LOCATIONS['770'].latitude,
-        longitude: LOCATIONS['770'].longitude,
-        status: 'idle',
-        updatedAt: now,
-        isSimulated: true
-      } as any,
-      {
-        id: 'drv_778',
-        name: 'נהג 778',
-        role: 'driver',
-        latitude: LOCATIONS['770'].latitude,
-        longitude: LOCATIONS['770'].longitude,
-        status: 'idle',
-        updatedAt: now,
-        isSimulated: true
-      } as any
-    ];
-  }
+
 
   // --- Google Sheets Integration Fetching (GET) ---
   public async fetchDataFromSheets() {
@@ -208,31 +180,7 @@ class DBService {
           this.scansCache = remoteScans;
           localStorage.setItem('tp_scans', JSON.stringify(remoteScans));
         }
-        if (Array.isArray(data.activeLocations)) {
-          const currentLocs: ActiveLocation[] = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-          const filteredLocs = data.activeLocations.filter((l: ActiveLocation) => !deletedUsers.includes(l.id)).map((newLoc: ActiveLocation) => {
-            const existing = currentLocs.find(curr => curr.id === newLoc.id);
-            if (existing) {
-              // If remote has a active trip (en_route) but local is idle, always accept it immediately
-              if (newLoc.status === 'en_route' && existing.status === 'idle') {
-                return newLoc;
-              }
-              const existingTime = new Date(existing.updatedAt || 0).getTime();
-              const newTime = new Date(newLoc.updatedAt || 0).getTime();
-              // Keep local changes if local is newer (stale spreadsheet fetch protection)
-              if (existingTime > newTime) {
-                return {
-                  ...newLoc,
-                  ...existing,
-                  name: newLoc.name || existing.name
-                };
-              }
-            }
-            return newLoc;
-          });
-          this.activeLocationsCache = filteredLocs;
-          localStorage.setItem('tp_active_locations', JSON.stringify(filteredLocs));
-        }
+        // Active locations are computed dynamically in getActiveLocations() from users and scans
         this.notify();
       }
     } catch (e) {
@@ -315,32 +263,7 @@ class DBService {
     localStorage.setItem('tp_users', JSON.stringify(users));
     this.usersCache = users;
 
-    if (user.role === 'driver' || user.role === 'dispatcher') {
-      const locations = this.getActiveLocations();
-      const locIndex = locations.findIndex(l => l.id === user.id);
-      if (locIndex >= 0) {
-        locations[locIndex].name = user.name.replace(' (נהג)', '').replace(' (סדרן)', '').replace(' (מנהל)', '');
-        locations[locIndex].role = user.role as 'driver' | 'dispatcher';
-      } else {
-        locations.push({
-          id: user.id,
-          name: user.name.replace(' (נהג)', '').replace(' (סדרן)', '').replace(' (מנהל)', ''),
-          role: user.role as 'driver' | 'dispatcher',
-          latitude: LOCATIONS['770'].latitude,
-          longitude: LOCATIONS['770'].longitude,
-          status: user.role === 'driver' ? 'idle' : undefined,
-          updatedAt: new Date().toISOString()
-        });
-      }
-      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-      this.activeLocationsCache = locations;
-    } else {
-      // Changed to admin, remove from active locations list
-      let locations = this.getActiveLocations();
-      locations = locations.filter(l => l.id !== user.id);
-      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-      this.activeLocationsCache = locations;
-    }
+
     this.notify();
 
     // 2. Sync in background with Google Sheets
@@ -367,10 +290,7 @@ class DBService {
 
     this.usersCache = this.usersCache.filter(u => u.id !== userId);
 
-    let locations = this.getActiveLocations();
-    locations = locations.filter(l => l.id !== userId);
-    localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-    this.activeLocationsCache = locations;
+
 
     // Track if a default user was explicitly deleted to prevent self-healing from re-creating it
     if (DEFAULT_USERS.some(u => u.id === userId)) {
@@ -511,135 +431,72 @@ class DBService {
     try {
       deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
     } catch (e) {}
-    return this.activeLocationsCache.filter(l => !deletedUsers.includes(l.id));
-  }
 
-  private ensureActiveLocationExists(userId: string, locationsList: ActiveLocation[]): number {
-    let index = locationsList.findIndex((l: ActiveLocation) => l.id === userId);
-    if (index === -1) {
-      const user = this.getUsers().find(u => u.id === userId);
-      if (user) {
-        const newLoc: ActiveLocation = {
-          id: userId,
-          name: user.name,
-          role: user.role as 'driver' | 'dispatcher',
-          latitude: LOCATIONS['770'].latitude,
-          longitude: LOCATIONS['770'].longitude,
-          status: 'idle',
-          updatedAt: new Date().toISOString()
-        };
-        locationsList.push(newLoc);
-        index = locationsList.length - 1;
-      }
-    }
-    return index;
-  }
+    const drivers = this.getUsers().filter(u => u.role === 'driver' && !deletedUsers.includes(u.id));
+    const now = Date.now();
+    const scans = this.getScans();
 
-  public async updateActiveLocation(userId: string, lat: number, lng: number, driverFields?: Partial<Pick<ActiveLocation, 'status' | 'direction' | 'etaMinutes' | 'speedWarning'>>) {
-    // 1. Resolve ETA dynamically if driver is en_route
-    let finalFields: any = { ...driverFields, isSimulated: false };
-    const locations = this.getActiveLocations();
-    const loc = locations.find(l => l.id === userId);
-    
-    if (loc && loc.role === 'driver') {
-      const status = finalFields.status || loc.status;
-      const direction = finalFields.direction !== undefined ? finalFields.direction : loc.direction;
-      if (status === 'en_route' && direction) {
-        // Preserving the initial scan-time calculated ETA to eliminate jumping and API overuse
-        if (loc.etaMinutes !== undefined) {
-          finalFields.etaMinutes = loc.etaMinutes;
-          finalFields.scannedAt = loc.scannedAt || new Date().toISOString();
-        } else {
-          const computedEta = await this.getRouteEtaMinutes(lat, lng, direction);
-          finalFields.etaMinutes = computedEta;
-          finalFields.scannedAt = new Date().toISOString();
+    return drivers.map(driver => {
+      const driverScans = scans.filter(s => s.driverId === driver.id);
+      driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+      const latestScan = driverScans[0];
+
+      let status: DriverStatus = 'idle';
+      let direction: Direction = null;
+      let etaMinutes: number | undefined = undefined;
+      let scannedAt: string | undefined = undefined;
+      const actualArrivalTime = latestScan?.actualArrivalTime;
+
+      if (latestScan && !actualArrivalTime) {
+        const startTime = new Date(latestScan.scannedAt).getTime();
+        const duration = latestScan.etaMinutes || 28;
+        const endTime = startTime + (duration * 60000);
+
+        if (now < endTime) {
+          status = 'en_route';
+          direction = latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770';
+          etaMinutes = Math.max(1, Math.round((endTime - now) / 60000));
+          scannedAt = latestScan.scannedAt;
         }
-        finalFields.lastEtaUpdateTime = loc.lastEtaUpdateTime || new Date().toISOString();
-      } else {
-        finalFields.etaMinutes = undefined;
-        finalFields.scannedAt = undefined;
-        finalFields.lastEtaUpdateTime = undefined;
       }
-    }
 
-    const locationsList = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-    const index = this.ensureActiveLocationExists(userId, locationsList);
-    if (index >= 0) {
-      locationsList[index] = {
-        ...locationsList[index],
-        latitude: lat,
-        longitude: lng,
-        updatedAt: new Date().toISOString(),
-        ...finalFields
+      return {
+        id: driver.id,
+        name: driver.name,
+        role: 'driver',
+        latitude: 0,
+        longitude: 0,
+        status,
+        direction,
+        etaMinutes,
+        updatedAt: latestScan?.scannedAt || new Date().toISOString(),
+        scannedAt
       };
-      localStorage.setItem('tp_active_locations', JSON.stringify(locationsList));
-      this.activeLocationsCache = locationsList;
-      this.notify();
-      
-      // Sync location state to Google Sheets on status changes
-      if (driverFields?.status || driverFields?.direction) {
-        this.syncToGoogleSheets('syncLocation', locationsList[index]);
+    });
+  }
+
+  public async updateActiveLocation(_userId: string, _lat: number, _lng: number, _driverFields?: Partial<Pick<ActiveLocation, 'status' | 'direction' | 'etaMinutes' | 'speedWarning'>>) {
+    // No-op to disable writing active GPS/locations to Google Sheets
+  }
+
+  public async updateDriverTripState(driverId: string, status: DriverStatus, _direction: Direction, _precomputedEta?: number) {
+    if (status === 'idle' || status === 'break') {
+      const scans = this.getScans();
+      const activeScan = scans.find(s => s.driverId === driverId && !s.actualArrivalTime);
+      if (activeScan) {
+        activeScan.actualArrivalTime = new Date().toISOString();
+        localStorage.setItem('tp_scans', JSON.stringify(scans));
+        this.scansCache = scans;
+        this.notify();
+        
+        this.syncToGoogleSheets('syncScan', activeScan);
+        setTimeout(() => this.fetchDataFromSheets(), 1500);
       }
     }
   }
 
-  public async updateDriverTripState(driverId: string, status: DriverStatus, direction: Direction, precomputedEta?: number) {
-    let lat = 0;
-    let lng = 0;
-    
-    if (status === 'en_route' && direction) {
-      const start = direction === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
-      lat = start.latitude;
-      lng = start.longitude;
-    }
-
-    const computedEta = precomputedEta !== undefined ? precomputedEta : ((status === 'en_route' && direction) ? await this.getRouteEtaMinutes(lat, lng, direction) : undefined);
-
-    const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-    const index = this.ensureActiveLocationExists(driverId, locations);
-    if (index >= 0) {
-      locations[index].status = status;
-      locations[index].direction = direction;
-      (locations[index] as any).isSimulated = true; // reset simulated flag
-      if (status === 'en_route' && direction && computedEta !== undefined) {
-        const start = direction === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
-        locations[index].latitude = start.latitude;
-        locations[index].longitude = start.longitude;
-        locations[index].etaMinutes = computedEta;
-        locations[index].etaHistory = [computedEta];
-        locations[index].scannedAt = new Date().toISOString();
-        locations[index].lastEtaUpdateTime = new Date().toISOString();
-      } else {
-        locations[index].direction = null;
-        locations[index].etaMinutes = undefined;
-        locations[index].etaHistory = undefined;
-        locations[index].scannedAt = undefined;
-        locations[index].lastEtaUpdateTime = undefined;
-      }
-      locations[index].updatedAt = new Date().toISOString();
-      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-      this.activeLocationsCache = locations;
-      this.notify();
-      
-      // Sync in background with force: true to bypass stale-state Apps Script locks
-      this.syncToGoogleSheets('syncLocation', { ...locations[index], force: true });
-    }
-  }
-
-  public async updateDriverEta(driverId: string, etaMinutes: number) {
-    const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-    const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
-    if (index >= 0) {
-      locations[index].etaMinutes = etaMinutes;
-      locations[index].etaHistory = [etaMinutes];
-      locations[index].updatedAt = new Date().toISOString();
-      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-      this.activeLocationsCache = locations;
-      this.notify();
-      
-      // Sync in background
-      this.syncToGoogleSheets('syncLocation', locations[index]);
-    }
+  public async updateDriverEta(_driverId: string, _etaMinutes: number) {
+    // No-op - active driver ETA is managed at scan time
   }
 
   // --- Global Settings ---
@@ -664,127 +521,70 @@ class DBService {
     this.syncToGoogleSheets('sendEmail', { to, subject, html });
   }
 
-  // --- GPS Driving Simulation Engine ---
   private startSimulation() {
-    setInterval(async () => {
-      const locations = this.getActiveLocations();
-      let changed = false;
-
-      for (const loc of locations) {
-        // Only run simulation for drivers marked as simulated (default ones, until a real device takes over)
-        if (loc.role === 'driver' && loc.status === 'en_route' && loc.direction && (loc as any).isSimulated !== false) {
-          const end = loc.direction === 'to_ohel' ? LOCATIONS['Ohel'] : LOCATIONS['770'];
-
-          const latDiff = end.latitude - loc.latitude;
-          const lngDiff = end.longitude - loc.longitude;
-          const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
-
-          const updatedFields: any = {};
-
-          if (distance < 0.005) {
-            updatedFields.status = 'idle';
-            updatedFields.direction = null;
-            updatedFields.etaMinutes = null;
-            updatedFields.latitude = end.latitude + (Math.random() - 0.5) * 0.001;
-            updatedFields.longitude = end.longitude + (Math.random() - 0.5) * 0.001;
-            updatedFields.speedWarning = false;
-          } else {
-            const speedFactor = 0.04 + Math.random() * 0.02;
-            let newLat = loc.latitude + latDiff * speedFactor + (Math.random() - 0.5) * 0.0001;
-            let newLng = loc.longitude + lngDiff * speedFactor + (Math.random() - 0.5) * 0.0001;
-
-            const totalSpan = Math.sqrt(
-              Math.pow(LOCATIONS['770'].latitude - LOCATIONS['Ohel'].latitude, 2) +
-              Math.pow(LOCATIONS['770'].longitude - LOCATIONS['Ohel'].longitude, 2)
-            );
-            const ratioLeft = distance / totalSpan;
-            
-            updatedFields.latitude = newLat;
-            updatedFields.longitude = newLng;
-            updatedFields.etaMinutes = Math.max(1, Math.round(ratioLeft * 25));
-
-            if (Math.random() < 0.08) {
-              updatedFields.speedWarning = !loc.speedWarning;
-            }
-          }
-          
-          updatedFields.updatedAt = new Date().toISOString();
-          
-          // Local sync
-          const index = locations.findIndex((l: ActiveLocation) => l.id === loc.id);
-          if (index >= 0) {
-            locations[index] = { ...locations[index], ...updatedFields };
-          }
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-        this.activeLocationsCache = locations;
-        this.notify();
-      }
-    }, 4000);
+    // Disabled simulation as status is computed dynamically from scans
   }
 
   public async triggerSOS(driverId: string) {
-    const locations = this.getActiveLocations();
-    const loc = locations.find(l => l.id === driverId);
-    if (!loc) return;
+    const user = this.getUsers().find(u => u.id === driverId);
+    if (!user) return;
 
-    const isSOSNow = !(loc as any).sosAlert;
+    let sosAlerts: string[] = [];
+    try {
+      sosAlerts = JSON.parse(localStorage.getItem('tp_sos_alerts') || '[]');
+    } catch(e) {}
 
+    const isSOSNow = !sosAlerts.includes(driverId);
     if (isSOSNow) {
-      // Trigger real-time SMS to manager
+      sosAlerts.push(driverId);
       const config = this.getConfig() as any;
       const recipient = config.twilioRecipientSms || config.reportEmail;
       if (recipient) {
-        const sosText = `🚨 התראת SOS במערכת אוהל בוס! 🚨\nהנהג ${loc.name.replace(' (נהג)', '')} הפעיל קריאת חירום דחופה! מיקום נוכחי: https://maps.google.com/?q=${loc.latitude},${loc.longitude}`;
+        const sosText = `🚨 התראת SOS במערכת אוהל בוס! 🚨\nהנהג ${user.name.replace(' (נהג)', '')} הפעיל קריאת חירום דחופה!`;
         this.sendSMS(recipient, sosText);
       }
+    } else {
+      sosAlerts = sosAlerts.filter(id => id !== driverId);
     }
 
-    const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
-    if (index >= 0) {
-      (locations[index] as any).sosAlert = isSOSNow;
-      locations[index].updatedAt = new Date().toISOString();
-      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-      this.activeLocationsCache = locations;
-      this.notify();
-      
-      // Sync in background
-      this.syncToGoogleSheets('syncLocation', locations[index]);
-    }
+    localStorage.setItem('tp_sos_alerts', JSON.stringify(sosAlerts));
+    this.notify();
   }
 
   public getSOSAlerts(): { id: string; name: string; latitude: number; longitude: number }[] {
-    const locations = this.getActiveLocations();
-    return locations
-      .filter((l: any) => l.sosAlert)
-      .map(l => ({ id: l.id, name: l.name, latitude: l.latitude, longitude: l.longitude }));
+    let sosAlerts: string[] = [];
+    try {
+      sosAlerts = JSON.parse(localStorage.getItem('tp_sos_alerts') || '[]');
+    } catch(e) {}
+
+    return sosAlerts.map(id => {
+      const user = this.getUsers().find(u => u.id === id);
+      return {
+        id,
+        name: user?.name || 'Driver',
+        latitude: LOCATIONS['770'].latitude,
+        longitude: LOCATIONS['770'].longitude
+      };
+    });
   }
 
   public async clearSOSAlert(driverId: string) {
-    const locations = this.getActiveLocations();
-    const loc = locations.find(l => l.id === driverId);
-    if (loc) {
+    let sosAlerts: string[] = [];
+    try {
+      sosAlerts = JSON.parse(localStorage.getItem('tp_sos_alerts') || '[]');
+    } catch(e) {}
+
+    if (sosAlerts.includes(driverId)) {
+      sosAlerts = sosAlerts.filter(id => id !== driverId);
+      localStorage.setItem('tp_sos_alerts', JSON.stringify(sosAlerts));
+      
+      const user = this.getUsers().find(u => u.id === driverId);
       const config = this.getConfig() as any;
       const recipient = config.twilioRecipientSms || config.reportEmail;
-      if (recipient) {
-        this.sendSMS(recipient, `✅ קריאת החירום (SOS) עבור הנהג ${loc.name.replace(' (נהג)', '')} בוטלה.`);
+      if (recipient && user) {
+        this.sendSMS(recipient, `✅ קריאת החירום (SOS) עבור הנהג ${user.name.replace(' (נהג)', '')} בוטלה.`);
       }
-    }
-
-    const index = locations.findIndex(l => l.id === driverId);
-    if (index >= 0) {
-      (locations[index] as any).sosAlert = false;
-      locations[index].updatedAt = new Date().toISOString();
-      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
-      this.activeLocationsCache = locations;
       this.notify();
-      
-      // Sync in background
-      this.syncToGoogleSheets('syncLocation', locations[index]);
     }
   }
 

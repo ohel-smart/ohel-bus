@@ -1099,8 +1099,7 @@ export default function App() {
   const handleSOSClick = () => {
     if (!currentUser) return;
     dbService.triggerSOS(currentUser.id);
-    const loc = activeLocations.find(l => l.id === currentUser.id);
-    const isSOSNow = !(loc as any)?.sosAlert;
+    const isSOSNow = dbService.getSOSAlerts().some(a => a.id === currentUser.id);
     if (isSOSNow) {
       triggerToast(t('sosTriggered'), 'danger');
     } else {
