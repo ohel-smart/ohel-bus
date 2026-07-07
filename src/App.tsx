@@ -983,6 +983,50 @@ export default function App() {
       });
   }, [scans, currentUser]);
 
+  const lastScan = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'driver') return null;
+    return scans
+      .filter(s => s.driverId === currentUser.id)
+      .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime())[0] || null;
+  }, [scans, currentUser]);
+
+  const shouldShowQrEvenEnRoute = useMemo(() => {
+    const loc = activeLocations.find(l => l.id === currentUser?.id);
+    if (!loc || loc.status !== 'en_route' || !lastScan) return false;
+    
+    const scannedTime = new Date(lastScan.scannedAt).getTime();
+    const elapsedMins = (Date.now() - scannedTime) / 60000;
+    
+    const initialEta = loc.etaMinutes || 40;
+    return elapsedMins >= (initialEta / 2);
+  }, [activeLocations, currentUser, lastScan]);
+
+  const activeArrivalsTo770 = useMemo(() => {
+    return activeLocations
+      .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_770')
+      .map(loc => {
+        const matchingScan = scans.find(s => s.driverId === loc.id);
+        return {
+          ...loc,
+          passengersCount: matchingScan?.passengersCount || 0
+        };
+      })
+      .sort((a, b) => (a.etaMinutes || 0) - (b.etaMinutes || 0));
+  }, [activeLocations, scans]);
+
+  const activeArrivalsToOhel = useMemo(() => {
+    return activeLocations
+      .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_ohel')
+      .map(loc => {
+        const matchingScan = scans.find(s => s.driverId === loc.id);
+        return {
+          ...loc,
+          passengersCount: matchingScan?.passengersCount || 0
+        };
+      })
+      .sort((a, b) => (a.etaMinutes || 0) - (b.etaMinutes || 0));
+  }, [activeLocations, scans]);
+
   // --- Handlers ---
   const handleCodeLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1863,6 +1907,102 @@ export default function App() {
                       </form>
                     </div>
 
+                    {/* Real-time Arrivals Board */}
+                    <div className="card" style={{ padding: '24px', marginBottom: '16px' }}>
+                      <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.5s infinite' }}></span>
+                        <span>{lang === 'he' ? 'לוח הגעות אוטובוסים בזמן אמת' : 'Live Bus Arrivals Board'}</span>
+                      </h3>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                        {/* Heading to 770 */}
+                        <div style={{ background: 'rgba(226, 176, 78, 0.03)', border: '1px solid rgba(226, 176, 78, 0.15)', borderRadius: '12px', padding: '16px' }}>
+                          <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Navigation size={14} style={{ transform: 'rotate(45deg)' }} />
+                            {lang === 'he' ? 'בדרך ל-770 (קראון הייטס)' : 'En Route to 770 (Crown Heights)'}
+                          </h4>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {activeArrivalsTo770.length === 0 ? (
+                              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                {lang === 'he' ? 'אין אוטובוסים בדרך' : 'No shuttles en route'}
+                              </div>
+                            ) : (
+                              activeArrivalsTo770.map(arr => (
+                                <div key={arr.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                    <strong style={{ fontSize: '13px', color: '#fff', display: 'block' }}>{arr.name.replace(' (נהג)', '')}</strong>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                      {arr.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
+                                    </span>
+                                  </div>
+                                  <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                    <span 
+                                      className="badge" 
+                                      style={{ 
+                                        background: 'rgba(226, 176, 78, 0.15)', 
+                                        color: 'var(--accent)', 
+                                        borderColor: 'rgba(226, 176, 78, 0.2)',
+                                        fontSize: '11px',
+                                        padding: '4px 8px',
+                                        fontWeight: 'bold',
+                                        animation: 'pulse 2s infinite'
+                                      }}
+                                    >
+                                      {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Heading to Ohel */}
+                        <div style={{ background: 'rgba(6, 182, 212, 0.03)', border: '1px solid rgba(6, 182, 212, 0.15)', borderRadius: '12px', padding: '16px' }}>
+                          <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-route-ohel)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Navigation size={14} style={{ transform: 'rotate(135deg)' }} />
+                            {lang === 'he' ? 'בדרך לאוהל חב"ד (קווינס)' : 'En Route to Chabad Ohel (Queens)'}
+                          </h4>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {activeArrivalsToOhel.length === 0 ? (
+                              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                {lang === 'he' ? 'אין אוטובוסים בדרך' : 'No shuttles en route'}
+                              </div>
+                            ) : (
+                              activeArrivalsToOhel.map(arr => (
+                                <div key={arr.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                    <strong style={{ fontSize: '13px', color: '#fff', display: 'block' }}>{arr.name.replace(' (נהג)', '')}</strong>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                      {arr.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
+                                    </span>
+                                  </div>
+                                  <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                    <span 
+                                      className="badge" 
+                                      style={{ 
+                                        background: 'rgba(6, 182, 212, 0.15)', 
+                                        color: 'var(--accent-route-ohel)', 
+                                        borderColor: 'rgba(6, 182, 212, 0.2)',
+                                        fontSize: '11px',
+                                        padding: '4px 8px',
+                                        fontWeight: 'bold',
+                                        animation: 'pulse 2s infinite'
+                                      }}
+                                    >
+                                      {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Last 2 Hours Departures Schedule */}
                     <div className="card" style={{ padding: '24px' }}>
                       <h3 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
@@ -2138,8 +2278,7 @@ export default function App() {
                   const isDriverEnRoute = loc?.status === 'en_route';
                   const currentDriverEta = loc?.etaMinutes;
                   const currentDriverDirection = loc?.direction;
-
-                  return isDriverEnRoute ? (
+                  return (isDriverEnRoute && !shouldShowQrEvenEnRoute) ? (
                     <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
                         <div className="pulsing-glow" style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '16px', borderRadius: '50%' }}>
@@ -2174,6 +2313,7 @@ export default function App() {
                       {/* Inline Live Map Tracking for Driver */}
                       <div style={{ height: '220px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '20px', position: 'relative' }}>
                         <LiveMap 
+                          id="driver-live-map"
                           locations={activeLocations} 
                           sosAlerts={sosAlerts} 
                           lang={lang} 
@@ -2208,7 +2348,6 @@ export default function App() {
                         {lang === 'he' ? 'פתח ניווט ב-Google Maps' : 'Open Google Maps Navigation'}
                       </a>
 
-
                       {/* End Trip button */}
                       <button 
                         onClick={() => {
@@ -2236,6 +2375,15 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="card" style={{ padding: '30px 20px', textAlign: 'center' }}>
+                      {isDriverEnRoute && (
+                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                          <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', animation: 'pulse 1.5s infinite' }}></span>
+                          <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#a7f3d0' }}>
+                            {lang === 'he' ? 'מתקרב ליעד - הברקוד זמין כעת לסריקה בכניסה' : 'Approaching destination - Barcode available for scanning'}
+                          </span>
+                        </div>
+                      )}
+
                       <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '20px', color: '#fff' }}>{t('yourPersonalQrTitle')}</h3>
                       
                       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', display: 'inline-block', marginBottom: '20px' }}>
@@ -2253,48 +2401,6 @@ export default function App() {
                         <br/>{t('scanGuidance2')}
                       </p>
 
-                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px', textAlign: lang === 'he' ? 'right' : 'left' }}>{t('updateStatus')}</h4>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                          <button
-                            onClick={() => handleDriverStatusChange('idle')}
-                            className="btn btn-secondary"
-                            style={{ 
-                              fontSize: '12px', 
-                              padding: '10px 4px', 
-                              borderColor: loc?.status === 'idle' ? 'var(--success)' : ''
-                            }}
-                          >
-                            {t('statusIdle')}
-                          </button>
-                          
-                          <button
-                            onClick={() => handleDriverStatusChange('en_route')}
-                            className="btn btn-secondary"
-                            style={{ 
-                              fontSize: '12px', 
-                              padding: '10px 4px',
-                              borderColor: loc?.status === 'en_route' ? 'var(--accent)' : ''
-                            }}
-                          >
-                            {t('statusEnRoute')}
-                          </button>
-
-                          <button
-                            onClick={() => handleDriverStatusChange('break')}
-                            className="btn btn-secondary"
-                            style={{ 
-                              fontSize: '12px', 
-                              padding: '10px 4px',
-                              borderColor: loc?.status === 'break' ? 'var(--danger)' : ''
-                            }}
-                          >
-                            {t('statusBreak')}
-                          </button>
-                        </div>
-                      </div>
-
                       {/* SOS Emergency button */}
                       <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '20px', paddingTop: '20px' }}>
                         <button 
@@ -2305,11 +2411,11 @@ export default function App() {
                             padding: '12px', 
                             fontSize: '14px', 
                             fontWeight: 'bold',
-                            boxShadow: (loc as any)?.sosAlert ? '0 0 12px rgba(239,68,68,0.5)' : '',
+                            boxShadow: sosAlerts.some(a => a.id === currentUser.id) ? '0 0 12px rgba(239,68,68,0.5)' : '',
                           }}
                         >
                           <AlertTriangle size={16} />
-                          { (loc as any)?.sosAlert ? t('cancelSosButton') : t('triggerSosButton') }
+                          { sosAlerts.some(a => a.id === currentUser.id) ? t('cancelSosButton') : t('triggerSosButton') }
                         </button>
                       </div>
                     </div>
@@ -2678,6 +2784,7 @@ export default function App() {
                     {/* Map & Live list grid */}
                     <div className="dashboard-grid">
                       <LiveMap 
+                        id="dispatcher-live-map"
                         locations={activeLocations} 
                         sosAlerts={sosAlerts}
                         onClearSOS={handleClearSOS}

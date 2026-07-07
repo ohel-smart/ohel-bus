@@ -83,10 +83,10 @@ class DBService {
     this.fetchDataFromSheets();
     this.startSimulation();
     
-    // Periodically poll Google Sheets for updates (every 10 seconds)
+    // Periodically poll Google Sheets for updates (every 3 seconds for instant driver syncing)
     setInterval(() => {
       this.fetchDataFromSheets();
-    }, 10000);
+    }, 3000);
   }
 
   private initDatabase() {

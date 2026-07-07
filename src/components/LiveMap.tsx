@@ -5,6 +5,7 @@ import type { ActiveLocation } from '../services/db';
 import { LOCATIONS } from '../services/db';
 
 interface LiveMapProps {
+  id?: string;
   locations: ActiveLocation[];
   sosAlerts: { id: string; name: string }[];
   onClearSOS?: (driverId: string) => void;
@@ -52,12 +53,12 @@ const MAP_TRANSLATIONS = {
   }
 };
 
-export const LiveMap: React.FC<LiveMapProps> = ({ locations, sosAlerts, onClearSOS, lang = 'he' }) => {
+export const LiveMap: React.FC<LiveMapProps> = ({ id = 'live-fleet-map', locations, sosAlerts, onClearSOS, lang = 'he' }) => {
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<{ [key: string]: L.Marker }>({});
   const static770MarkerRef = useRef<L.Marker | null>(null);
   const staticOhelMarkerRef = useRef<L.Marker | null>(null);
-  const mapContainerId = 'live-fleet-map';
+  const mapContainerId = id;
 
   const mapT = (key: keyof typeof MAP_TRANSLATIONS.he, variables?: { [key: string]: any }) => {
     let text = MAP_TRANSLATIONS[lang][key] || MAP_TRANSLATIONS.he[key] || '';
@@ -212,11 +213,16 @@ export const LiveMap: React.FC<LiveMapProps> = ({ locations, sosAlerts, onClearS
 
     mapRef.current = map;
 
+    // Trigger Leaflet size invalidation to fix rendering issues
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [mapContainerId]);
 
   // Sync Locations Markers
   useEffect(() => {
