@@ -750,7 +750,7 @@ export default function App() {
     const config = { fps: 15, qrbox: { width: 250, height: 250 } };
 
     const onScanSuccess = (decodedText: string) => {
-      let matchedDriver = users.find(u => u.id === decodedText && u.role === 'driver');
+      let matchedDriver = users.find(u => (u.id === decodedText || u.code === decodedText) && u.role === 'driver');
       
       if (!matchedDriver) {
         try {
@@ -763,17 +763,24 @@ export default function App() {
       }
 
       if (matchedDriver) {
+        const targetDriver = matchedDriver;
         if (html5QrCode.isScanning) {
           html5QrCode.stop().then(() => {
             html5QrCode.clear();
             setShowCameraScanner(false);
-          }).catch(err => console.error("Failed to stop scanner", err));
+            setScannerModalDriver(targetDriver);
+            setScannerModalPassengers(0);
+          }).catch(err => {
+            console.error("Failed to stop scanner", err);
+            setShowCameraScanner(false);
+            setScannerModalDriver(targetDriver);
+            setScannerModalPassengers(0);
+          });
         } else {
           setShowCameraScanner(false);
+          setScannerModalDriver(targetDriver);
+          setScannerModalPassengers(0);
         }
-        
-        setScannerModalDriver(matchedDriver);
-        setScannerModalPassengers(0);
         triggerToast(t('qrSuccess'), 'success');
       } else {
         triggerToast(t('qrInvalid'), 'danger');
