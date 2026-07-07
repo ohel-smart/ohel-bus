@@ -197,18 +197,37 @@ class DBService {
           localStorage.setItem('tp_users', JSON.stringify(filteredUsers));
         }
         if (Array.isArray(data.scans)) {
-          const filteredScans = data.scans
+          const remoteScans = data.scans
             .filter((s: Scan) => !deletedScans.includes(s.id))
             .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
-          this.scansCache = filteredScans;
-          localStorage.setItem('tp_scans', JSON.stringify(filteredScans));
+            
+          // Merge local scans not yet synced to Google Sheets
+          const localScans: Scan[] = JSON.parse(localStorage.getItem('tp_scans') || '[]');
+          const mergedScans = [...remoteScans];
+          localScans.forEach((ls: Scan) => {
+            if (!mergedScans.some(rs => rs.id === ls.id)) {
+              mergedScans.push(ls);
+            }
+          });
+          
+          this.scansCache = mergedScans;
+          localStorage.setItem('tp_scans', JSON.stringify(mergedScans));
         }
         if (Array.isArray(data.activeLocations)) {
           const currentLocs: ActiveLocation[] = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
           const filteredLocs = data.activeLocations.filter((l: ActiveLocation) => !deletedUsers.includes(l.id)).map((newLoc: ActiveLocation) => {
             const existing = currentLocs.find(curr => curr.id === newLoc.id);
-            if (existing && existing.lastEtaUpdateTime) {
-              return { ...newLoc, lastEtaUpdateTime: existing.lastEtaUpdateTime };
+            if (existing) {
+              const existingTime = new Date(existing.updatedAt || 0).getTime();
+              const newTime = new Date(newLoc.updatedAt || 0).getTime();
+              // Keep local changes if local is newer (stale spreadsheet fetch protection)
+              if (existingTime > newTime) {
+                return {
+                  ...newLoc,
+                  ...existing,
+                  name: newLoc.name || existing.name
+                };
+              }
             }
             return newLoc;
           });
