@@ -27,6 +27,8 @@ export interface Scan {
   logicalDate: string; // YYYY-MM-DD based on 01:00 AM rule
   location: { latitude: number; longitude: number };
   departureLocation: DepartureLocation;
+  etaMinutes?: number;
+  expectedArrivalTime?: string;
 }
 
 export interface ActiveLocation {
@@ -422,13 +424,24 @@ class DBService {
     const driver = usersList.find(u => u.id === scanData.driverId);
     const capacity = driver?.capacity || 15;
     const remainingSeats = Math.max(0, capacity - scanData.passengersCount);
+
+    const targetDirection: Direction = scanData.departureLocation === '770' ? 'to_ohel' : 'to_770';
+    const startLoc = targetDirection === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
+    const etaMinutes = await this.getRouteEtaMinutes(startLoc.latitude, startLoc.longitude, targetDirection);
     
+    // Calculate expected arrival time clock string
+    const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
+    const arrivalTime = new Date(startTime + (etaMinutes * 60000));
+    const expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+
     const newScan: Scan = {
       ...scanData,
       id: 'scn_' + Math.random().toString(36).substr(2, 9),
       driverCapacity: capacity,
       remainingSeats,
       logicalDate: this.getLogicalDate(scanData.scannedAt),
+      etaMinutes,
+      expectedArrivalTime
     };
 
     if (this.isOffline()) {
@@ -445,9 +458,8 @@ class DBService {
     // Sync to Google Sheets
     this.syncToGoogleSheets('syncScan', newScan);
 
-    // Trigger driver driving simulation to the opposite location of departure
-    const targetDirection: Direction = scanData.departureLocation === '770' ? 'to_ohel' : 'to_770';
-    this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection);
+    // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
+    this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection, etaMinutes);
 
     this.notify();
     
@@ -578,7 +590,7 @@ class DBService {
     }
   }
 
-  public async updateDriverTripState(driverId: string, status: DriverStatus, direction: Direction) {
+  public async updateDriverTripState(driverId: string, status: DriverStatus, direction: Direction, precomputedEta?: number) {
     let lat = 0;
     let lng = 0;
     
@@ -588,7 +600,7 @@ class DBService {
       lng = start.longitude;
     }
 
-    const computedEta = (status === 'en_route' && direction) ? await this.getRouteEtaMinutes(lat, lng, direction) : undefined;
+    const computedEta = precomputedEta !== undefined ? precomputedEta : ((status === 'en_route' && direction) ? await this.getRouteEtaMinutes(lat, lng, direction) : undefined);
 
     const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
     const index = this.ensureActiveLocationExists(driverId, locations);
