@@ -1018,12 +1018,16 @@ export default function App() {
       .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_770')
       .map(loc => {
         const matchingScan = scans.find(s => s.driverId === loc.id);
+        const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
+        const etaDuration = loc.etaMinutes || 28;
+        const arrivalTimeMs = startTime + (etaDuration * 60000);
         return {
           ...loc,
-          passengersCount: matchingScan?.passengersCount || 0
+          passengersCount: matchingScan?.passengersCount || 0,
+          arrivalTimeMs
         };
       })
-      .sort((a, b) => (a.etaMinutes || 0) - (b.etaMinutes || 0));
+      .sort((a, b) => a.arrivalTimeMs - b.arrivalTimeMs);
   }, [activeLocations, scans]);
 
   const activeArrivalsToOhel = useMemo(() => {
@@ -1031,12 +1035,16 @@ export default function App() {
       .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_ohel')
       .map(loc => {
         const matchingScan = scans.find(s => s.driverId === loc.id);
+        const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
+        const etaDuration = loc.etaMinutes || 28;
+        const arrivalTimeMs = startTime + (etaDuration * 60000);
         return {
           ...loc,
-          passengersCount: matchingScan?.passengersCount || 0
+          passengersCount: matchingScan?.passengersCount || 0,
+          arrivalTimeMs
         };
       })
-      .sort((a, b) => (a.etaMinutes || 0) - (b.etaMinutes || 0));
+      .sort((a, b) => a.arrivalTimeMs - b.arrivalTimeMs);
   }, [activeLocations, scans]);
 
   // --- Handlers ---
@@ -1913,8 +1921,8 @@ export default function App() {
                                       }}
                                     >
                                       {arr.etaMinutes !== undefined ? (() => {
-                                        const arrivalTime = new Date();
-                                        arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                        const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
+                                        const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
                                         return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
                                       })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
@@ -1960,8 +1968,8 @@ export default function App() {
                                       }}
                                     >
                                       {arr.etaMinutes !== undefined ? (() => {
-                                        const arrivalTime = new Date();
-                                        arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                        const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
+                                        const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
                                         return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
                                       })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
@@ -2278,13 +2286,14 @@ export default function App() {
                         </span>
                         <strong style={{ fontSize: '28px', color: 'var(--accent)', display: 'block', fontFamily: 'monospace' }}>
                           {currentDriverEta !== undefined ? (() => {
-                            const arrivalTime = new Date();
-                            arrivalTime.setMinutes(arrivalTime.getMinutes() + currentDriverEta);
-                            return `${lang === 'he' ? 'זמן הגעה משוער: ' : 'Estimated Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
+                            const startTime = new Date(loc?.scannedAt || loc?.updatedAt || new Date()).getTime();
+                            const arrivalTime = new Date(startTime + (currentDriverEta * 60000));
+                            const remainingMins = Math.max(0, Math.round((arrivalTime.getTime() - Date.now()) / 60000));
+                            return `${lang === 'he' ? 'זמן הגעה משוער: ' : 'Estimated Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} (${lang === 'he' ? `עוד כ-${remainingMins} דקות` : `approx. ${remainingMins} mins`})`;
                           })() : (lang === 'he' ? 'מחשב...' : 'Calculating...')}
                         </strong>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>
-                          {lang === 'he' ? 'הזמן מתעדכן אוטומטית לפי מיקום ה-GPS ועומסי התנועה' : 'Time updates automatically based on GPS and traffic'}
+                          {lang === 'he' ? 'זמן ההגעה מחושב במדויק וקבוע על פי שעת הסריקה' : 'Estimated arrival time is fixed based on original scan conditions'}
                         </span>
                       </div>
 
@@ -2624,8 +2633,8 @@ export default function App() {
                                     }}
                                   >
                                     {arr.etaMinutes !== undefined ? (() => {
-                                      const arrivalTime = new Date();
-                                      arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                      const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
+                                      const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
                                       return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
                                     })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
@@ -2670,8 +2679,8 @@ export default function App() {
                                     }}
                                   >
                                     {arr.etaMinutes !== undefined ? (() => {
-                                      const arrivalTime = new Date();
-                                      arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                      const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
+                                      const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
                                       return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
                                     })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
