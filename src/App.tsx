@@ -491,7 +491,16 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 
 // Hebrew Date Formatter Helper
 const formatHebrewAndGregorianDate = (dateInput: Date | string): string => {
-  const date = typeof dateInput === 'string' ? new Date(dateInput + 'T12:00:00') : dateInput;
+  let date: Date;
+  if (typeof dateInput === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+      date = new Date(dateInput + 'T12:00:00');
+    } else {
+      date = new Date(dateInput);
+    }
+  } else {
+    date = dateInput;
+  }
   if (isNaN(date.getTime())) return typeof dateInput === 'string' ? dateInput : '';
   
   try {
