@@ -218,6 +218,10 @@ class DBService {
           const filteredLocs = data.activeLocations.filter((l: ActiveLocation) => !deletedUsers.includes(l.id)).map((newLoc: ActiveLocation) => {
             const existing = currentLocs.find(curr => curr.id === newLoc.id);
             if (existing) {
+              // If remote has a active trip (en_route) but local is idle, always accept it immediately
+              if (newLoc.status === 'en_route' && existing.status === 'idle') {
+                return newLoc;
+              }
               const existingTime = new Date(existing.updatedAt || 0).getTime();
               const newTime = new Date(newLoc.updatedAt || 0).getTime();
               // Keep local changes if local is newer (stale spreadsheet fetch protection)
@@ -612,8 +616,8 @@ class DBService {
       this.activeLocationsCache = locations;
       this.notify();
       
-      // Sync in background
-      this.syncToGoogleSheets('syncLocation', locations[index]);
+      // Sync in background with force: true to bypass stale-state Apps Script locks
+      this.syncToGoogleSheets('syncLocation', { ...locations[index], force: true });
     }
   }
 
