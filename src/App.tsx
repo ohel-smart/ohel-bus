@@ -672,6 +672,8 @@ export default function App() {
   // Expanded daily history days state
   const [expandedDays, setExpandedDays] = useState<{ [date: string]: boolean }>({});
   const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
+  const [scannerModalDriver, setScannerModalDriver] = useState<User | null>(null);
+  const [scannerModalPassengers, setScannerModalPassengers] = useState<number>(0);
   
   const toggleDayExpanded = (date: string) => {
     setExpandedDays(prev => ({ ...prev, [date]: !prev[date] }));
@@ -749,32 +751,33 @@ export default function App() {
     const config = { fps: 15, qrbox: { width: 250, height: 250 } };
 
     const onScanSuccess = (decodedText: string) => {
-      try {
-        const url = new URL(decodedText);
-        const driverIdParam = url.searchParams.get('driverId');
-        if (driverIdParam) {
-          setSelectedDriverId(driverIdParam);
-          setShowCameraScanner(false);
-          triggerToast(t('qrSuccess'), 'success');
-        } else {
-          const matchedDriver = users.find(u => u.id === decodedText && u.role === 'driver');
-          if (matchedDriver) {
-            setSelectedDriverId(decodedText);
-            setShowCameraScanner(false);
-            triggerToast(t('qrSuccess'), 'success');
-          } else {
-            triggerToast(t('qrInvalid'), 'danger');
+      let matchedDriver = users.find(u => u.id === decodedText && u.role === 'driver');
+      
+      if (!matchedDriver) {
+        try {
+          const url = new URL(decodedText);
+          const driverIdParam = url.searchParams.get('driverId');
+          if (driverIdParam) {
+            matchedDriver = users.find(u => u.id === driverIdParam && u.role === 'driver');
           }
-        }
-      } catch (e) {
-        const matchedDriver = users.find(u => u.id === decodedText && u.role === 'driver');
-        if (matchedDriver) {
-          setSelectedDriverId(decodedText);
-          setShowCameraScanner(false);
-          triggerToast(t('qrSuccess'), 'success');
+        } catch (e) {}
+      }
+
+      if (matchedDriver) {
+        if (html5QrCode.isScanning) {
+          html5QrCode.stop().then(() => {
+            html5QrCode.clear();
+            setShowCameraScanner(false);
+          }).catch(err => console.error("Failed to stop scanner", err));
         } else {
-          triggerToast(t('qrInvalid'), 'danger');
+          setShowCameraScanner(false);
         }
+        
+        setScannerModalDriver(matchedDriver);
+        setScannerModalPassengers(0);
+        triggerToast(t('qrSuccess'), 'success');
+      } else {
+        triggerToast(t('qrInvalid'), 'danger');
       }
     };
 
@@ -2310,14 +2313,48 @@ export default function App() {
                         </span>
                       </div>
 
-                      {/* Inline Live Map Tracking for Driver */}
-                      <div style={{ height: '220px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '20px', position: 'relative' }}>
-                        <LiveMap 
-                          id="driver-live-map"
-                          locations={activeLocations} 
-                          sosAlerts={sosAlerts} 
-                          lang={lang} 
-                        />
+                      {/* Real-time bus arrivals list instead of map */}
+                      <div className="card" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', marginBottom: '20px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Clock size={14} color="var(--accent)" />
+                          {lang === 'he' ? 'לוח הגעת אוטובוסים פעילים' : 'Live Bus Arrivals Board'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                          {activeLocations.filter(loc => loc.role === 'driver' && loc.status === 'en_route').length === 0 ? (
+                            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                              {lang === 'he' ? 'אין אוטובוסים פעילים בדרך' : 'No active buses en route'}
+                            </div>
+                          ) : (
+                            activeLocations
+                              .filter(loc => loc.role === 'driver' && loc.status === 'en_route')
+                              .map(arr => {
+                                const matchingScan = scans.find(s => s.driverId === arr.id);
+                                const passCount = matchingScan?.passengersCount || 0;
+                                const isToOhel = arr.direction === 'to_ohel';
+                                return (
+                                  <div key={arr.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', padding: '8px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>
+                                        {arr.name.replace(' (נהג)', '')}
+                                      </span>
+                                      <span style={{ fontSize: '9px', color: isToOhel ? 'var(--accent-route-ohel)' : 'var(--accent)', fontWeight: 'bold' }}>
+                                        {isToOhel ? (lang === 'he' ? '➔ לאוהל' : '➔ to Ohel') : (lang === 'he' ? '➔ ל-770' : '➔ to 770')}
+                                      </span>
+                                    </div>
+                                    <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                      <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--accent)', marginRight: '6px' }}>
+                                        {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      </span>
+                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                        ({passCount} {lang === 'he' ? 'נוסעים' : 'passengers'})
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                          )}
+                        </div>
                       </div>
 
                       {/* Google Maps Navigation button */}
@@ -3652,6 +3689,109 @@ export default function App() {
                 </button>
               </nav>
 
+            </div>
+          )}
+
+          {/* Quick Scanner modal */}
+          {scannerModalDriver && (
+            <div className="modal-backdrop" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(10px)' }}>
+              <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '24px', position: 'relative', border: '1px solid var(--accent)', background: 'var(--bg-secondary)' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#fff', textAlign: 'center' }}>
+                  {lang === 'he' ? `סריקת נהג: ${scannerModalDriver.name.replace(' (נהג)', '')}` : `Scan Driver: ${scannerModalDriver.name}`}
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '20px' }}>
+                  {lang === 'he' ? `נא להזין את מספר הנוסעים שעלו להסעה (קיבולת: ${scannerModalDriver.capacity || 15} מקומות):` : `Enter number of passengers (Capacity: ${scannerModalDriver.capacity || 15} seats):`}
+                </p>
+
+                {/* Quick Selection Buttons */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
+                  {[5, 10, 15, 20, 25, 30].map(val => (
+                    <button 
+                      key={val}
+                      type="button"
+                      onClick={() => setScannerModalPassengers(val)}
+                      className={`btn ${scannerModalPassengers === val ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ 
+                        fontSize: '14px', 
+                        padding: '12px 6px',
+                        background: scannerModalPassengers === val ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+                        color: scannerModalPassengers === val ? '#000' : '#fff',
+                        borderColor: scannerModalPassengers === val ? 'var(--accent)' : 'var(--border-color)',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom input */}
+                <div className="form-group" style={{ marginBottom: '24px' }}>
+                  <label className="form-label" style={{ fontSize: '12px' }}>
+                    {lang === 'he' ? 'או הזן מספר אחר:' : 'Or enter custom amount:'}
+                  </label>
+                  <input 
+                    type="number"
+                    className="form-input"
+                    style={{ textAlign: 'center', fontSize: '20px', fontWeight: 'bold' }}
+                    value={scannerModalPassengers === 0 ? '' : scannerModalPassengers}
+                    onChange={(e) => setScannerModalPassengers(Math.max(0, parseInt(e.target.value) || 0))}
+                    placeholder="0"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button 
+                    onClick={() => {
+                      if (scannerModalPassengers <= 0) {
+                        triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+                        return;
+                      }
+                      
+                      // Create the scan directly!
+                      dbService.addScan({
+                        dispatcherId: currentUser.id,
+                        dispatcherName: currentUser.name,
+                        driverId: scannerModalDriver.id,
+                        driverName: scannerModalDriver.name,
+                        passengersCount: scannerModalPassengers,
+                        scannedAt: new Date().toISOString(),
+                        location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
+                        departureLocation: currentDepartureLocation
+                      });
+
+                      confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.8 }
+                      });
+
+                      triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${scannerModalDriver.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${scannerModalDriver.name}`, 'success');
+
+                      // Reset state
+                      setScannerModalDriver(null);
+                      setScannerModalPassengers(0);
+                    }}
+                    className="btn btn-primary"
+                    style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 'bold', color: '#000' }}
+                  >
+                    <CheckCircle size={16} />
+                    {lang === 'he' ? 'שמור ושלח סריקה' : 'Save & Send Scan'}
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setScannerModalDriver(null);
+                      setScannerModalPassengers(0);
+                    }}
+                    className="btn btn-secondary"
+                    style={{ width: '100%', padding: '12px', fontSize: '13px', background: 'none', border: 'none', color: 'var(--text-secondary)', textDecoration: 'underline', cursor: 'pointer' }}
+                  >
+                    {lang === 'he' ? 'ביטול' : 'Cancel'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
