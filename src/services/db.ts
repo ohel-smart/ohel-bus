@@ -499,6 +499,16 @@ class DBService {
     // No-op - active driver ETA is managed at scan time
   }
 
+  public async resetTrips() {
+    localStorage.setItem('tp_scans', JSON.stringify([]));
+    localStorage.setItem('tp_deleted_scans', JSON.stringify([]));
+    this.scansCache = [];
+    this.notify();
+
+    this.syncToGoogleSheets('resetTrips', {});
+    setTimeout(() => this.fetchDataFromSheets(), 1500);
+  }
+
   // --- Global Settings ---
   public getConfig(): GlobalConfig {
     return this.configCache;

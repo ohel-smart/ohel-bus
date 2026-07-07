@@ -3582,6 +3582,34 @@ export default function App() {
                         {lang === 'he' ? 'שמור את כל ההגדרות' : 'Save All Settings'}
                       </button>
 
+                      {/* Database Reset Action */}
+                      <div style={{ borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: '16px', marginTop: '10px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#ef4444', marginBottom: '8px' }}>
+                          {lang === 'he' ? 'איפוס וניקוי נתונים' : 'Data Reset operations'}
+                        </h4>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: '18px' }}>
+                          {lang === 'he' 
+                            ? 'מחיקה של כל הנסיעות והסריקות בלבד (איפוס ליום חדש). רשימת הנהגים, המנהלים והסדרנים תישמר ללא שינוי.'
+                            : 'Clears all trip history and logs. Active user profiles (drivers, dispatchers, admins) remain untouched.'}
+                        </p>
+                        <button 
+                          onClick={() => {
+                            const confirmText = lang === 'he' 
+                              ? 'האם אתה בטוח שברצונך למחוק את כל היסטוריית הנסיעות והסריקות?\n(רשימת המשתמשים והנהגים תישמר)' 
+                              : 'Are you sure you want to delete all trip history?\n(Active users will be preserved)';
+                            if (window.confirm(confirmText)) {
+                              dbService.resetTrips();
+                              triggerToast(lang === 'he' ? 'היסטוריית הנסיעות נמחקה בהצלחה!' : 'Trip history deleted successfully!', 'success');
+                            }
+                          }} 
+                          className="btn btn-secondary" 
+                          style={{ width: '100%', borderColor: '#ef4444', color: '#ef4444', background: 'rgba(239, 68, 68, 0.05)', justifyContent: 'center' }}
+                        >
+                          <Trash size={16} style={{ marginRight: '6px' }} />
+                          {lang === 'he' ? 'מחק היסטוריית נסיעות (שמור נהגים ומשתמשים)' : 'Clear Trip History (Keep Users)'}
+                        </button>
+                      </div>
+
                       {/* Email Simulator inside settings */}
                       <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '10px' }}>
                         <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '10px' }}>{t('emailReportSimulatorTitle')}</h4>
