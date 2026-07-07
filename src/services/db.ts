@@ -40,6 +40,7 @@ export interface ActiveLocation {
   etaMinutes?: number;
   updatedAt: string;
   speedWarning?: boolean;
+  lastEtaUpdateTime?: string;
 }
 
 export interface GlobalConfig {
@@ -201,7 +202,14 @@ class DBService {
           localStorage.setItem('tp_scans', JSON.stringify(filteredScans));
         }
         if (Array.isArray(data.activeLocations)) {
-          const filteredLocs = data.activeLocations.filter((l: ActiveLocation) => !deletedUsers.includes(l.id));
+          const currentLocs: ActiveLocation[] = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
+          const filteredLocs = data.activeLocations.filter((l: ActiveLocation) => !deletedUsers.includes(l.id)).map((newLoc: ActiveLocation) => {
+            const existing = currentLocs.find(curr => curr.id === newLoc.id);
+            if (existing && existing.lastEtaUpdateTime) {
+              return { ...newLoc, lastEtaUpdateTime: existing.lastEtaUpdateTime };
+            }
+            return newLoc;
+          });
           this.activeLocationsCache = filteredLocs;
           localStorage.setItem('tp_active_locations', JSON.stringify(filteredLocs));
         }
@@ -499,7 +507,7 @@ class DBService {
 
   public async updateActiveLocation(userId: string, lat: number, lng: number, driverFields?: Partial<Pick<ActiveLocation, 'status' | 'direction' | 'etaMinutes' | 'speedWarning'>>) {
     // 1. Resolve ETA dynamically if driver is en_route
-    let finalFields = { ...driverFields, isSimulated: false };
+    let finalFields: any = { ...driverFields, isSimulated: false };
     const locations = this.getActiveLocations();
     const loc = locations.find(l => l.id === userId);
     
@@ -507,10 +515,18 @@ class DBService {
       const status = finalFields.status || loc.status;
       const direction = finalFields.direction !== undefined ? finalFields.direction : loc.direction;
       if (status === 'en_route' && direction) {
-        const computedEta = await this.getRouteEtaMinutes(lat, lng, direction);
-        finalFields.etaMinutes = computedEta;
+        const timeSinceLastUpdate = loc.lastEtaUpdateTime ? (Date.now() - new Date(loc.lastEtaUpdateTime).getTime()) : Infinity;
+        // Throttle updates to once every 60 seconds (60000ms) to prevent jumping and rate-limiting
+        if (loc.etaMinutes !== undefined && timeSinceLastUpdate < 60000) {
+          finalFields.etaMinutes = loc.etaMinutes;
+        } else {
+          const computedEta = await this.getRouteEtaMinutes(lat, lng, direction);
+          finalFields.etaMinutes = computedEta;
+          finalFields.lastEtaUpdateTime = new Date().toISOString();
+        }
       } else {
         finalFields.etaMinutes = undefined;
+        finalFields.lastEtaUpdateTime = undefined;
       }
     }
 
@@ -558,9 +574,11 @@ class DBService {
         locations[index].latitude = start.latitude;
         locations[index].longitude = start.longitude;
         locations[index].etaMinutes = computedEta;
+        locations[index].lastEtaUpdateTime = new Date().toISOString();
       } else {
         locations[index].direction = null;
         locations[index].etaMinutes = undefined;
+        locations[index].lastEtaUpdateTime = undefined;
       }
       locations[index].updatedAt = new Date().toISOString();
       localStorage.setItem('tp_active_locations', JSON.stringify(locations));
