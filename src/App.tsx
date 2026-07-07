@@ -671,7 +671,6 @@ export default function App() {
   
   // Expanded daily history days state
   const [expandedDays, setExpandedDays] = useState<{ [date: string]: boolean }>({});
-  const [customEtaInput, setCustomEtaInput] = useState<number>(0);
   const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
   
   const toggleDayExpanded = (date: string) => {
@@ -2141,8 +2140,8 @@ export default function App() {
                   const currentDriverDirection = loc?.direction;
 
                   return isDriverEnRoute ? (
-                    <div className="card" style={{ padding: '30px 20px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+                    <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
                         <div className="pulsing-glow" style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '16px', borderRadius: '50%' }}>
                           <Navigation size={32} color="var(--accent)" />
                         </div>
@@ -2152,12 +2151,34 @@ export default function App() {
                         {lang === 'he' ? 'נסיעה פעילה בעיצומה' : 'Active trip in progress'}
                       </h3>
                       
-                      <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 'bold', marginBottom: '24px' }}>
+                      <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 'bold', marginBottom: '16px' }}>
                         {currentDriverDirection === 'to_ohel' 
                           ? (lang === 'he' ? 'מסלול: מ-770 לאוהל חב"ד ➔' : 'Route: From 770 to Chabad Ohel ➔')
                           : (lang === 'he' ? 'מסלול: מהאוהל ל-770 ➔' : 'Route: From Ohel to 770 ➔')
                         }
                       </p>
+
+                      {/* Dynamic Google Maps Real-time ETA */}
+                      <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                          {lang === 'he' ? 'זמן הגעה משוער (לפי מפות גוגל 🚗)' : 'Estimated Arrival (via Google Maps 🚗)'}
+                        </span>
+                        <strong style={{ fontSize: '28px', color: 'var(--accent)', display: 'block', fontFamily: 'monospace' }}>
+                          {currentDriverEta !== undefined ? `${currentDriverEta} ${lang === 'he' ? 'דקות' : 'mins'}` : (lang === 'he' ? 'מחשב...' : 'Calculating...')}
+                        </strong>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>
+                          {lang === 'he' ? 'הזמן מתעדכן אוטומטית לפי מיקום ה-GPS ועומסי התנועה' : 'Time updates automatically based on GPS and traffic'}
+                        </span>
+                      </div>
+
+                      {/* Inline Live Map Tracking for Driver */}
+                      <div style={{ height: '220px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '20px', position: 'relative' }}>
+                        <LiveMap 
+                          locations={activeLocations} 
+                          sosAlerts={sosAlerts} 
+                          lang={lang} 
+                        />
+                      </div>
 
                       {/* Google Maps Navigation button */}
                       <a 
@@ -2172,7 +2193,7 @@ export default function App() {
                           width: '100%', 
                           padding: '12px', 
                           fontSize: '14px', 
-                          marginBottom: '20px', 
+                          marginBottom: '16px', 
                           display: 'flex', 
                           alignItems: 'center', 
                           justifyContent: 'center', 
@@ -2187,67 +2208,6 @@ export default function App() {
                         {lang === 'he' ? 'פתח ניווט ב-Google Maps' : 'Open Google Maps Navigation'}
                       </a>
 
-                      {/* Estimated Arrival Time (ETA) Slider/Selection */}
-                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginBottom: '24px', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px' }}>
-                          {lang === 'he' ? 'עדכן זמן הגעה משוער (דקות):' : 'Update Estimated Arrival (minutes):'}
-                        </h4>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '12px' }}>
-                          {[15, 30, 45, 60].map(mins => (
-                            <button
-                              key={mins}
-                              type="button"
-                              onClick={() => {
-                                dbService.updateDriverEta(currentUser.id, mins);
-                                triggerToast(lang === 'he' ? `זמן הגעה עודכן ל-${mins} דקות` : `ETA updated to ${mins} minutes`, 'success');
-                              }}
-                              className={`btn ${currentDriverEta === mins ? 'btn-primary' : 'btn-secondary'}`}
-                              style={{ 
-                                fontSize: '12px', 
-                                padding: '8px 2px',
-                                background: currentDriverEta === mins ? 'var(--accent)' : '',
-                                color: currentDriverEta === mins ? '#000' : '',
-                                borderColor: currentDriverEta === mins ? 'var(--accent)' : 'var(--border-color)'
-                              }}
-                            >
-                              {mins} {lang === 'he' ? "דק'" : "m"}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input 
-                            type="number"
-                            placeholder={lang === 'he' ? "דקות אחר..." : "Other mins..."}
-                            value={customEtaInput || ''}
-                            onChange={(e) => setCustomEtaInput(parseInt(e.target.value) || 0)}
-                            style={{
-                              flex: 1,
-                              background: 'rgba(255,255,255,0.05)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '6px',
-                              padding: '8px 12px',
-                              color: '#fff',
-                              fontSize: '13px'
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (customEtaInput > 0) {
-                                dbService.updateDriverEta(currentUser.id, customEtaInput);
-                                triggerToast(lang === 'he' ? `זמן הגעה עודכן ל-${customEtaInput} דקות` : `ETA updated to ${customEtaInput} minutes`, 'success');
-                                setCustomEtaInput(0);
-                              }
-                            }}
-                            className="btn btn-primary"
-                            style={{ padding: '8px 16px', fontSize: '13px' }}
-                          >
-                            {lang === 'he' ? 'עדכן' : 'Update'}
-                          </button>
-                        </div>
-                      </div>
 
                       {/* End Trip button */}
                       <button 
