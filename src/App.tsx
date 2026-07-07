@@ -628,7 +628,6 @@ export default function App() {
 
   // Scanner Form state
   const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [passengersCount, setPassengersCount] = useState<number>(0);
   const [manualDepartureLocation, setManualDepartureLocation] = useState<DepartureLocation | null>(null);
   const [showCameraScanner, setShowCameraScanner] = useState(false);
 
@@ -1065,45 +1064,7 @@ export default function App() {
     }
   };
 
-  const handleCreateScan = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser) return;
-    if (!selectedDriverId) {
-      triggerToast(t('selectDriverError'), 'danger');
-      return;
-    }
-    if (passengersCount <= 0) {
-      triggerToast(t('passengersError'), 'danger');
-      return;
-    }
 
-    const driver = users.find(u => u.id === selectedDriverId);
-    if (!driver) return;
-
-    dbService.addScan({
-      dispatcherId: currentUser.id,
-      dispatcherName: currentUser.name,
-      driverId: selectedDriverId,
-      driverName: driver.name,
-      passengersCount: passengersCount,
-      scannedAt: new Date().toISOString(),
-      location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
-      departureLocation: currentDepartureLocation
-    });
-
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.8 }
-    });
-
-    triggerToast(t('scanSuccess', { dispatcher: currentUser.name, driver: driver.name }), 'success');
-
-    // Reset Form
-    setSelectedDriverId('');
-    setPassengersCount(0);
-    setManualDepartureLocation(null);
-  };
 
   // --- Driver Actions ---
   const handleDriverStatusChange = (status: DriverStatus) => {
@@ -1789,130 +1750,116 @@ export default function App() {
 
               <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {activeTab === 'scan' && (
-                  <>
-                    {/* Scanner Panel */}
-                    <div className="card" style={{ padding: '24px' }}>
-                      <h3 className="card-title">
-                        <QrCode size={18} color="var(--accent)" />
-                        {t('registerTrip')}
-                      </h3>
+                  <div className="card" style={{ padding: '24px' }}>
+                    <h3 className="card-title">
+                      <QrCode size={18} color="var(--accent)" />
+                      {t('registerTrip')}
+                    </h3>
 
-                      {isOffline && (
-                        <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#fca5a5', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <WifiOff size={15} />
-                          <span>{t('offlineActiveWarning', { count: dbService.getOfflineScansCount() })}</span>
-                        </div>
-                      )}
-
-                      {/* In-app Camera Scanner UI component */}
-                      <div style={{ marginBottom: '20px' }}>
-                        {!showCameraScanner ? (
-                          <button 
-                            type="button" 
-                            onClick={() => setShowCameraScanner(true)} 
-                            className="btn btn-secondary" 
-                            style={{ width: '100%', padding: '12px', justifyContent: 'center', gap: '8px', fontSize: '13px', background: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.2)', color: 'var(--accent)' }}
-                          >
-                            <QrCode size={16} />
-                            {t('cameraScan')}
-                          </button>
-                        ) : (
-                          <div style={{ background: '#181e2e', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>{t('cameraScanActive')}</span>
-                              <button 
-                                type="button" 
-                                onClick={() => setShowCameraScanner(false)} 
-                                className="btn btn-danger" 
-                                style={{ padding: '4px 8px', fontSize: '11px' }}
-                              >
-                                {t('closeCamera')}
-                              </button>
-                            </div>
-                            <div id="qr-reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden' }}></div>
-                          </div>
-                        )}
+                    {isOffline && (
+                      <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#fca5a5', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <WifiOff size={15} />
+                        <span>{t('offlineActiveWarning', { count: dbService.getOfflineScansCount() })}</span>
                       </div>
+                    )}
 
-                      <form onSubmit={handleCreateScan}>
-                        <div className="form-group">
-                          <label className="form-label">{t('driverLabel')}</label>
-                          <select 
-                            className="form-input form-select"
-                            value={selectedDriverId}
-                            onChange={(e) => setSelectedDriverId(e.target.value)}
-                          >
-                            <option value="">{t('selectDriver')}</option>
-                            {driversList.map(drv => (
-                              <option key={drv.id} value={drv.id}>
-                                {drv.name.replace(' (נהג)', '')} ({drv.capacity} {lang === 'he' ? 'מקומות רכב' : 'seats'})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label">{t('passengersLabel')}</label>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input 
-                              type="number" 
-                              className="form-input" 
-                              style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}
-                              value={passengersCount === 0 ? '' : passengersCount}
-                              onChange={(e) => setPassengersCount(Math.max(0, parseInt(e.target.value) || 0))}
-                              placeholder="0"
-                            />
-                            
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <button type="button" onClick={() => setPassengersCount(prev => prev + 5)} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px' }}>+5</button>
-                              <button type="button" onClick={() => setPassengersCount(prev => prev + 10)} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px' }}>+10</button>
-                              <button type="button" onClick={() => setPassengersCount(0)} className="btn btn-danger" style={{ padding: '8px 10px', fontSize: '12px' }}>{t('reset')}</button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label">{t('manualGpsLabel')}</label>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <button
-                              type="button"
-                              onClick={() => setManualDepartureLocation('770')}
-                              className={`btn ${currentDepartureLocation === '770' ? 'btn-primary' : 'btn-secondary'}`}
-                              style={{ fontSize: '13px', background: currentDepartureLocation === '770' ? 'var(--accent)' : '', color: currentDepartureLocation === '770' ? '#000' : '' }}
-                            >
-                              770 ({lang === 'he' ? 'קראון הייטס' : 'Crown Heights'})
-                            </button>
-                            
-                            <button
-                              type="button"
-                              onClick={() => setManualDepartureLocation('Ohel')}
-                              className={`btn ${currentDepartureLocation === 'Ohel' ? 'btn-primary' : 'btn-secondary'}`}
-                              style={{ fontSize: '13px', background: currentDepartureLocation === 'Ohel' ? 'var(--info)' : '', color: currentDepartureLocation === 'Ohel' ? '#fff' : '' }}
-                            >
-                              {lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}
-                            </button>
-                          </div>
-                          {manualDepartureLocation && (
+                    {/* In-app Camera Scanner UI component */}
+                    <div style={{ marginBottom: '20px' }}>
+                      {!showCameraScanner ? (
+                        <button 
+                          type="button" 
+                          onClick={() => setShowCameraScanner(true)} 
+                          className="btn btn-secondary" 
+                          style={{ width: '100%', padding: '12px', justifyContent: 'center', gap: '8px', fontSize: '13px', background: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.2)', color: 'var(--accent)' }}
+                        >
+                          <QrCode size={16} />
+                          {t('cameraScan')}
+                        </button>
+                      ) : (
+                        <div style={{ background: '#181e2e', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>{t('cameraScanActive')}</span>
                             <button 
                               type="button" 
-                              onClick={() => setManualDepartureLocation(null)}
-                              style={{ display: 'block', margin: '8px auto 0', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer' }}
+                              onClick={() => setShowCameraScanner(false)} 
+                              className="btn btn-danger" 
+                              style={{ padding: '4px 8px', fontSize: '11px' }}
                             >
-                              {t('backToAutoGps', { loc: autoDepartureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel') })}
+                              {t('closeCamera')}
                             </button>
-                          )}
+                          </div>
+                          <div id="qr-reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden' }}></div>
                         </div>
-
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px', fontSize: '15px', marginTop: '10px' }}>
-                          <CheckCircle size={16} />
-                          {t('saveAndSendScan')}
-                        </button>
-                      </form>
+                      )}
                     </div>
 
+                    <form onSubmit={(e) => e.preventDefault()}>
+                      <div className="form-group">
+                        <label className="form-label">{t('driverLabel')}</label>
+                        <select 
+                          className="form-input form-select"
+                          value={selectedDriverId}
+                          onChange={(e) => {
+                            const drvId = e.target.value;
+                            if (drvId) {
+                              const matched = users.find(u => u.id === drvId && u.role === 'driver');
+                              if (matched) {
+                                setScannerModalDriver(matched);
+                                setScannerModalPassengers(0);
+                                setSelectedDriverId('');
+                              }
+                            }
+                          }}
+                        >
+                          <option value="">{t('selectDriver')}</option>
+                          {driversList.map(drv => (
+                            <option key={drv.id} value={drv.id}>
+                              {drv.name.replace(' (נהג)', '')} ({drv.capacity} {lang === 'he' ? 'מקומות רכב' : 'seats'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: '8px' }}>
+                        <label className="form-label">{t('manualGpsLabel')}</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setManualDepartureLocation('770')}
+                            className={`btn ${currentDepartureLocation === '770' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ fontSize: '13px', background: currentDepartureLocation === '770' ? 'var(--accent)' : '', color: currentDepartureLocation === '770' ? '#000' : '' }}
+                          >
+                            770 ({lang === 'he' ? 'קראון הייטס' : 'Crown Heights'})
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => setManualDepartureLocation('Ohel')}
+                            className={`btn ${currentDepartureLocation === 'Ohel' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ fontSize: '13px', background: currentDepartureLocation === 'Ohel' ? 'var(--info)' : '', color: currentDepartureLocation === 'Ohel' ? '#fff' : '' }}
+                          >
+                            {lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}
+                          </button>
+                        </div>
+                        {manualDepartureLocation && (
+                          <button 
+                            type="button" 
+                            onClick={() => setManualDepartureLocation(null)}
+                            style={{ display: 'block', margin: '8px auto 0', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('backToAutoGps', { loc: autoDepartureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel') })}
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {activeTab === 'arrivals' && (
+                  <>
                     {/* Real-time Arrivals Board */}
-                    <div className="card" style={{ padding: '24px', marginBottom: '16px' }}>
-                      <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <div className="card" style={{ padding: '24px', marginBottom: '16px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                      <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#fff' }}>
                         <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.5s infinite' }}></span>
                         <span>{lang === 'he' ? 'לוח הגעות אוטובוסים בזמן אמת' : 'Live Bus Arrivals Board'}</span>
                       </h3>
@@ -2007,8 +1954,8 @@ export default function App() {
                     </div>
 
                     {/* Last 2 Hours Departures Schedule */}
-                    <div className="card" style={{ padding: '24px' }}>
-                      <h3 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
+                    <div className="card" style={{ padding: '24px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                      <h3 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, color: '#fff' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Clock size={18} color="var(--accent)" />
                           <span>{lang === 'he' ? 'לו"ז יציאות (שעתיים אחרונות)' : 'Departures (Last 2 Hours)'}</span>
@@ -2210,10 +2157,13 @@ export default function App() {
                   <span>{t('todayScansCount', { count: myScansToday.length })}</span>
                 </button>
 
-                <div className="bottom-nav-item" style={{ opacity: 0.25, cursor: 'not-allowed' }}>
-                  <MapPin size={18} />
-                  <span>{t('driversMapTab')}</span>
-                </div>
+                <button 
+                  onClick={() => setActiveTab('arrivals')} 
+                  className={`bottom-nav-item ${activeTab === 'arrivals' ? 'active' : ''}`}
+                >
+                  <Clock size={18} />
+                  <span>{lang === 'he' ? 'לוח הגעות' : 'Arrivals Board'}</span>
+                </button>
 
                 <button onClick={handleLogout} className="bottom-nav-item">
                   <LogOut size={18} />
