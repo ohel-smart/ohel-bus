@@ -177,7 +177,8 @@ class DBService {
     if (!url) return;
 
     try {
-      const res = await fetch(url);
+      const cacheBustUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      const res = await fetch(cacheBustUrl);
       const data = await res.json();
       if (data && !data.error) {
         let deletedUsers: string[] = [];

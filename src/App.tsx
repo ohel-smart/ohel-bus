@@ -2606,6 +2606,101 @@ export default function App() {
                     )}
                   </div>
                 )}
+
+                {activeTab === 'arrivals' && (
+                  <div className="card" style={{ padding: '20px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                      <Clock size={16} color="var(--accent)" />
+                      {lang === 'he' ? 'לוח הגעת אוטובוסים פעילים' : 'Live Bus Arrivals Board'}
+                    </h3>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {/* Heading to 770 */}
+                      <div style={{ background: 'rgba(226, 176, 78, 0.03)', border: '1px solid rgba(226, 176, 78, 0.15)', borderRadius: '12px', padding: '16px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Navigation size={14} style={{ transform: 'rotate(45deg)' }} />
+                          {lang === 'he' ? 'בדרך ל-770 (קראון הייטס)' : 'En Route to 770 (Crown Heights)'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {activeArrivalsTo770.length === 0 ? (
+                            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                              {lang === 'he' ? 'אין אוטובוסים בדרך' : 'No shuttles en route'}
+                            </div>
+                          ) : (
+                            activeArrivalsTo770.map(arr => (
+                              <div key={arr.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                  <strong style={{ fontSize: '13px', color: '#fff', display: 'block' }}>{arr.name.replace(' (נהג)', '')}</strong>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                    {arr.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
+                                  </span>
+                                </div>
+                                <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                  <span 
+                                    className="badge" 
+                                    style={{ 
+                                      background: 'rgba(226, 176, 78, 0.15)', 
+                                      color: 'var(--accent)', 
+                                      borderColor: 'rgba(226, 176, 78, 0.2)',
+                                      fontSize: '11px',
+                                      padding: '4px 8px',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Heading to Ohel */}
+                      <div style={{ background: 'rgba(6, 182, 212, 0.03)', border: '1px solid rgba(6, 182, 212, 0.15)', borderRadius: '12px', padding: '16px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-route-ohel)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Navigation size={14} style={{ transform: 'rotate(135deg)' }} />
+                          {lang === 'he' ? 'בדרך לאוהל חב"ד (קווינס)' : 'En Route to Chabad Ohel (Queens)'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {activeArrivalsToOhel.length === 0 ? (
+                            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                              {lang === 'he' ? 'אין אוטובוסים בדרך' : 'No shuttles en route'}
+                            </div>
+                          ) : (
+                            activeArrivalsToOhel.map(arr => (
+                              <div key={arr.id} style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                  <strong style={{ fontSize: '13px', color: '#fff', display: 'block' }}>{arr.name.replace(' (נהג)', '')}</strong>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                    {arr.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
+                                  </span>
+                                </div>
+                                <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                  <span 
+                                    className="badge" 
+                                    style={{ 
+                                      background: 'rgba(6, 182, 212, 0.15)', 
+                                      color: 'var(--accent-route-ohel)', 
+                                      borderColor: 'rgba(6, 182, 212, 0.2)',
+                                      fontSize: '11px',
+                                      padding: '4px 8px',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Driver Bottom Menu */}
@@ -2626,10 +2721,13 @@ export default function App() {
                   <span>{t('myTripsCount', { count: myTripsToday.length })}</span>
                 </button>
 
-                <div className="bottom-nav-item" style={{ opacity: 0.25, cursor: 'not-allowed' }}>
-                  <MapPin size={18} />
-                  <span>{t('liveGpsStreamTab')}</span>
-                </div>
+                <button 
+                  onClick={() => setActiveTab('arrivals')} 
+                  className={`bottom-nav-item ${activeTab === 'arrivals' ? 'active' : ''}`}
+                >
+                  <Clock size={18} />
+                  <span>{lang === 'he' ? 'לוח הגעות' : 'Arrivals Board'}</span>
+                </button>
 
                 <button onClick={handleLogout} className="bottom-nav-item">
                   <LogOut size={18} />
