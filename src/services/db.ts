@@ -42,6 +42,7 @@ export interface ActiveLocation {
   speedWarning?: boolean;
   lastEtaUpdateTime?: string;
   etaHistory?: number[];
+  scannedAt?: string;
 }
 
 export interface GlobalConfig {
@@ -516,30 +517,19 @@ class DBService {
       const status = finalFields.status || loc.status;
       const direction = finalFields.direction !== undefined ? finalFields.direction : loc.direction;
       if (status === 'en_route' && direction) {
-        const timeSinceLastUpdate = loc.lastEtaUpdateTime ? (Date.now() - new Date(loc.lastEtaUpdateTime).getTime()) : Infinity;
-        // Throttle updates to once every 60 seconds (60000ms) to prevent jumping and rate-limiting
-        if (loc.etaMinutes !== undefined && timeSinceLastUpdate < 60000) {
+        // Preserving the initial scan-time calculated ETA to eliminate jumping and API overuse
+        if (loc.etaMinutes !== undefined) {
           finalFields.etaMinutes = loc.etaMinutes;
-          finalFields.etaHistory = loc.etaHistory || [loc.etaMinutes];
+          finalFields.scannedAt = loc.scannedAt || new Date().toISOString();
         } else {
           const computedEta = await this.getRouteEtaMinutes(lat, lng, direction);
-          
-          // Smoothed moving average of last 5 calculated ETAs to prevent route flip-flop jumping
-          const currentHistory = loc.etaHistory ? [...loc.etaHistory] : [];
-          currentHistory.push(computedEta);
-          if (currentHistory.length > 5) {
-            currentHistory.shift();
-          }
-          const sum = currentHistory.reduce((s, val) => s + val, 0);
-          const smoothedEta = Math.round(sum / currentHistory.length);
-          
-          finalFields.etaMinutes = smoothedEta;
-          finalFields.etaHistory = currentHistory;
-          finalFields.lastEtaUpdateTime = new Date().toISOString();
+          finalFields.etaMinutes = computedEta;
+          finalFields.scannedAt = new Date().toISOString();
         }
+        finalFields.lastEtaUpdateTime = loc.lastEtaUpdateTime || new Date().toISOString();
       } else {
         finalFields.etaMinutes = undefined;
-        finalFields.etaHistory = undefined;
+        finalFields.scannedAt = undefined;
         finalFields.lastEtaUpdateTime = undefined;
       }
     }
@@ -589,11 +579,13 @@ class DBService {
         locations[index].longitude = start.longitude;
         locations[index].etaMinutes = computedEta;
         locations[index].etaHistory = [computedEta];
+        locations[index].scannedAt = new Date().toISOString();
         locations[index].lastEtaUpdateTime = new Date().toISOString();
       } else {
         locations[index].direction = null;
         locations[index].etaMinutes = undefined;
         locations[index].etaHistory = undefined;
+        locations[index].scannedAt = undefined;
         locations[index].lastEtaUpdateTime = undefined;
       }
       locations[index].updatedAt = new Date().toISOString();

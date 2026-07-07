@@ -998,8 +998,13 @@ export default function App() {
     const loc = activeLocations.find(l => l.id === currentUser?.id);
     if (!loc || loc.status !== 'en_route') return false;
     
-    // Only allow scanning again and show QR when 5 minutes or less from arrival
-    return loc.etaMinutes !== undefined && loc.etaMinutes <= 5;
+    // Calculate remaining minutes from static trip start time and initial ETA duration
+    const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
+    const durationMs = (loc.etaMinutes || 28) * 60000;
+    const arrivalTimeMs = startTime + durationMs;
+    const remainingMins = (arrivalTimeMs - Date.now()) / 60000;
+    
+    return remainingMins <= 5;
   }, [activeLocations, currentUser]);
 
   const activeArrivalsTo770 = useMemo(() => {
