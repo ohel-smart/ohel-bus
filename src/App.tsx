@@ -669,7 +669,7 @@ export default function App() {
   const [loginRipples, setLoginRipples] = useState<{ id: string; x: number; y: number }[]>([]);
   
   // Expanded daily history days state
-  const [expandedDays, setExpandedDays] = useState<{ [date: string]: boolean }>({});
+  const [expandedDays, setExpandedDays] = useState<{ [date: string]: boolean }>({ [dbService.getLogicalDate()]: true });
   const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
   const [scannerModalDriver, setScannerModalDriver] = useState<User | null>(null);
   const [scannerModalPassengers, setScannerModalPassengers] = useState<number>(0);
@@ -1906,7 +1906,11 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.etaMinutes !== undefined ? (() => {
+                                        const arrivalTime = new Date();
+                                        arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                        return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
+                                      })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -1949,7 +1953,11 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.etaMinutes !== undefined ? (() => {
+                                        const arrivalTime = new Date();
+                                        arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                        return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
+                                      })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -2263,7 +2271,11 @@ export default function App() {
                           {lang === 'he' ? 'זמן הגעה משוער (לפי מפות גוגל 🚗)' : 'Estimated Arrival (via Google Maps 🚗)'}
                         </span>
                         <strong style={{ fontSize: '28px', color: 'var(--accent)', display: 'block', fontFamily: 'monospace' }}>
-                          {currentDriverEta !== undefined ? `${currentDriverEta} ${lang === 'he' ? 'דקות' : 'mins'}` : (lang === 'he' ? 'מחשב...' : 'Calculating...')}
+                          {currentDriverEta !== undefined ? (() => {
+                            const arrivalTime = new Date();
+                            arrivalTime.setMinutes(arrivalTime.getMinutes() + currentDriverEta);
+                            return `${lang === 'he' ? 'זמן הגעה משוער: ' : 'Estimated Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
+                          })() : (lang === 'he' ? 'מחשב...' : 'Calculating...')}
                         </strong>
                         <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>
                           {lang === 'he' ? 'הזמן מתעדכן אוטומטית לפי מיקום ה-GPS ועומסי התנועה' : 'Time updates automatically based on GPS and traffic'}
@@ -2605,7 +2617,11 @@ export default function App() {
                                       fontWeight: 'bold'
                                     }}
                                   >
-                                    {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    {arr.etaMinutes !== undefined ? (() => {
+                                      const arrivalTime = new Date();
+                                      arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                      return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
+                                    })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
                               </div>
@@ -2647,7 +2663,11 @@ export default function App() {
                                       fontWeight: 'bold'
                                     }}
                                   >
-                                    {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    {arr.etaMinutes !== undefined ? (() => {
+                                      const arrivalTime = new Date();
+                                      arrivalTime.setMinutes(arrivalTime.getMinutes() + arr.etaMinutes);
+                                      return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
+                                    })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
                               </div>
@@ -3751,10 +3771,18 @@ export default function App() {
           {scannerModalDriver && (
             <div className="modal-backdrop" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(10px)' }}>
               <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '24px', position: 'relative', border: '1px solid var(--accent)', background: 'var(--bg-secondary)' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#fff', textAlign: 'center' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '4px', color: '#fff', textAlign: 'center' }}>
                   {lang === 'he' ? `סריקת נהג: ${scannerModalDriver.name.replace(' (נהג)', '')}` : `Scan Driver: ${scannerModalDriver.name}`}
                 </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '20px' }}>
+                
+                <div style={{ fontSize: '14px', color: 'var(--accent)', fontWeight: 'bold', textAlign: 'center', marginBottom: '16px', background: 'rgba(226, 176, 78, 0.08)', padding: '6px 12px', borderRadius: '6px', border: '1px solid rgba(226, 176, 78, 0.15)' }}>
+                  {currentDepartureLocation === '770' 
+                    ? (lang === 'he' ? 'יציאה מ-770 בדרך לאוהל ➔' : 'Departure from 770 to Ohel ➔')
+                    : (lang === 'he' ? 'יציאה מהאוהל בדרך ל-770 ➔' : 'Departure from Ohel to 770 ➔')
+                  }
+                </div>
+
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '16px' }}>
                   {lang === 'he' ? `נא להזין את מספר הנוסעים שעלו להסעה (קיבולת: ${scannerModalDriver.capacity || 15} מקומות):` : `Enter number of passengers (Capacity: ${scannerModalDriver.capacity || 15} seats):`}
                 </p>
 
