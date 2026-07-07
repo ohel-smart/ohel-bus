@@ -764,22 +764,22 @@ export default function App() {
 
       if (matchedDriver) {
         const targetDriver = matchedDriver;
+        
+        // Open the passenger modal overlay instantly (synchronously)!
+        setScannerModalDriver(targetDriver);
+        setScannerModalPassengers(0);
+        
+        // Stop the camera asynchronously in the background
         if (html5QrCode.isScanning) {
           html5QrCode.stop().then(() => {
             html5QrCode.clear();
             setShowCameraScanner(false);
-            setScannerModalDriver(targetDriver);
-            setScannerModalPassengers(0);
           }).catch(err => {
             console.error("Failed to stop scanner", err);
             setShowCameraScanner(false);
-            setScannerModalDriver(targetDriver);
-            setScannerModalPassengers(0);
           });
         } else {
           setShowCameraScanner(false);
-          setScannerModalDriver(targetDriver);
-          setScannerModalPassengers(0);
         }
         triggerToast(t('qrSuccess'), 'success');
       } else {
