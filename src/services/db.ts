@@ -475,6 +475,27 @@ class DBService {
     return this.activeLocationsCache.filter(l => !deletedUsers.includes(l.id));
   }
 
+  private ensureActiveLocationExists(userId: string, locationsList: ActiveLocation[]): number {
+    let index = locationsList.findIndex((l: ActiveLocation) => l.id === userId);
+    if (index === -1) {
+      const user = this.getUsers().find(u => u.id === userId);
+      if (user) {
+        const newLoc: ActiveLocation = {
+          id: userId,
+          name: user.name,
+          role: user.role as 'driver' | 'dispatcher',
+          latitude: LOCATIONS['770'].latitude,
+          longitude: LOCATIONS['770'].longitude,
+          status: 'idle',
+          updatedAt: new Date().toISOString()
+        };
+        locationsList.push(newLoc);
+        index = locationsList.length - 1;
+      }
+    }
+    return index;
+  }
+
   public async updateActiveLocation(userId: string, lat: number, lng: number, driverFields?: Partial<Pick<ActiveLocation, 'status' | 'direction' | 'etaMinutes' | 'speedWarning'>>) {
     // 1. Resolve ETA dynamically if driver is en_route
     let finalFields = { ...driverFields, isSimulated: false };
@@ -493,7 +514,7 @@ class DBService {
     }
 
     const locationsList = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-    const index = locationsList.findIndex((l: ActiveLocation) => l.id === userId);
+    const index = this.ensureActiveLocationExists(userId, locationsList);
     if (index >= 0) {
       locationsList[index] = {
         ...locationsList[index],
@@ -526,7 +547,7 @@ class DBService {
     const computedEta = (status === 'en_route' && direction) ? await this.getRouteEtaMinutes(lat, lng, direction) : undefined;
 
     const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
-    const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
+    const index = this.ensureActiveLocationExists(driverId, locations);
     if (index >= 0) {
       locations[index].status = status;
       locations[index].direction = direction;
