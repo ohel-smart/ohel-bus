@@ -123,10 +123,26 @@ class DBService {
     this.usersCache = rawUsersList.length > 0 
       ? rawUsersList.filter((u: User) => !deletedUsers.includes(u.id))
       : DEFAULT_USERS;
-    this.scansCache = rawScansList.filter((s: Scan) => !deletedScans.includes(s.id));
+    this.scansCache = rawScansList
+      .filter((s: Scan) => !deletedScans.includes(s.id))
+      .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
     this.activeLocationsCache = rawLocsList.length > 0
       ? rawLocsList.filter((l: ActiveLocation) => !deletedUsers.includes(l.id))
       : this.getInitialActiveLocations();
+  }
+
+  private cleanDate(dateStr: string): string {
+    if (!dateStr) return '';
+    const trimmed = dateStr.trim();
+    if (trimmed.includes('GMT') || trimmed.length > 15) {
+      try {
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().split('T')[0];
+        }
+      } catch (e) {}
+    }
+    return trimmed;
   }
 
   private getInitialActiveLocations(): ActiveLocation[] {
@@ -177,7 +193,9 @@ class DBService {
           localStorage.setItem('tp_users', JSON.stringify(filteredUsers));
         }
         if (Array.isArray(data.scans)) {
-          const filteredScans = data.scans.filter((s: Scan) => !deletedScans.includes(s.id));
+          const filteredScans = data.scans
+            .filter((s: Scan) => !deletedScans.includes(s.id))
+            .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
           this.scansCache = filteredScans;
           localStorage.setItem('tp_scans', JSON.stringify(filteredScans));
         }
@@ -522,6 +540,21 @@ class DBService {
         locations[index].direction = null;
         locations[index].etaMinutes = undefined;
       }
+      locations[index].updatedAt = new Date().toISOString();
+      localStorage.setItem('tp_active_locations', JSON.stringify(locations));
+      this.activeLocationsCache = locations;
+      this.notify();
+      
+      // Sync in background
+      this.syncToGoogleSheets('syncLocation', locations[index]);
+    }
+  }
+
+  public async updateDriverEta(driverId: string, etaMinutes: number) {
+    const locations = JSON.parse(localStorage.getItem('tp_active_locations') || '[]');
+    const index = locations.findIndex((l: ActiveLocation) => l.id === driverId);
+    if (index >= 0) {
+      locations[index].etaMinutes = etaMinutes;
       locations[index].updatedAt = new Date().toISOString();
       localStorage.setItem('tp_active_locations', JSON.stringify(locations));
       this.activeLocationsCache = locations;

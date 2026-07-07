@@ -4,7 +4,7 @@ import {
   MapPin, Users, Calendar, WifiOff, Settings, QrCode, LogOut, 
   Plus, Trash, Edit, Search, AlertTriangle, Clock, Send, CheckCircle, 
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
-  Mail, Download, Copy, MessageSquare
+  Mail, Download, Copy, MessageSquare, Navigation, Map
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
@@ -671,6 +671,8 @@ export default function App() {
   
   // Expanded daily history days state
   const [expandedDays, setExpandedDays] = useState<{ [date: string]: boolean }>({});
+  const [customEtaInput, setCustomEtaInput] = useState<number>(0);
+  const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
   
   const toggleDayExpanded = (date: string) => {
     setExpandedDays(prev => ({ ...prev, [date]: !prev[date] }));
@@ -2132,8 +2134,147 @@ export default function App() {
               </div>
 
               <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {activeTab === 'qr' && (
-                  <>
+                {activeTab === 'qr' && (() => {
+                  const loc = activeLocations.find(l => l.id === currentUser.id);
+                  const isDriverEnRoute = loc?.status === 'en_route';
+                  const currentDriverEta = loc?.etaMinutes;
+                  const currentDriverDirection = loc?.direction;
+
+                  return isDriverEnRoute ? (
+                    <div className="card" style={{ padding: '30px 20px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+                        <div className="pulsing-glow" style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '16px', borderRadius: '50%' }}>
+                          <Navigation size={32} color="var(--accent)" />
+                        </div>
+                      </div>
+
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#fff' }}>
+                        {lang === 'he' ? 'נסיעה פעילה בעיצומה' : 'Active trip in progress'}
+                      </h3>
+                      
+                      <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 'bold', marginBottom: '24px' }}>
+                        {currentDriverDirection === 'to_ohel' 
+                          ? (lang === 'he' ? 'מסלול: מ-770 לאוהל חב"ד ➔' : 'Route: From 770 to Chabad Ohel ➔')
+                          : (lang === 'he' ? 'מסלול: מהאוהל ל-770 ➔' : 'Route: From Ohel to 770 ➔')
+                        }
+                      </p>
+
+                      {/* Google Maps Navigation button */}
+                      <a 
+                        href={currentDriverDirection === 'to_ohel' 
+                          ? "https://www.google.com/maps/dir/?api=1&destination=Chabad+Ohel" 
+                          : "https://www.google.com/maps/dir/?api=1&destination=770+Eastern+Parkway"
+                        }
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary" 
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          fontSize: '14px', 
+                          marginBottom: '20px', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          gap: '8px',
+                          background: 'rgba(255,255,255,0.05)',
+                          borderColor: 'var(--border-color)',
+                          color: '#fff',
+                          textDecoration: 'none'
+                        }}
+                      >
+                        <Map size={16} />
+                        {lang === 'he' ? 'פתח ניווט ב-Google Maps' : 'Open Google Maps Navigation'}
+                      </a>
+
+                      {/* Estimated Arrival Time (ETA) Slider/Selection */}
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginBottom: '24px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px' }}>
+                          {lang === 'he' ? 'עדכן זמן הגעה משוער (דקות):' : 'Update Estimated Arrival (minutes):'}
+                        </h4>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '12px' }}>
+                          {[15, 30, 45, 60].map(mins => (
+                            <button
+                              key={mins}
+                              type="button"
+                              onClick={() => {
+                                dbService.updateDriverEta(currentUser.id, mins);
+                                triggerToast(lang === 'he' ? `זמן הגעה עודכן ל-${mins} דקות` : `ETA updated to ${mins} minutes`, 'success');
+                              }}
+                              className={`btn ${currentDriverEta === mins ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ 
+                                fontSize: '12px', 
+                                padding: '8px 2px',
+                                background: currentDriverEta === mins ? 'var(--accent)' : '',
+                                color: currentDriverEta === mins ? '#000' : '',
+                                borderColor: currentDriverEta === mins ? 'var(--accent)' : 'var(--border-color)'
+                              }}
+                            >
+                              {mins} {lang === 'he' ? "דק'" : "m"}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input 
+                            type="number"
+                            placeholder={lang === 'he' ? "דקות אחר..." : "Other mins..."}
+                            value={customEtaInput || ''}
+                            onChange={(e) => setCustomEtaInput(parseInt(e.target.value) || 0)}
+                            style={{
+                              flex: 1,
+                              background: 'rgba(255,255,255,0.05)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              padding: '8px 12px',
+                              color: '#fff',
+                              fontSize: '13px'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (customEtaInput > 0) {
+                                dbService.updateDriverEta(currentUser.id, customEtaInput);
+                                triggerToast(lang === 'he' ? `זמן הגעה עודכן ל-${customEtaInput} דקות` : `ETA updated to ${customEtaInput} minutes`, 'success');
+                                setCustomEtaInput(0);
+                              }
+                            }}
+                            className="btn btn-primary"
+                            style={{ padding: '8px 16px', fontSize: '13px' }}
+                          >
+                            {lang === 'he' ? 'עדכן' : 'Update'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* End Trip button */}
+                      <button 
+                        onClick={() => {
+                          handleDriverStatusChange('idle');
+                          triggerToast(lang === 'he' ? 'הנסיעה הסתיימה בהצלחה' : 'Trip ended successfully', 'success');
+                        }}
+                        className="btn btn-primary" 
+                        style={{ 
+                          width: '100%', 
+                          padding: '14px', 
+                          fontSize: '15px', 
+                          fontWeight: 'bold',
+                          background: 'var(--success)',
+                          color: '#000',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <CheckCircle size={16} />
+                        {lang === 'he' ? 'הגעתי ליעד (סיים נסיעה)' : 'Arrived at Destination (End Trip)'}
+                      </button>
+                    </div>
+                  ) : (
                     <div className="card" style={{ padding: '30px 20px', textAlign: 'center' }}>
                       <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '20px', color: '#fff' }}>{t('yourPersonalQrTitle')}</h3>
                       
@@ -2162,7 +2303,7 @@ export default function App() {
                             style={{ 
                               fontSize: '12px', 
                               padding: '10px 4px', 
-                              borderColor: activeLocations.find(l => l.id === currentUser.id)?.status === 'idle' ? 'var(--success)' : ''
+                              borderColor: loc?.status === 'idle' ? 'var(--success)' : ''
                             }}
                           >
                             {t('statusIdle')}
@@ -2174,7 +2315,7 @@ export default function App() {
                             style={{ 
                               fontSize: '12px', 
                               padding: '10px 4px',
-                              borderColor: activeLocations.find(l => l.id === currentUser.id)?.status === 'en_route' ? 'var(--accent)' : ''
+                              borderColor: loc?.status === 'en_route' ? 'var(--accent)' : ''
                             }}
                           >
                             {t('statusEnRoute')}
@@ -2186,7 +2327,7 @@ export default function App() {
                             style={{ 
                               fontSize: '12px', 
                               padding: '10px 4px',
-                              borderColor: activeLocations.find(l => l.id === currentUser.id)?.status === 'break' ? 'var(--danger)' : ''
+                              borderColor: loc?.status === 'break' ? 'var(--danger)' : ''
                             }}
                           >
                             {t('statusBreak')}
@@ -2204,16 +2345,16 @@ export default function App() {
                             padding: '12px', 
                             fontSize: '14px', 
                             fontWeight: 'bold',
-                            boxShadow: (activeLocations.find(l => l.id === currentUser.id) as any)?.sosAlert ? '0 0 12px rgba(239,68,68,0.5)' : '',
+                            boxShadow: (loc as any)?.sosAlert ? '0 0 12px rgba(239,68,68,0.5)' : '',
                           }}
                         >
                           <AlertTriangle size={16} />
-                          { (activeLocations.find(l => l.id === currentUser.id) as any)?.sosAlert ? t('cancelSosButton') : t('triggerSosButton') }
+                          { (loc as any)?.sosAlert ? t('cancelSosButton') : t('triggerSosButton') }
                         </button>
                       </div>
                     </div>
-                  </>
-                )}
+                  );
+                })()}
 
                 {activeTab === 'my-trips' && (
                   <div className="card" style={{ padding: '20px' }}>
@@ -2264,75 +2405,102 @@ export default function App() {
                       )}
                     </div>
 
+                    {/* Toggle past history button */}
+                    <button
+                      onClick={() => setShowDriverHistory(!showDriverHistory)}
+                      className="btn btn-secondary"
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        fontSize: '13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        background: 'rgba(255,255,255,0.03)',
+                        borderColor: 'var(--border-color)',
+                        color: '#fff',
+                        marginTop: '16px'
+                      }}
+                    >
+                      <Calendar size={14} />
+                      {showDriverHistory 
+                        ? (lang === 'he' ? 'הסתר היסטוריית נסיעות קודמות' : 'Hide Past Trips History')
+                        : (lang === 'he' ? 'הצג היסטוריית נסיעות קודמות' : 'Show Past Trips History')
+                      }
+                    </button>
+
                     {/* Daily History Groups */}
-                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                        {lang === 'he' ? 'היסטוריית נסיעות יומית' : 'Daily Trips History'}
-                      </h4>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {myTripsHistoryByDay.length === 0 ? (
-                          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                            {lang === 'he' ? 'אין היסטוריית נסיעות' : 'No trips history'}
-                          </div>
-                        ) : (
-                          myTripsHistoryByDay.map(group => {
-                            const isExpanded = !!expandedDays[group.date];
-                            return (
-                              <div key={group.date} style={{ background: 'rgba(255, 255, 255, 0.01)', borderRadius: '8px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-                                <div 
-                                  onClick={() => toggleDayExpanded(group.date)}
-                                  style={{ 
-                                    padding: '12px 14px', 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'center', 
-                                    cursor: 'pointer',
-                                    background: 'rgba(255,255,255,0.02)'
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                                    <strong style={{ fontSize: '13px', color: '#fff' }}>
-                                      {formatHebrewAndGregorianDate(group.date)}
-                                    </strong>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      {lang === 'he' ? `${group.tripsCount} סבבים | סה"ך ${group.passengersSum} נוסעים` : `${group.tripsCount} trips | ${group.passengersSum} passengers`}
-                                    </span>
+                    {showDriverHistory && (
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginTop: '20px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                          {lang === 'he' ? 'היסטוריית נסיעות יומית' : 'Daily Trips History'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {myTripsHistoryByDay.length === 0 ? (
+                            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                              {lang === 'he' ? 'אין היסטוריית נסיעות' : 'No trips history'}
+                            </div>
+                          ) : (
+                            myTripsHistoryByDay.map(group => {
+                              const isExpanded = !!expandedDays[group.date];
+                              return (
+                                <div key={group.date} style={{ background: 'rgba(255, 255, 255, 0.01)', borderRadius: '8px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                                  <div 
+                                    onClick={() => toggleDayExpanded(group.date)}
+                                    style={{ 
+                                      padding: '12px 14px', 
+                                      display: 'flex', 
+                                      justifyContent: 'space-between', 
+                                      alignItems: 'center', 
+                                      cursor: 'pointer',
+                                      background: 'rgba(255,255,255,0.02)'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                      <strong style={{ fontSize: '13px', color: '#fff' }}>
+                                        {formatHebrewAndGregorianDate(group.date)}
+                                      </strong>
+                                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                        {lang === 'he' ? `${group.tripsCount} סבבים | סה"ך ${group.passengersSum} נוסעים` : `${group.tripsCount} trips | ${group.passengersSum} passengers`}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        {isExpanded ? '▲' : '▼'}
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                      {isExpanded ? '▲' : '▼'}
-                                    </span>
-                                  </div>
+                                  
+                                  {isExpanded && (
+                                    <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.1)' }}>
+                                      {group.trips.map(trip => (
+                                        <div key={trip.id} style={{ background: 'rgba(255, 255, 255, 0.01)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                            <strong style={{ color: '#fff', fontSize: '12px', display: 'block' }}>
+                                              {t('departureFrom', { loc: trip.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel') })}
+                                            </strong>
+                                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                              {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' }), dispatcher: trip.dispatcherName })}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="badge badge-success" style={{ fontSize: '11px', padding: '2px 6px' }}>
+                                              {trip.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                                
-                                {isExpanded && (
-                                  <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.1)' }}>
-                                    {group.trips.map(trip => (
-                                      <div key={trip.id} style={{ background: 'rgba(255, 255, 255, 0.01)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
-                                          <strong style={{ color: '#fff', fontSize: '12px', display: 'block' }}>
-                                            {t('departureFrom', { loc: trip.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel') })}
-                                          </strong>
-                                          <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                            {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' }), dispatcher: trip.dispatcherName })}
-                                          </span>
-                                        </div>
-                                        <div>
-                                          <span className="badge badge-success" style={{ fontSize: '11px', padding: '2px 6px' }}>
-                                            {trip.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
