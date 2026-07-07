@@ -732,15 +732,21 @@ export default function App() {
 
   // Deep linking simulator URL query scanner
   useEffect(() => {
+    if (!currentUser || currentUser.role !== 'dispatcher' || users.length === 0) return;
+    
     const params = new URLSearchParams(window.location.search);
     const driverIdParam = params.get('driverId');
-    if (driverIdParam && currentUser?.role === 'dispatcher') {
-      setSelectedDriverId(driverIdParam);
-      setActiveTab('scan');
-      triggerToast(t('externalQrSuccess'), 'success');
-      window.history.replaceState({}, document.title, window.location.pathname);
+    if (driverIdParam) {
+      const matched = users.find(u => u.id === driverIdParam && u.role === 'driver');
+      if (matched) {
+        setScannerModalDriver(matched);
+        setScannerModalPassengers(0);
+        setActiveTab('scan');
+        triggerToast(t('externalQrSuccess'), 'success');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     }
-  }, [currentUser]);
+  }, [currentUser, users]);
 
   // In-app QR Code Scanner camera handler (Using Html5Qrcode directly for instant back-camera load)
   useEffect(() => {
@@ -1669,7 +1675,10 @@ export default function App() {
               </button>
             </form>
 
-            {/* Cloud connection status indicator removed */}
+            {/* Version indicator */}
+            <div style={{ marginTop: '24px', fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
+              {lang === 'he' ? 'גרסה 2.3 (תגובת סריקה מהירה)' : 'Version 2.3 (Instant Scan Response)'}
+            </div>
           </div>
         </div>
       ) : (
