@@ -65,7 +65,7 @@ export const LOCATIONS = {
 };
 
 // Fallback Default Web App URL
-const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbwaHPeJ20BKaveyGzKe4MEUAoiyP8q55m2S4J8oJyv3Fy1whWfbwnBEcZ1C5UMJRxUI/exec";
+const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbwhc_Mjh_8nyu-wikew74nKe0DUJu9hLRo9eJCLwfoAApS9enUrSpTfS7f0idwyVAIY/exec";
 
 // Default Pre-Populated Users (Used as offline/local fallback)
 const DEFAULT_USERS: User[] = [
@@ -108,7 +108,8 @@ class DBService {
         !rawConfig.googleSheetsUrl.includes("AKfycbzgGtU1PUlLNqCfbol9b68tXDo5m6vIBZBdrIqsonDZml8dVCnTUHkTPqC_-y6O_Jl1") &&
         !rawConfig.googleSheetsUrl.includes("AKfycbwCIg6Npl01Hk8_Y2T9ZIBYRPlHXtJfO6G_a4DVouHieHovoOMqZxE01X8mgJKsRD1U") &&
         !rawConfig.googleSheetsUrl.includes("AKfycbzWBuis76UbkEziZmnA0jzspOLRtLfbunq5PtS9RtTpew-nkxCAmkX5hhz_fBliJTrU") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbyuuijzy2EcEYHREeIodzvl_h4xmSHkdCK948LOZvJCo9oF65KN8OH8G6MDmynjxoFt")
+        !rawConfig.googleSheetsUrl.includes("AKfycbyuuijzy2EcEYHREeIodzvl_h4xmSHkdCK948LOZvJCo9oF65KN8OH8G6MDmynjxoFt") &&
+        !rawConfig.googleSheetsUrl.includes("AKfycbwaHPeJ20BKaveyGzKe4MEUAoiyP8q55m2S4J8oJyv3Fy1whWfbwnBEcZ1C5UMJRxUI")
         ? rawConfig.googleSheetsUrl 
         : DEFAULT_SHEETS_URL,
       googleMapsApiKey: rawConfig.googleMapsApiKey || '',
