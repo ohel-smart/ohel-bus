@@ -717,6 +717,9 @@ export default function App() {
     handleUpdate();
     const unsubscribe = dbService.subscribe(handleUpdate);
 
+    // Periodic local refresh timer (forces React UI to update every 5 seconds for live countdowns)
+    const intervalId = setInterval(handleUpdate, 5000);
+
     // Initial config load
     const config = dbService.getConfig();
     setReportEmail(config.reportEmail || '');
@@ -727,7 +730,10 @@ export default function App() {
     setTwilioFromNumber(config.twilioFromNumber || '');
     setTwilioRecipientSms(config.twilioRecipientSms || '');
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Deep linking simulator URL query scanner
