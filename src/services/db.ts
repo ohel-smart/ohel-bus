@@ -58,10 +58,10 @@ export interface GlobalConfig {
   twilioRecipientSms?: string;
 }
 
-// Coordinates
+// Coordinates (Precise physical locations for GPS verification and Map routing)
 export const LOCATIONS = {
-  '770': { latitude: 40.6690, longitude: -73.9429, name: '770 (קראון הייטס)' },
-  'Ohel': { latitude: 40.7061, longitude: -73.7291, name: 'אוהל חב"ד (קווינס)' }
+  '770': { latitude: 40.6690, longitude: -73.9429, name: '770 Eastern Parkway' },
+  'Ohel': { latitude: 40.6860, longitude: -73.7374, name: 'Ohel Chabad Lubavitch' }
 };
 
 // Fallback Default Web App URL
