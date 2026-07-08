@@ -963,12 +963,11 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, currentUser, logicalToday]);
 
-  const lastTwoHoursScans = useMemo(() => {
-    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+  const todayScans = useMemo(() => {
     return scans
-      .filter(s => new Date(s.scannedAt).getTime() >= twoHoursAgo)
+      .filter(s => s.logicalDate === logicalToday)
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
-  }, [scans]);
+  }, [scans, logicalToday]);
 
   const myTripsHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'driver') return [];
@@ -2048,25 +2047,25 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Last 2 Hours Departures Schedule */}
+                    {/* Today's Departures Schedule */}
                     <div className="card" style={{ padding: '24px', textAlign: lang === 'he' ? 'right' : 'left' }}>
                       <h3 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, color: '#fff' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Clock size={18} color="var(--accent)" />
-                          <span>{lang === 'he' ? 'לו"ז יציאות (שעתיים אחרונות)' : 'Departures (Last 2 Hours)'}</span>
+                          <span>{lang === 'he' ? 'לו"ז יציאות להיום' : "Today's Departures"}</span>
                         </div>
                         <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                          {lastTwoHoursScans.length}
+                          {todayScans.length}
                         </span>
                       </h3>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-                        {lastTwoHoursScans.length === 0 ? (
+                        {todayScans.length === 0 ? (
                           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                            {lang === 'he' ? 'אין נסיעות בשעתיים האחרונות' : 'No departures in the last 2 hours'}
+                            {lang === 'he' ? 'אין נסיעות היום' : 'No departures today'}
                           </div>
                         ) : (
-                          lastTwoHoursScans.map(scan => (
+                          todayScans.map(scan => (
                             <div 
                               key={scan.id} 
                               style={{ 
