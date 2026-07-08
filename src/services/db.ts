@@ -347,7 +347,7 @@ class DBService {
     // Calculate expected arrival time clock string
     const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
     const arrivalTime = new Date(startTime + (etaMinutes * 60000));
-    const expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    const expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
 
     const newScan: Scan = {
       ...scanData,

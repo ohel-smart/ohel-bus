@@ -2289,10 +2289,10 @@ export default function App() {
 
                 <div style={{ textAlign: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', fontFamily: 'monospace', display: 'block' }}>
-                    {currentLiveTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {currentLiveTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/New_York' })}
                   </span>
                   <span style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block' }}>
-                    {currentLiveTime.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    {currentLiveTime.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/New_York' })}
                   </span>
                 </div>
 
@@ -2368,7 +2368,7 @@ export default function App() {
                           {(() => {
                             const startTime = new Date(loc?.scannedAt || loc?.updatedAt || new Date()).getTime();
                             const arrivalTime = new Date(startTime + ((currentDriverEta || 28) * 60000));
-                            return arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+                            return arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
                           })()}
                         </strong>
                       </div>
