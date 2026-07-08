@@ -599,6 +599,14 @@ export default function App() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [activeLocations, setActiveLocations] = useState<ActiveLocation[]>([]);
   const [isOffline, setIsOffline] = useState(false);
+  const [currentLiveTime, setCurrentLiveTime] = useState<Date>(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentLiveTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Customizable Glassmorphism values
   const [glassOpacity, setGlassOpacity] = useState(() => {
@@ -1023,7 +1031,9 @@ export default function App() {
     return activeLocations
       .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_770')
       .map(loc => {
-        const matchingScan = scans.find(s => s.driverId === loc.id);
+        const driverScans = scans.filter(s => s.driverId === loc.id);
+        driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+        const matchingScan = driverScans[0];
         const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
         const etaDuration = loc.etaMinutes || 28;
         const arrivalTimeMs = startTime + (etaDuration * 60000);
@@ -1040,7 +1050,9 @@ export default function App() {
     return activeLocations
       .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_ohel')
       .map(loc => {
-        const matchingScan = scans.find(s => s.driverId === loc.id);
+        const driverScans = scans.filter(s => s.driverId === loc.id);
+        driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+        const matchingScan = driverScans[0];
         const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
         const etaDuration = loc.etaMinutes || 28;
         const arrivalTimeMs = startTime + (etaDuration * 60000);
@@ -1095,11 +1107,66 @@ export default function App() {
     if (!currentUser) return;
     let direction: Direction = null;
     if (status === 'en_route') {
-      const lastScan = scans.find(s => s.driverId === currentUser.id);
+      const driverScans = scans.filter(s => s.driverId === currentUser.id);
+      driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+      const lastScan = driverScans[0];
       direction = lastScan?.departureLocation === '770' ? 'to_ohel' : 'to_770';
     }
     dbService.updateDriverTripState(currentUser.id, status, direction);
     triggerToast(t('statusUpdated', { status: status === 'idle' ? t('statusIdle') : status === 'break' ? t('statusBreak') : t('statusEnRoute') }), 'success');
+  };
+
+  const handleEndTripWithGpsCheck = (loc: any) => {
+    if (!loc) return;
+    
+    triggerToast(lang === 'he' ? 'בודק מיקום GPS נוכחי...' : 'Checking current GPS location...');
+    
+    if (!navigator.geolocation) {
+      triggerToast(lang === 'he' ? 'גישת GPS אינה נתמכת בדפדפן זה!' : 'GPS is not supported by this browser!', 'danger');
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+        
+        // Find destination coordinates
+        const dest = loc.direction === 'to_ohel' ? LOCATIONS['Ohel'] : LOCATIONS['770'];
+        
+        // Calculate distance in km
+        const R = 6371; // Earth radius in km
+        const dLat = (dest.latitude - userLat) * Math.PI / 180;
+        const dLon = (dest.longitude - userLng) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(userLat * Math.PI / 180) * Math.cos(dest.latitude * Math.PI / 180) * 
+          Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distanceKm = R * c;
+        
+        if (distanceKm > 1.0) {
+          const distanceMsg = lang === 'he' 
+            ? `אינך ברדיוס ההגעה! מרחק נוכחי: ${distanceKm.toFixed(2)} ק"מ מהיעד. עליך להיות במרחק של פחות מ-1 ק"מ כדי לאשר הגעה.`
+            : `You are not within range! Current distance: ${distanceKm.toFixed(2)} km. You must be under 1 km to confirm arrival.`;
+          alert(distanceMsg);
+          triggerToast(lang === 'he' ? 'אישור ההגעה נכשל - מחוץ לרדיוס!' : 'Arrival confirmation failed - out of range!', 'danger');
+        } else {
+          // Success! End the trip
+          handleDriverStatusChange('idle');
+          triggerToast(lang === 'he' ? 'הנסיעה הסתיימה בהצלחה!' : 'Trip ended successfully!', 'success');
+        }
+      },
+      (error) => {
+        console.error("GPS Error:", error);
+        const errorMsg = lang === 'he'
+          ? 'שגיאת מיקום: אנא ודא שהפעלת GPS ואשר גישת מיקום בדפדפן!'
+          : 'Location error: Please ensure GPS is enabled and allow location permission!';
+        alert(errorMsg);
+        triggerToast(lang === 'he' ? 'נכשל בקבלת מיקום GPS!' : 'Failed to retrieve GPS location!', 'danger');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const handleSOSClick = () => {
@@ -2220,6 +2287,15 @@ export default function App() {
                   <strong style={{ fontSize: '14px', color: '#fff' }}>{currentUser.name.replace(' (נהג)', '')}</strong>
                 </div>
 
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', fontFamily: 'monospace', display: 'block' }}>
+                    {currentLiveTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                  <span style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block' }}>
+                    {currentLiveTime.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </span>
+                </div>
+
                 {/* Language Switch Button */}
                 <button 
                   onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
@@ -2268,89 +2344,40 @@ export default function App() {
                   return (isDriverEnRoute && !shouldShowQrEvenEnRoute) ? (
                     <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                        <div className="pulsing-glow" style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '16px', borderRadius: '50%' }}>
-                          <Navigation size={32} color="var(--accent)" />
+                        <div className="pulsing-glow" style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '16px', borderRadius: '50%' }}>
+                          <Navigation size={32} color="#10b981" />
                         </div>
                       </div>
 
-                      <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#fff' }}>
-                        {lang === 'he' ? 'נסיעה פעילה בעיצומה' : 'Active trip in progress'}
+                      <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#fff' }}>
+                        {lang === 'he' ? 'הנהג בנסיעה' : 'Driver in Trip'}
                       </h3>
                       
-                      <p style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 'bold', marginBottom: '16px' }}>
+                      <p style={{ fontSize: '14px', color: 'var(--accent)', fontWeight: 'bold', marginBottom: '16px' }}>
                         {currentDriverDirection === 'to_ohel' 
-                          ? (lang === 'he' ? 'מסלול: מ-770 לאוהל חב"ד ➔' : 'Route: From 770 to Chabad Ohel ➔')
-                          : (lang === 'he' ? 'מסלול: מהאוהל ל-770 ➔' : 'Route: From Ohel to 770 ➔')
+                          ? (lang === 'he' ? 'בדרך מ-770 לאוהל חב"ד ➔' : 'En route: From 770 to Chabad Ohel ➔')
+                          : (lang === 'he' ? 'בדרך מהאוהל ל-770 ➔' : 'En route: From Ohel to 770 ➔')
                         }
                       </p>
 
-                      {/* Dynamic Google Maps Real-time ETA */}
                       <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                          {lang === 'he' ? 'זמן הגעה משוער (לפי מפות גוגל 🚗)' : 'Estimated Arrival (via Google Maps 🚗)'}
+                          {lang === 'he' ? 'שעת הגעה צפויה' : 'Expected Arrival Time'}
                         </span>
-                        <strong style={{ fontSize: '28px', color: 'var(--accent)', display: 'block', fontFamily: 'monospace' }}>
-                          {currentDriverEta !== undefined ? (() => {
+                        <strong style={{ fontSize: '24px', color: '#fff', display: 'block', fontFamily: 'monospace' }}>
+                          {(() => {
                             const startTime = new Date(loc?.scannedAt || loc?.updatedAt || new Date()).getTime();
-                            const arrivalTime = new Date(startTime + (currentDriverEta * 60000));
-                            const remainingMins = Math.max(0, Math.round((arrivalTime.getTime() - Date.now()) / 60000));
-                            return `${lang === 'he' ? 'זמן הגעה משוער: ' : 'Estimated Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} (${lang === 'he' ? `עוד כ-${remainingMins} דקות` : `approx. ${remainingMins} mins`})`;
-                          })() : (lang === 'he' ? 'מחשב...' : 'Calculating...')}
+                            const arrivalTime = new Date(startTime + ((currentDriverEta || 28) * 60000));
+                            return arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+                          })()}
                         </strong>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginTop: '4px' }}>
-                          {lang === 'he' ? 'זמן ההגעה מחושב במדויק וקבוע על פי שעת הסריקה' : 'Estimated arrival time is fixed based on original scan conditions'}
-                        </span>
-                      </div>
-
-                      {/* Real-time bus arrivals list instead of map */}
-                      <div className="card" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', marginBottom: '20px', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Clock size={14} color="var(--accent)" />
-                          {lang === 'he' ? 'לוח הגעת אוטובוסים פעילים' : 'Live Bus Arrivals Board'}
-                        </h4>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                          {activeLocations.filter(loc => loc.role === 'driver' && loc.status === 'en_route').length === 0 ? (
-                            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
-                              {lang === 'he' ? 'אין אוטובוסים פעילים בדרך' : 'No active buses en route'}
-                            </div>
-                          ) : (
-                            activeLocations
-                              .filter(loc => loc.role === 'driver' && loc.status === 'en_route')
-                              .map(arr => {
-                                const matchingScan = scans.find(s => s.driverId === arr.id);
-                                const passCount = matchingScan?.passengersCount || 0;
-                                const isToOhel = arr.direction === 'to_ohel';
-                                return (
-                                  <div key={arr.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', padding: '8px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>
-                                        {arr.name.replace(' (נהג)', '')}
-                                      </span>
-                                      <span style={{ fontSize: '9px', color: isToOhel ? 'var(--accent-route-ohel)' : 'var(--accent)', fontWeight: 'bold' }}>
-                                        {isToOhel ? (lang === 'he' ? '➔ לאוהל' : '➔ to Ohel') : (lang === 'he' ? '➔ ל-770' : '➔ to 770')}
-                                      </span>
-                                    </div>
-                                    <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
-                                      <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--accent)', marginRight: '6px' }}>
-                                        {arr.etaMinutes !== undefined ? `כ-${arr.etaMinutes} דק'` : (lang === 'he' ? 'מחשב...' : 'calc...')}
-                                      </span>
-                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                        ({passCount} {lang === 'he' ? 'נוסעים' : 'passengers'})
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                          )}
-                        </div>
                       </div>
 
                       {/* Google Maps Navigation button */}
                       <a 
                         href={currentDriverDirection === 'to_ohel' 
-                          ? "https://www.google.com/maps/dir/?api=1&destination=Chabad+Ohel" 
-                          : "https://www.google.com/maps/dir/?api=1&destination=770+Eastern+Parkway"
+                          ? "https://www.google.com/maps/dir/?api=1&destination=40.7061,-73.7291" 
+                          : "https://www.google.com/maps/dir/?api=1&destination=40.6690,-73.9429"
                         }
                         target="_blank" 
                         rel="noopener noreferrer"
@@ -2376,10 +2403,7 @@ export default function App() {
 
                       {/* End Trip button */}
                       <button 
-                        onClick={() => {
-                          handleDriverStatusChange('idle');
-                          triggerToast(lang === 'he' ? 'הנסיעה הסתיימה בהצלחה' : 'Trip ended successfully', 'success');
-                        }}
+                        onClick={() => handleEndTripWithGpsCheck(loc)}
                         className="btn btn-primary" 
                         style={{ 
                           width: '100%', 
@@ -2450,8 +2474,8 @@ export default function App() {
 
                 {activeTab === 'my-trips' && (
                   <div className="card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{t('myTripsTodayTitle')}</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', marginBottom: '16px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, whiteSpace: 'nowrap' }}>{t('myTripsTodayTitle')}</h3>
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                         {lang === 'he' ? `תאריך עבודה: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalDateLabel', { date: logicalToday })}
                       </span>
