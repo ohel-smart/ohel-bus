@@ -1992,11 +1992,7 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.etaMinutes !== undefined ? (() => {
-                                        const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
-                                        const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
-                                        return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
-                                      })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -2039,11 +2035,7 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.etaMinutes !== undefined ? (() => {
-                                        const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
-                                        const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
-                                        return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
-                                      })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -2661,11 +2653,7 @@ export default function App() {
                                       fontWeight: 'bold'
                                     }}
                                   >
-                                    {arr.etaMinutes !== undefined ? (() => {
-                                      const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
-                                      const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
-                                      return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
-                                    })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
                               </div>
@@ -2707,11 +2695,7 @@ export default function App() {
                                       fontWeight: 'bold'
                                     }}
                                   >
-                                    {arr.etaMinutes !== undefined ? (() => {
-                                      const startTime = new Date(arr.scannedAt || arr.updatedAt).getTime();
-                                      const arrivalTime = new Date(startTime + (arr.etaMinutes * 60000));
-                                      return `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`;
-                                    })() : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
                               </div>

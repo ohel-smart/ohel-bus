@@ -46,6 +46,7 @@ export interface ActiveLocation {
   lastEtaUpdateTime?: string;
   etaHistory?: number[];
   scannedAt?: string;
+  expectedArrivalTime?: string;
 }
 
 export interface GlobalConfig {
@@ -447,6 +448,7 @@ class DBService {
       let direction: Direction = null;
       let etaMinutes: number | undefined = undefined;
       let scannedAt: string | undefined = undefined;
+      let expectedArrivalTime: string | undefined = undefined;
       const actualArrivalTime = latestScan?.actualArrivalTime;
 
       if (latestScan && !actualArrivalTime) {
@@ -459,6 +461,7 @@ class DBService {
           direction = latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770';
           etaMinutes = Math.max(1, Math.round((endTime - now) / 60000));
           scannedAt = latestScan.scannedAt;
+          expectedArrivalTime = latestScan.expectedArrivalTime;
         }
       }
 
@@ -472,7 +475,8 @@ class DBService {
         direction,
         etaMinutes,
         updatedAt: latestScan?.scannedAt || new Date().toISOString(),
-        scannedAt
+        scannedAt,
+        expectedArrivalTime
       };
     });
   }
