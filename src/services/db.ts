@@ -325,14 +325,21 @@ class DBService {
 
   public getLogicalDate(dateStr: string = new Date().toISOString()): string {
     const date = new Date(dateStr);
-    const hours = date.getHours();
     
-    // 01:00 AM Rule
-    if (hours === 0) {
-      const yesterday = new Date(date.getTime() - 24 * 60 * 60 * 1000);
-      return yesterday.toISOString().split('T')[0];
-    }
-    return date.toISOString().split('T')[0];
+    // Format to YYYY-MM-DD in New York timezone (transitions exactly at midnight NY time)
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    const parts = formatter.formatToParts(date);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    
+    return `${year}-${month}-${day}`;
   }
 
   public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity'>) {

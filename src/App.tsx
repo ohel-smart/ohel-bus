@@ -909,8 +909,8 @@ export default function App() {
 
   // Logical Today (01:00 AM reset rule)
   const logicalToday = useMemo(() => {
-    return dbService.getLogicalDate();
-  }, [scans]);
+    return dbService.getLogicalDate(currentLiveTime.toISOString());
+  }, [scans, currentLiveTime]);
 
   // --- Scans Filters for Dashboard ---
   const filteredScans = useMemo(() => {
@@ -976,6 +976,7 @@ export default function App() {
     scans.forEach(scan => {
       if (scan.driverId !== currentUser.id) return;
       const date = scan.logicalDate;
+      if (date === logicalToday) return;
       if (!groups[date]) {
         groups[date] = { date, tripsCount: 0, passengersSum: 0, trips: [] };
       }
@@ -989,7 +990,7 @@ export default function App() {
         group.trips.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
         return group;
       });
-  }, [scans, currentUser]);
+  }, [scans, currentUser, logicalToday]);
 
   const myScansHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'dispatcher') return [];
@@ -997,6 +998,7 @@ export default function App() {
     scans.forEach(scan => {
       if (scan.dispatcherId !== currentUser.id) return;
       const date = scan.logicalDate;
+      if (date === logicalToday) return;
       if (!groups[date]) {
         groups[date] = { date, scansCount: 0, passengersSum: 0, scans: [] };
       }
@@ -1010,7 +1012,7 @@ export default function App() {
         group.scans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
         return group;
       });
-  }, [scans, currentUser]);
+  }, [scans, currentUser, logicalToday]);
 
 
 
