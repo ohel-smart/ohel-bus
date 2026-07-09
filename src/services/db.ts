@@ -62,7 +62,7 @@ export interface GlobalConfig {
 // Coordinates (Precise physical locations for GPS verification and Map routing)
 export const LOCATIONS = {
   '770': { latitude: 40.6690, longitude: -73.9429, name: '770 Eastern Parkway' },
-  'Ohel': { latitude: 40.6860, longitude: -73.7374, name: 'Ohel Chabad Lubavitch' }
+  'Ohel': { latitude: 40.686723, longitude: -73.737121, name: 'Ohel Chabad Lubavitch' }
 };
 
 // Fallback Default Web App URL
@@ -659,10 +659,25 @@ class DBService {
     if (!direction) return 0;
     const destination = direction === 'to_ohel' ? LOCATIONS['Ohel'] : LOCATIONS['770'];
     
-    // Check if Google Maps API Key is configured
     const config = this.getConfig() as any;
-    const apiKey = config.googleMapsApiKey;
+    const url = config.googleSheetsUrl;
     
+    // 1. Try Google Apps Script Server-Side Directions Service (No API key needed, no CORS issues)
+    if (url) {
+      try {
+        const queryUrl = `${url}${url.includes('?') ? '&' : '?'}action=getGoogleEta&origin=${lat},${lng}&destination=${destination.latitude},${destination.longitude}`;
+        const response = await fetch(queryUrl);
+        const data = await response.json();
+        if (data && typeof data.etaMinutes === 'number') {
+          return data.etaMinutes;
+        }
+      } catch (e) {
+        console.error("Failed to fetch Google Maps ETA from Apps Script:", e);
+      }
+    }
+    
+    // 2. Fallback to direct client-side Distance Matrix if key is provided (might hit CORS depending on API setup)
+    const apiKey = config.googleMapsApiKey;
     if (apiKey) {
       try {
         const response = await fetch(
@@ -680,7 +695,7 @@ class DBService {
       }
     }
     
-    // Fallback formula: Haversine distance * NYC winding coefficient / typical speed
+    // 3. Fallback formula: Haversine distance * NYC winding coefficient / typical speed
     const distanceKm = this.calculateHaversineDistance(lat, lng, destination.latitude, destination.longitude);
     const roadDistanceKm = distanceKm * 1.28;
     const averageSpeedKmh = 38; // ~24 mph
