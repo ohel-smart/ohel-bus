@@ -2332,7 +2332,6 @@ export default function App() {
                 {activeTab === 'qr' && (() => {
                   const loc = activeLocations.find(l => l.id === currentUser.id);
                   const isDriverEnRoute = loc?.status === 'en_route';
-                  const currentDriverEta = loc?.etaMinutes;
                   const currentDriverDirection = loc?.direction;
                   return (isDriverEnRoute && !shouldShowQrEvenEnRoute) ? (
                     <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
@@ -2358,11 +2357,7 @@ export default function App() {
                           {lang === 'he' ? 'שעת הגעה צפויה' : 'Expected Arrival Time'}
                         </span>
                         <strong style={{ fontSize: '24px', color: '#fff', display: 'block', fontFamily: 'monospace' }}>
-                          {(() => {
-                            const startTime = new Date(loc?.scannedAt || loc?.updatedAt || new Date()).getTime();
-                            const arrivalTime = new Date(startTime + ((currentDriverEta || 28) * 60000));
-                            return arrivalTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
-                          })()}
+                          {loc?.expectedArrivalTime || '--:--'}
                         </strong>
                       </div>
 
