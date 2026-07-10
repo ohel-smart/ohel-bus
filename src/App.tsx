@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
-import LiveMap from './components/LiveMap';
 import { Html5Qrcode } from 'html5-qrcode';
 import logo from './assets/logo.png';
 import './App.css';
@@ -2947,30 +2946,26 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Map & Live list grid */}
-                    <div className="dashboard-grid">
-                      <LiveMap 
-                        id="dispatcher-live-map"
-                        locations={activeLocations} 
-                        sosAlerts={sosAlerts}
-                        onClearSOS={handleClearSOS}
-                        lang={lang}
-                      />
-
-                      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '400px' }}>
-                        <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
-                          <Clock size={16} color="var(--accent)" />
-                          {t('fleetStatus')}
-                        </h3>
-                        
-                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {activeLocations.filter(loc => loc.role === 'driver').map(drv => {
+                    {/* Fleet Status (Live Tracking List) */}
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', margin: 0 }}>
+                        <Clock size={16} color="var(--accent)" />
+                        {t('fleetStatus')}
+                      </h3>
+                      
+                      <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {activeLocations.filter(loc => loc.role === 'driver').length === 0 ? (
+                          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                            {lang === 'he' ? 'אין נהגים רשומים במערכת' : 'No drivers registered in the system'}
+                          </div>
+                        ) : (
+                          activeLocations.filter(loc => loc.role === 'driver').map(drv => {
                             const isSOS = sosAlerts.some(a => a.id === drv.id);
                             return (
                               <div 
                                 key={drv.id} 
                                 style={{ 
-                                  padding: '10px 12px', 
+                                  padding: '12px 14px', 
                                   borderRadius: '8px', 
                                   border: '1px solid var(--border-color)', 
                                   background: isSOS ? 'rgba(239, 68, 68, 0.05)' : 'rgba(255,255,255,0.01)',
@@ -3003,7 +2998,7 @@ export default function App() {
                                         {lang === 'he' ? `זמן נסיעה נותר: כ-${drv.etaMinutes || 25} דקות` : `Remaining: ~${drv.etaMinutes || 25} min`}
                                       </span>
                                       <span style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                        {lang === 'he' ? '(לפי עומס תנועה)' : '(via Google Maps)'}
+                                        {lang === 'he' ? `(הגעה צפויה ב-${drv.expectedArrivalTime || '--:--'})` : `(Expected: ${drv.expectedArrivalTime || '--:--'})`}
                                       </span>
                                     </div>
                                   ) : (
@@ -3014,8 +3009,8 @@ export default function App() {
                                 </div>
                               </div>
                             );
-                          })}
-                        </div>
+                          })
+                        )}
                       </div>
                     </div>
                   </>
