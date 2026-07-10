@@ -2366,33 +2366,63 @@ export default function App() {
                         </strong>
                       </div>
 
-                      {/* Google Maps Navigation button */}
-                      <a 
-                        href={currentDriverDirection === 'to_ohel' 
-                          ? "https://www.google.com/maps/dir/?api=1&destination=40.7061,-73.7291" 
-                          : "https://www.google.com/maps/dir/?api=1&destination=40.6690,-73.9429"
-                        }
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary" 
-                        style={{ 
-                          width: '100%', 
-                          padding: '12px', 
-                          fontSize: '14px', 
-                          marginBottom: '16px', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          gap: '8px',
-                          background: 'rgba(255,255,255,0.05)',
-                          borderColor: 'var(--border-color)',
-                          color: '#fff',
-                          textDecoration: 'none'
-                        }}
-                      >
-                        <Map size={16} />
-                        {lang === 'he' ? 'פתח ניווט ב-Google Maps' : 'Open Google Maps Navigation'}
-                      </a>
+                      {/* Navigation Options Container */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                        {/* Google Maps Button */}
+                        <a 
+                          href={currentDriverDirection === 'to_ohel' 
+                            ? `https://www.google.com/maps/dir/?api=1&destination=${LOCATIONS['Ohel'].latitude},${LOCATIONS['Ohel'].longitude}` 
+                            : `https://www.google.com/maps/dir/?api=1&destination=${LOCATIONS['770'].latitude},${LOCATIONS['770'].longitude}`
+                          }
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary" 
+                          style={{ 
+                            padding: '10px 4px', 
+                            fontSize: '12px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: '6px',
+                            background: 'rgba(255,255,255,0.05)',
+                            borderColor: 'var(--border-color)',
+                            color: '#fff',
+                            textDecoration: 'none',
+                            borderRadius: '8px'
+                          }}
+                        >
+                          <Map size={14} />
+                          {lang === 'he' ? 'ניווט ב-Google' : 'Google Maps'}
+                        </a>
+
+                        {/* Waze Button */}
+                        <a 
+                          href={currentDriverDirection === 'to_ohel' 
+                            ? `https://waze.com/ul?ll=${LOCATIONS['Ohel'].latitude},${LOCATIONS['Ohel'].longitude}&navigate=yes` 
+                            : `https://waze.com/ul?ll=${LOCATIONS['770'].latitude},${LOCATIONS['770'].longitude}&navigate=yes`
+                          }
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="btn" 
+                          style={{ 
+                            padding: '10px 4px', 
+                            fontSize: '12px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: '6px',
+                            background: 'rgba(51, 204, 255, 0.15)',
+                            border: '1px solid rgba(51, 204, 255, 0.3)',
+                            color: '#33ccff',
+                            textDecoration: 'none',
+                            borderRadius: '8px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          <Navigation size={14} style={{ transform: 'rotate(45deg)' }} />
+                          {lang === 'he' ? 'ניווט ב-Waze' : 'Waze'}
+                        </a>
+                      </div>
 
                       {/* End Trip button */}
                       <button 

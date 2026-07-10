@@ -62,7 +62,7 @@ export interface GlobalConfig {
 // Coordinates (Precise physical locations for GPS verification and Map routing)
 export const LOCATIONS = {
   '770': { latitude: 40.6690, longitude: -73.9429, name: '770 Eastern Parkway' },
-  'Ohel': { latitude: 40.686723, longitude: -73.737121, name: 'Ohel Chabad Lubavitch' }
+  'Ohel': { latitude: 40.686559, longitude: -73.737622, name: 'Ohel Chabad Lubavitch' }
 };
 
 // Fallback Default Web App URL
