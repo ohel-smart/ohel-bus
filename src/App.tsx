@@ -1122,6 +1122,13 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, logicalToday]);
 
+  const activeDriversToday = useMemo(() => {
+    return activeLocations.filter(loc => 
+      loc.role === 'driver' && 
+      (loc.status === 'en_route' || todayScans.some(s => s.driverId === loc.id))
+    );
+  }, [activeLocations, todayScans]);
+
   const myTripsHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'driver') return [];
     const groups: { [date: string]: { date: string; tripsCount: number; passengersSum: number; trips: any[] } } = {};
@@ -3116,12 +3123,12 @@ export default function App() {
                       </h3>
                       
                       <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {activeLocations.filter(loc => loc.role === 'driver').length === 0 ? (
+                        {activeDriversToday.length === 0 ? (
                           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                            {lang === 'he' ? 'אין נהגים רשומים במערכת' : 'No drivers registered in the system'}
+                            {lang === 'he' ? 'אין נהגים פעילים היום' : 'No active drivers today'}
                           </div>
                         ) : (
-                          activeLocations.filter(loc => loc.role === 'driver').map(drv => {
+                          activeDriversToday.map(drv => {
                             const isSOS = sosAlerts.some(a => a.id === drv.id);
                             return (
                               <div 
