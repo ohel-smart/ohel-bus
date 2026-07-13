@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   MapPin, Users, Calendar, WifiOff, QrCode, LogOut, 
-  Plus, Trash, Edit, Search, AlertTriangle, Clock, Send, CheckCircle, 
+  Plus, Trash, Edit, Search, Clock, Send, CheckCircle, 
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map
 } from 'lucide-react';
@@ -1339,16 +1339,7 @@ export default function App() {
     );
   };
 
-  const handleSOSClick = () => {
-    if (!currentUser) return;
-    dbService.triggerSOS(currentUser.id);
-    const isSOSNow = dbService.getSOSAlerts().some(a => a.id === currentUser.id);
-    if (isSOSNow) {
-      triggerToast(t('sosTriggered'), 'danger');
-    } else {
-      triggerToast(t('sosCancelled'), 'success');
-    }
-  };
+
 
   // --- Manager Dashboard Actions ---
   const handleEditScanClick = (scan: Scan) => {
@@ -1810,15 +1801,7 @@ export default function App() {
     return rows.sort((a, b) => b.date.localeCompare(a.date));
   }, [scans, users, lang]);
 
-  // Active SOS Alerts
-  const sosAlerts = useMemo(() => {
-    return dbService.getSOSAlerts();
-  }, [activeLocations]);
 
-  const handleClearSOS = (driverId: string) => {
-    dbService.clearSOSAlert(driverId);
-    triggerToast(t('sosCancelled'), 'success');
-  };
 
   return (
     <div className="app-container">
@@ -2638,23 +2621,7 @@ export default function App() {
                         <br/>{t('scanGuidance2')}
                       </p>
 
-                      {/* SOS Emergency button */}
-                      <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '20px', paddingTop: '20px' }}>
-                        <button 
-                          onClick={handleSOSClick}
-                          className="btn btn-danger" 
-                          style={{ 
-                            width: '100%', 
-                            padding: '12px', 
-                            fontSize: '14px', 
-                            fontWeight: 'bold',
-                            boxShadow: sosAlerts.some(a => a.id === currentUser.id) ? '0 0 12px rgba(239,68,68,0.5)' : '',
-                          }}
-                        >
-                          <AlertTriangle size={16} />
-                          { sosAlerts.some(a => a.id === currentUser.id) ? t('cancelSosButton') : t('triggerSosButton') }
-                        </button>
-                      </div>
+                      {/* SOS Emergency button removed */}
                     </div>
                   );
                 })()}
@@ -3096,27 +3063,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* SOS Alert box */}
-                    {sosAlerts.length > 0 && (
-                      <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid var(--danger)', padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <AlertTriangle size={24} color="var(--danger)" />
-                          <div>
-                            <strong style={{ color: '#fff', fontSize: '15px' }}>{t('sosAlertBannerTitle')}</strong>
-                            <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                              {t('sosAlertBannerSubtitle', { names: sosAlerts.map(a => a.name).join(', ') })}
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          {sosAlerts.map(a => (
-                            <button key={a.id} onClick={() => handleClearSOS(a.id)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '11px' }}>
-                              {t('clearSosForDriverButton', { name: a.name })}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                     {/* SOS Alert box removed */}
 
                     {/* Fleet Status (Live Tracking List) */}
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
@@ -3132,7 +3079,6 @@ export default function App() {
                           </div>
                         ) : (
                           activeDriversToday.map(drv => {
-                            const isSOS = sosAlerts.some(a => a.id === drv.id);
                             return (
                               <div 
                                 key={drv.id} 
@@ -3140,8 +3086,7 @@ export default function App() {
                                   padding: '12px 14px', 
                                   borderRadius: '8px', 
                                   border: '1px solid var(--border-color)', 
-                                  background: isSOS ? 'rgba(239, 68, 68, 0.05)' : 'rgba(255,255,255,0.01)',
-                                  borderColor: isSOS ? 'rgba(239, 68, 68, 0.25)' : '',
+                                  background: 'rgba(255,255,255,0.01)',
                                   display: 'flex', 
                                   justifyContent: 'space-between', 
                                   alignItems: 'center' 
@@ -3150,7 +3095,6 @@ export default function App() {
                                 <div>
                                   <strong style={{ color: '#fff', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     {drv.name}
-                                    {isSOS && <span style={{ background: 'var(--danger)', color: '#fff', fontSize: '9px', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold' }}>SOS</span>}
                                   </strong>
                                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                                     {drv.status === 'break' ? t('statusBreak') : drv.status === 'en_route' ? t('statusEnRoute') : t('statusIdle')}
