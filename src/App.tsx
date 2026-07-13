@@ -2959,22 +2959,22 @@ export default function App() {
               
               {/* DESKTOP SIDEBAR MENU (Human designed feel) */}
               <aside className="desktop-sidebar">
-                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                  <img src={logo} alt="Ohel Bus Logo" style={{ height: '36px', width: 'auto', maxWidth: '120px' }} />
+                <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+                  <img src={logo} alt="Ohel Bus Logo" style={{ height: '42px', width: 'auto', display: 'block' }} />
                   <button 
                     onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
                     style={{ 
                       background: 'rgba(255,255,255,0.05)', 
                       border: '1px solid var(--border-color)', 
                       borderRadius: '6px',
-                      padding: '4px 8px',
-                      color: '#fff', 
+                      padding: '4px 10px',
+                      color: 'var(--text-secondary)', 
                       cursor: 'pointer', 
                       fontSize: '11px',
                       fontWeight: 'bold'
                     }}
                   >
-                    {lang === 'he' ? 'EN' : 'עב'}
+                    {lang === 'he' ? 'English' : 'עברית'}
                   </button>
                 </div>
 
