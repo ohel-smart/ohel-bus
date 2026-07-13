@@ -181,8 +181,17 @@ class DBService {
             .filter((s: Scan) => !deletedScans.includes(s.id))
             .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
             
-          this.scansCache = remoteScans;
-          localStorage.setItem('tp_scans', JSON.stringify(remoteScans));
+          // Merge local recent scans that haven't appeared in the remote response yet to avoid race conditions
+          const nowMs = Date.now();
+          const pendingScans = this.scansCache.filter((localScan: Scan) => {
+            const isRecent = (nowMs - new Date(localScan.scannedAt).getTime()) < 25000; // 25 seconds window
+            const inRemote = remoteScans.some((rs: Scan) => rs.id === localScan.id);
+            return isRecent && !inRemote;
+          });
+
+          const mergedScans = [...remoteScans, ...pendingScans];
+          this.scansCache = mergedScans;
+          localStorage.setItem('tp_scans', JSON.stringify(mergedScans));
         }
         // Active locations are computed dynamically in getActiveLocations() from users and scans
         this.notify();
