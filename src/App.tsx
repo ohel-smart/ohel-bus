@@ -721,6 +721,7 @@ export default function App() {
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioFromNumber, setTwilioFromNumber] = useState('');
   const [twilioRecipientSms, setTwilioRecipientSms] = useState('');
+  const [staffFilter, setStaffFilter] = useState<'driver' | 'dispatcher'>('driver');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
@@ -1128,6 +1129,14 @@ export default function App() {
       (loc.status === 'en_route' || todayScans.some(s => s.driverId === loc.id))
     );
   }, [activeLocations, todayScans]);
+
+  const filteredStaffList = useMemo(() => {
+    return users.filter(u => u.role === staffFilter);
+  }, [users, staffFilter]);
+
+  const adminUsersList = useMemo(() => {
+    return users.filter(u => u.role === 'admin');
+  }, [users]);
 
   const myTripsHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'driver') return [];
@@ -3810,18 +3819,58 @@ export default function App() {
 
                     {/* Users list card */}
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>
-                          {t('usersListTitle')}
-                        </h3>
-                        <button 
-                          onClick={handleExportUsersToCsv}
-                          className="btn btn-secondary"
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '12px' }}
-                        >
-                          <Download size={12} />
-                          {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
-                        </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>
+                            {t('usersListTitle')}
+                          </h3>
+                          <button 
+                            onClick={handleExportUsersToCsv}
+                            className="btn btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '12px' }}
+                          >
+                            <Download size={12} />
+                            {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
+                          </button>
+                        </div>
+                        
+                        {/* Role Filter Toggle */}
+                        <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)', alignSelf: 'flex-start' }}>
+                          <button
+                            type="button"
+                            onClick={() => setStaffFilter('driver')}
+                            style={{
+                              background: staffFilter === 'driver' ? 'var(--accent)' : 'transparent',
+                              color: staffFilter === 'driver' ? '#000' : 'var(--text-secondary)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '6px 16px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {lang === 'he' ? `נהגים (${users.filter(u => u.role === 'driver').length})` : `Drivers (${users.filter(u => u.role === 'driver').length})`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStaffFilter('dispatcher')}
+                            style={{
+                              background: staffFilter === 'dispatcher' ? 'var(--accent)' : 'transparent',
+                              color: staffFilter === 'dispatcher' ? '#000' : 'var(--text-secondary)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '6px 16px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {lang === 'he' ? `סדרנים (${users.filter(u => u.role === 'dispatcher').length})` : `Dispatchers (${users.filter(u => u.role === 'dispatcher').length})`}
+                          </button>
+                        </div>
                       </div>
 
                       {/* Desktop Table View */}
@@ -3838,7 +3887,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {users.map(u => (
+                            {filteredStaffList.map(u => (
                               <tr key={u.id}>
                                 <td><strong>{u.name}</strong></td>
                                 <td>{u.phone}</td>
@@ -3886,7 +3935,7 @@ export default function App() {
 
                       {/* Mobile Cards View */}
                       <div className="mobile-users-cards" style={{ flexDirection: 'column', gap: '12px' }}>
-                        {users.map(u => (
+                        {filteredStaffList.map(u => (
                           <div key={u.id} className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <strong style={{ fontSize: '15px', color: '#fff' }}>{u.name}</strong>
@@ -3933,6 +3982,63 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+
+                    {/* System Administrators Section */}
+                    {adminUsersList.length > 0 && (
+                      <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f43f5e', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <ShieldAlert size={16} color="#f43f5e" />
+                          {lang === 'he' ? 'מנהלי מערכת (מורשי גישה)' : 'System Administrators'}
+                        </h3>
+                        
+                        <div className="table-container">
+                          <table className="tp-table">
+                            <thead>
+                              <tr>
+                                <th>{t('userName')}</th>
+                                <th>{t('phoneLabel')}</th>
+                                <th style={{ textAlign: 'center' }}>{t('passcodeLabel')}</th>
+                                <th style={{ textAlign: 'center' }}>{t('actionsHeader')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {adminUsersList.map(u => (
+                                <tr key={u.id}>
+                                  <td><strong>{u.name}</strong></td>
+                                  <td>{u.phone}</td>
+                                  <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                                    <span style={{ background: '#1e293b', padding: '4px 8px', borderRadius: '4px', border: '1px solid #334155', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
+                                      {u.code}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                      <button 
+                                        onClick={() => handleEditUserClick(u)} 
+                                        className="btn btn-secondary" 
+                                        style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                      >
+                                        <Edit size={11} />
+                                        {t('edit')}
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteUser(u.id)} 
+                                        className="btn btn-danger" 
+                                        style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                        disabled={u.id === 'usr_admin' || u.id === 'usr_admin_rosenberg'} 
+                                      >
+                                        <Trash size={11} />
+                                        {t('delete')}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
