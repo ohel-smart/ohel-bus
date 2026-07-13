@@ -56,6 +56,7 @@ const TRANSLATIONS = {
     usersManagement: 'ניהול משתמשים',
     settings: 'הגדרות וחיבור ענן',
     managerWelcome: 'ברוך הבא, מנהל',
+    situationReport: 'ערכת מצב בזמן אמת',
     todaySummary: 'סיכום יומי מרוכז',
     activeDrivers: 'נהגים פעילים',
     activeDispatchers: 'סדרנים פעילים',
@@ -286,6 +287,7 @@ const TRANSLATIONS = {
     usersManagement: 'Staff & Drivers Directory',
     settings: 'Settings & Cloud Connection',
     managerWelcome: 'Welcome, Manager',
+    situationReport: 'Situation Report',
     todaySummary: 'Daily Summary Statistics',
     activeDrivers: 'Active Drivers',
     activeDispatchers: 'Active Dispatchers',
@@ -561,6 +563,63 @@ const formatHebrewAndGregorianDate = (dateInput: Date | string): string => {
   }
 };
 
+const formatActiveHours = (scannedAtTimes: string[], lang: string) => {
+  if (scannedAtTimes.length === 0) return lang === 'he' ? 'אין פעילות' : 'No activity';
+  
+  // Sort times chronologically
+  const sortedTimes = [...scannedAtTimes].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  
+  // Extract clean HH:mm strings in NY timezone
+  const timeStrings = sortedTimes.map(t => {
+    return new Date(t).toLocaleTimeString('he-IL', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/New_York'
+    });
+  });
+
+  // If there's only 1 scan
+  if (sortedTimes.length === 1) {
+    return timeStrings[0];
+  }
+
+  // Calculate gaps between consecutive scans (in minutes)
+  let isContinuous = true;
+  let maxGap = 0;
+  for (let i = 1; i < sortedTimes.length; i++) {
+    const prev = new Date(sortedTimes[i - 1]).getTime();
+    const curr = new Date(sortedTimes[i]).getTime();
+    const gapMins = (curr - prev) / 60000;
+    if (gapMins > maxGap) maxGap = gapMins;
+    if (gapMins > 45) { // If there is any gap larger than 45 minutes, it's not continuous
+      isContinuous = false;
+    }
+  }
+
+  // Also, we need at least 3 scans to call it "continuous" range
+  if (isContinuous && sortedTimes.length >= 3) {
+    const firstTime = timeStrings[0];
+    const lastTime = timeStrings[timeStrings.length - 1];
+    return lang === 'he' 
+      ? `מ-${firstTime} עד ${lastTime}` 
+      : `from ${firstTime} to ${lastTime}`;
+  } else {
+    // Sparse list: merge duplicate HH:mm strings
+    const uniqueTimes = Array.from(new Set(timeStrings));
+    if (uniqueTimes.length === 2) {
+      return lang === 'he' 
+        ? `${uniqueTimes[0]} ו-${uniqueTimes[1]}` 
+        : `${uniqueTimes[0]} and ${uniqueTimes[1]}`;
+    }
+    // If more, join with commas, and use "and"/"ו-" for the last element
+    const last = uniqueTimes.pop();
+    return lang === 'he'
+      ? `${uniqueTimes.join(', ')} ו-${last}`
+      : `${uniqueTimes.join(', ')} and ${last}`;
+  }
+};
+
 export default function App() {
   // Internationalization (Language Switcher)
   const [lang, setLang] = useState<'he' | 'en'>('he');
@@ -626,6 +685,7 @@ export default function App() {
   
   // App navigation tab
   const [activeTab, setActiveTab] = useState<string>('');
+  const [situationTimeframe, setSituationTimeframe] = useState<'today' | 'week' | 'month'>('today');
 
   // Toast notifications
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'danger' }[]>([]);
@@ -910,6 +970,63 @@ export default function App() {
   const logicalToday = useMemo(() => {
     return dbService.getLogicalDate(currentLiveTime.toISOString());
   }, [scans, currentLiveTime]);
+
+  // Real-time Situation Assessment Data
+  const situationData = useMemo(() => {
+    // 1. Filter scans by timeframe
+    const filtered = scans.filter(scan => {
+      if (situationTimeframe === 'today') {
+        return scan.logicalDate === logicalToday;
+      }
+      
+      const scanTime = new Date(scan.scannedAt).getTime();
+      const now = currentLiveTime.getTime();
+      
+      if (situationTimeframe === 'week') {
+        const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+        return scanTime >= sevenDaysAgo;
+      }
+      
+      if (situationTimeframe === 'month') {
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+        return scanTime >= thirtyDaysAgo;
+      }
+      
+      return false;
+    });
+
+    // 2. Aggregate statistics for Drivers
+    const driversMap: { [id: string]: { name: string; trips: number; passengers: number; times: string[] } } = {};
+    // 3. Aggregate statistics for Dispatchers
+    const dispatchersMap: { [id: string]: { name: string; scansCount: number; passengers: number; times: string[] } } = {};
+
+    filtered.forEach(scan => {
+      // Driver Grouping
+      if (scan.driverId) {
+        if (!driversMap[scan.driverId]) {
+          driversMap[scan.driverId] = { name: scan.driverName, trips: 0, passengers: 0, times: [] };
+        }
+        driversMap[scan.driverId].trips += 1;
+        driversMap[scan.driverId].passengers += (scan.passengersCount || 0);
+        driversMap[scan.driverId].times.push(scan.scannedAt);
+      }
+
+      // Dispatcher Grouping
+      if (scan.dispatcherId) {
+        if (!dispatchersMap[scan.dispatcherId]) {
+          dispatchersMap[scan.dispatcherId] = { name: scan.dispatcherName, scansCount: 0, passengers: 0, times: [] };
+        }
+        dispatchersMap[scan.dispatcherId].scansCount += 1;
+        dispatchersMap[scan.dispatcherId].passengers += (scan.passengersCount || 0);
+        dispatchersMap[scan.dispatcherId].times.push(scan.scannedAt);
+      }
+    });
+
+    return {
+      driversList: Object.values(driversMap),
+      dispatchersList: Object.values(dispatchersMap)
+    };
+  }, [scans, situationTimeframe, logicalToday, currentLiveTime]);
 
   // --- Scans Filters for Dashboard ---
   const filteredScans = useMemo(() => {
@@ -2832,6 +2949,14 @@ export default function App() {
                   </button>
                   
                   <button 
+                    onClick={() => setActiveTab('situation')} 
+                    className={`sidebar-item ${activeTab === 'situation' ? 'active' : ''}`}
+                  >
+                    <FileText size={16} />
+                    <span>{t('situationReport')}</span>
+                  </button>
+
+                  <button 
                     onClick={() => setActiveTab('history')} 
                     className={`sidebar-item ${activeTab === 'history' ? 'active' : ''}`}
                   >
@@ -3014,6 +3139,158 @@ export default function App() {
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* TAB: REAL-TIME SITUATION ASSESSMENT */}
+                {activeTab === 'situation' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Header Card */}
+                    <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <ShieldAlert size={22} color="var(--accent)" />
+                          {lang === 'he' ? 'הערכת מצב וסיכומי שעות' : 'Situation & Hours Report'}
+                        </h2>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {lang === 'he' 
+                            ? 'ריכוז סטטיסטיקות, שעות פעילות והספק של נהגים וסדרנים לפי טווחי זמן' 
+                            : 'Consolidated active hours, performance and metrics for drivers and dispatchers'}
+                        </p>
+                      </div>
+
+                      {/* Timeframe Selector Button Group */}
+                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '4px', gap: '4px' }}>
+                        <button
+                          onClick={() => setSituationTimeframe('today')}
+                          className={`btn ${situationTimeframe === 'today' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '8px 16px', fontSize: '12px', border: 'none', color: situationTimeframe === 'today' ? '#000' : '#fff' }}
+                        >
+                          {lang === 'he' ? 'היום' : 'Today'}
+                        </button>
+                        <button
+                          onClick={() => setSituationTimeframe('week')}
+                          className={`btn ${situationTimeframe === 'week' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '8px 16px', fontSize: '12px', border: 'none', color: situationTimeframe === 'week' ? '#000' : '#fff' }}
+                        >
+                          {lang === 'he' ? 'שבוע אחרון' : 'Last Week'}
+                        </button>
+                        <button
+                          onClick={() => setSituationTimeframe('month')}
+                          className={`btn ${situationTimeframe === 'month' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '8px 16px', fontSize: '12px', border: 'none', color: situationTimeframe === 'month' ? '#000' : '#fff' }}
+                        >
+                          {lang === 'he' ? 'חודש אחרון' : 'Last Month'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Content Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                      
+                      {/* Drivers Situation Card */}
+                      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                          <UserCheck size={18} color="var(--accent)" />
+                          {lang === 'he' ? 'סיכום נהגים' : 'Drivers Summary'}
+                        </h3>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {situationData.driversList.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                              {lang === 'he' ? 'אין פעילות נהגים מתועדת בטווח זמן זה' : 'No driver activity recorded for this period'}
+                            </div>
+                          ) : (
+                            situationData.driversList.map((drv, idx) => (
+                              <div 
+                                key={idx}
+                                style={{ 
+                                  padding: '14px', 
+                                  borderRadius: '8px', 
+                                  border: '1px solid var(--border-color)', 
+                                  background: 'rgba(255,255,255,0.01)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '8px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <strong style={{ fontSize: '14px', color: '#fff' }}>{drv.name}</strong>
+                                  <span className="badge badge-accent" style={{ fontSize: '11px', padding: '3px 8px' }}>
+                                    {lang === 'he' ? `${drv.trips} נסיעות` : `${drv.trips} Trips`}
+                                  </span>
+                                </div>
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                  <span>
+                                    {lang === 'he' ? `נוסעים שהוסעו:` : `Passengers:`}{' '}
+                                    <strong style={{ color: '#fff' }}>{drv.passengers}</strong>
+                                  </span>
+                                  <span>
+                                    {lang === 'he' ? `שעות פעילות:` : `Active Hours:`}{' '}
+                                    <strong style={{ color: '#fff', fontFamily: 'monospace' }}>
+                                      {formatActiveHours(drv.times, lang)}
+                                    </strong>
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Dispatchers Situation Card */}
+                      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                          <Users size={18} color="var(--accent)" />
+                          {lang === 'he' ? 'סיכום סדרנים' : 'Dispatchers Summary'}
+                        </h3>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {situationData.dispatchersList.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                              {lang === 'he' ? 'אין פעילות סדרנים מתועדת בטווח זמן זה' : 'No dispatcher activity recorded for this period'}
+                            </div>
+                          ) : (
+                            situationData.dispatchersList.map((disp, idx) => (
+                              <div 
+                                key={idx}
+                                style={{ 
+                                  padding: '14px', 
+                                  borderRadius: '8px', 
+                                  border: '1px solid var(--border-color)', 
+                                  background: 'rgba(255,255,255,0.01)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '8px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <strong style={{ fontSize: '14px', color: '#fff' }}>{disp.name}</strong>
+                                  <span className="badge badge-primary" style={{ fontSize: '11px', padding: '3px 8px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                                    {lang === 'he' ? `${disp.scansCount} סריקות` : `${disp.scansCount} Scans`}
+                                  </span>
+                                </div>
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                  <span>
+                                    {lang === 'he' ? `נוסעים שנרשמו:` : `Registered Passengers:`}{' '}
+                                    <strong style={{ color: '#fff' }}>{disp.passengers}</strong>
+                                  </span>
+                                  <span>
+                                    {lang === 'he' ? `שעות פעילות:` : `Active Hours:`}{' '}
+                                    <strong style={{ color: '#fff', fontFamily: 'monospace' }}>
+                                      {formatActiveHours(disp.times, lang)}
+                                    </strong>
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
                 )}
 
                 {/* TAB 2: GLOBAL ACTIVITY LOG */}
@@ -3817,6 +4094,13 @@ export default function App() {
                 >
                   <MapPin size={18} />
                   <span>{t('managerDashboard')}</span>
+                </button>
+                <button 
+                  onClick={() => setActiveTab('situation')} 
+                  className={`bottom-nav-item ${activeTab === 'situation' ? 'active' : ''}`}
+                >
+                  <FileText size={18} />
+                  <span>{t('situationReport')}</span>
                 </button>
                 <button 
                   onClick={() => setActiveTab('history')} 
