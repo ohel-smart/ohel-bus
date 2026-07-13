@@ -685,7 +685,15 @@ export default function App() {
   
   // App navigation tab
   const [activeTab, setActiveTab] = useState<string>('');
-  const [situationTimeframe, setSituationTimeframe] = useState<'today' | 'week' | 'month'>('today');
+  const [situationTimeframe, setSituationTimeframe] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [situationStartDate, setSituationStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [situationEndDate, setSituationEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   // Toast notifications
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'danger' }[]>([]);
@@ -991,6 +999,17 @@ export default function App() {
         const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
         return scanTime >= thirtyDaysAgo;
       }
+
+      if (situationTimeframe === 'custom') {
+        let match = true;
+        if (situationStartDate) {
+          match = match && scan.logicalDate >= situationStartDate;
+        }
+        if (situationEndDate) {
+          match = match && scan.logicalDate <= situationEndDate;
+        }
+        return match;
+      }
       
       return false;
     });
@@ -999,8 +1018,16 @@ export default function App() {
     const driversMap: { [id: string]: { name: string; trips: number; passengers: number; times: string[] } } = {};
     // 3. Aggregate statistics for Dispatchers
     const dispatchersMap: { [id: string]: { name: string; scansCount: number; passengers: number; times: string[] } } = {};
+    // 4. Daily breakdown
+    const dailyMap: { [date: string]: { date: string; trips: number; passengers: number } } = {};
+
+    let totalPassengers = 0;
+    let totalTrips = 0;
 
     filtered.forEach(scan => {
+      totalTrips += 1;
+      totalPassengers += (scan.passengersCount || 0);
+
       // Driver Grouping
       if (scan.driverId) {
         if (!driversMap[scan.driverId]) {
@@ -1020,13 +1047,27 @@ export default function App() {
         dispatchersMap[scan.dispatcherId].passengers += (scan.passengersCount || 0);
         dispatchersMap[scan.dispatcherId].times.push(scan.scannedAt);
       }
+
+      // Daily breakdown grouping
+      const dDate = scan.logicalDate;
+      if (!dailyMap[dDate]) {
+        dailyMap[dDate] = { date: dDate, trips: 0, passengers: 0 };
+      }
+      dailyMap[dDate].trips += 1;
+      dailyMap[dDate].passengers += (scan.passengersCount || 0);
     });
+
+    // Sort daily breakdown chronologically desc (newest date first)
+    const dailyList = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
 
     return {
       driversList: Object.values(driversMap),
-      dispatchersList: Object.values(dispatchersMap)
+      dispatchersList: Object.values(dispatchersMap),
+      dailyList,
+      totalPassengers,
+      totalTrips
     };
-  }, [scans, situationTimeframe, logicalToday, currentLiveTime]);
+  }, [scans, situationTimeframe, situationStartDate, situationEndDate, logicalToday, currentLiveTime]);
 
   // --- Scans Filters for Dashboard ---
   const filteredScans = useMemo(() => {
@@ -3159,34 +3200,153 @@ export default function App() {
                       </div>
 
                       {/* Timeframe Selector Button Group */}
-                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '4px', gap: '4px' }}>
+                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '4px', gap: '4px', flexWrap: 'wrap' }}>
                         <button
                           onClick={() => setSituationTimeframe('today')}
                           className={`btn ${situationTimeframe === 'today' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '8px 16px', fontSize: '12px', border: 'none', color: situationTimeframe === 'today' ? '#000' : '#fff' }}
+                          style={{ padding: '8px 14px', fontSize: '12px', border: 'none', color: situationTimeframe === 'today' ? '#000' : '#fff' }}
                         >
                           {lang === 'he' ? 'היום' : 'Today'}
                         </button>
                         <button
                           onClick={() => setSituationTimeframe('week')}
                           className={`btn ${situationTimeframe === 'week' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '8px 16px', fontSize: '12px', border: 'none', color: situationTimeframe === 'week' ? '#000' : '#fff' }}
+                          style={{ padding: '8px 14px', fontSize: '12px', border: 'none', color: situationTimeframe === 'week' ? '#000' : '#fff' }}
                         >
                           {lang === 'he' ? 'שבוע אחרון' : 'Last Week'}
                         </button>
                         <button
                           onClick={() => setSituationTimeframe('month')}
                           className={`btn ${situationTimeframe === 'month' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '8px 16px', fontSize: '12px', border: 'none', color: situationTimeframe === 'month' ? '#000' : '#fff' }}
+                          style={{ padding: '8px 14px', fontSize: '12px', border: 'none', color: situationTimeframe === 'month' ? '#000' : '#fff' }}
                         >
                           {lang === 'he' ? 'חודש אחרון' : 'Last Month'}
+                        </button>
+                        <button
+                          onClick={() => setSituationTimeframe('custom')}
+                          className={`btn ${situationTimeframe === 'custom' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '8px 14px', fontSize: '12px', border: 'none', color: situationTimeframe === 'custom' ? '#000' : '#fff' }}
+                        >
+                          {lang === 'he' ? 'טווח תאריכים' : 'Date Range'}
                         </button>
                       </div>
                     </div>
 
+                    {/* Custom Date Picker Fields */}
+                    {situationTimeframe === 'custom' && (
+                      <div className="card" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', padding: '16px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '150px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'מתאריך:' : 'From Date:'}</span>
+                          <input 
+                            type="date" 
+                            value={situationStartDate}
+                            onChange={(e) => setSituationStartDate(e.target.value)}
+                            style={{ 
+                              background: 'rgba(255,255,255,0.05)', 
+                              border: '1px solid var(--border-color)', 
+                              borderRadius: '6px', 
+                              color: '#fff', 
+                              padding: '8px 12px',
+                              fontSize: '13px'
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '150px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עד תאריך:' : 'To Date:'}</span>
+                          <input 
+                            type="date" 
+                            value={situationEndDate}
+                            onChange={(e) => setSituationEndDate(e.target.value)}
+                            style={{ 
+                              background: 'rgba(255,255,255,0.05)', 
+                              border: '1px solid var(--border-color)', 
+                              borderRadius: '6px', 
+                              color: '#fff', 
+                              padding: '8px 12px',
+                              fontSize: '13px'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Overview Cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                      <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ background: 'rgba(51, 204, 255, 0.1)', padding: '12px', borderRadius: '10px' }}>
+                          <Users size={24} color="var(--accent)" />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>
+                            {lang === 'he' ? 'סה"כ נוסעים בטווח' : 'Total Passengers in Range'}
+                          </span>
+                          <strong style={{ fontSize: '20px', color: '#fff' }}>{situationData.totalPassengers}</strong>
+                        </div>
+                      </div>
+                      <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '12px', borderRadius: '10px' }}>
+                          <Navigation size={24} color="#10b981" />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>
+                            {lang === 'he' ? 'סה"כ נסיעות בטווח' : 'Total Trips in Range'}
+                          </span>
+                          <strong style={{ fontSize: '20px', color: '#fff' }}>{situationData.totalTrips}</strong>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Content Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
                       
+                      {/* Daily Breakdown Card */}
+                      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                          <Calendar size={18} color="var(--accent)" />
+                          {lang === 'he' ? 'פירוט יומי' : 'Daily Breakdown'}
+                        </h3>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
+                          {situationData.dailyList.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                              {lang === 'he' ? 'אין פעילות מתועדת' : 'No recorded activity'}
+                            </div>
+                          ) : (
+                            situationData.dailyList.map((day, idx) => (
+                              <div 
+                                key={idx}
+                                style={{ 
+                                  padding: '12px 14px', 
+                                  borderRadius: '8px', 
+                                  border: '1px solid var(--border-color)', 
+                                  background: 'rgba(255,255,255,0.01)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <div>
+                                  <strong style={{ fontSize: '13px', color: '#fff' }}>
+                                    {lang === 'he' ? formatHebrewAndGregorianDate(day.date) : day.date}
+                                  </strong>
+                                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    {lang === 'he' ? `${day.trips} נסיעות` : `${day.trips} Trips`}
+                                  </span>
+                                </div>
+                                <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                  <span style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--accent)' }}>
+                                    {day.passengers}
+                                  </span>
+                                  <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-secondary)' }}>
+                                    {lang === 'he' ? 'נוסעים' : 'Passengers'}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
                       {/* Drivers Situation Card */}
                       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <h3 style={{ fontSize: '16px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
@@ -3194,7 +3354,7 @@ export default function App() {
                           {lang === 'he' ? 'סיכום נהגים' : 'Drivers Summary'}
                         </h3>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
                           {situationData.driversList.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                               {lang === 'he' ? 'אין פעילות נהגים מתועדת בטווח זמן זה' : 'No driver activity recorded for this period'}
@@ -3220,13 +3380,13 @@ export default function App() {
                                   </span>
                                 </div>
                                 
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', gap: '6px' }}>
                                   <span>
-                                    {lang === 'he' ? `נוסעים שהוסעו:` : `Passengers:`}{' '}
+                                    {lang === 'he' ? `נוסעים:` : `Passengers:`}{' '}
                                     <strong style={{ color: '#fff' }}>{drv.passengers}</strong>
                                   </span>
                                   <span>
-                                    {lang === 'he' ? `שעות פעילות:` : `Active Hours:`}{' '}
+                                    {lang === 'he' ? `שעות:` : `Hours:`}{' '}
                                     <strong style={{ color: '#fff', fontFamily: 'monospace' }}>
                                       {formatActiveHours(drv.times, lang)}
                                     </strong>
@@ -3245,7 +3405,7 @@ export default function App() {
                           {lang === 'he' ? 'סיכום סדרנים' : 'Dispatchers Summary'}
                         </h3>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
                           {situationData.dispatchersList.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                               {lang === 'he' ? 'אין פעילות סדרנים מתועדת בטווח זמן זה' : 'No dispatcher activity recorded for this period'}
@@ -3271,13 +3431,13 @@ export default function App() {
                                   </span>
                                 </div>
                                 
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', gap: '6px' }}>
                                   <span>
-                                    {lang === 'he' ? `נוסעים שנרשמו:` : `Registered Passengers:`}{' '}
+                                    {lang === 'he' ? `נוסעים:` : `Passengers:`}{' '}
                                     <strong style={{ color: '#fff' }}>{disp.passengers}</strong>
                                   </span>
                                   <span>
-                                    {lang === 'he' ? `שעות פעילות:` : `Active Hours:`}{' '}
+                                    {lang === 'he' ? `שעות:` : `Hours:`}{' '}
                                     <strong style={{ color: '#fff', fontFamily: 'monospace' }}>
                                       {formatActiveHours(disp.times, lang)}
                                     </strong>
