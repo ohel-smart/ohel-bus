@@ -721,6 +721,7 @@ export default function App() {
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioFromNumber, setTwilioFromNumber] = useState('');
   const [twilioRecipientSms, setTwilioRecipientSms] = useState('');
+  const [whatsappBotUrl, setWhatsappBotUrl] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
@@ -804,6 +805,7 @@ export default function App() {
     setTwilioAuthToken(config.twilioAuthToken || '');
     setTwilioFromNumber(config.twilioFromNumber || '');
     setTwilioRecipientSms(config.twilioRecipientSms || '');
+    setWhatsappBotUrl(config.whatsappBotUrl || '');
 
     return () => {
       unsubscribe();
@@ -3704,77 +3706,143 @@ export default function App() {
                 {activeTab === 'users' && (
                   <div className="users-grid">
                     
-                    {/* Add user form */}
-                    <div className="card">
-                      <h3 className="card-title">
-                        <Plus size={16} color="var(--accent)" />
-                        {t('addUser')}
-                      </h3>
-                      
-                      <form onSubmit={handleCreateUser}>
-                        <div className="form-group">
-                          <label className="form-label">{t('userName')}</label>
-                          <input 
-                            type="text" 
-                            className="form-input" 
-                            value={newUserName}
-                            onChange={(e) => setNewUserName(e.target.value)}
-                            placeholder={t('namePlaceholder')}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label">{t('phoneLabel')}</label>
-                          <input 
-                            type="tel" 
-                            className="form-input" 
-                            value={newUserPhone}
-                            onChange={(e) => setNewUserPhone(e.target.value)}
-                            placeholder={t('phonePlaceholder')}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label">{t('passcodeLabel')}</label>
-                          <input 
-                            type="text" 
-                            className="form-input" 
-                            value={newUserCode}
-                            onChange={(e) => setNewUserCode(e.target.value)}
-                            placeholder={t('enterPasscode')}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label">{t('userRole')}</label>
-                          <select 
-                            className="form-input form-select"
-                            value={newUserRole}
-                            onChange={(e) => setNewUserRole(e.target.value as any)}
-                          >
-                            <option value="driver">{t('roleDriver')}</option>
-                            <option value="dispatcher">{t('roleDispatcher')}</option>
-                            <option value="admin">{t('roleAdmin')}</option>
-                          </select>
-                        </div>
-
-                        {newUserRole === 'driver' && (
+                    {/* Add user form & Reset Data column */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                      <div className="card">
+                        <h3 className="card-title">
+                          <Plus size={16} color="var(--accent)" />
+                          {t('addUser')}
+                        </h3>
+                        
+                        <form onSubmit={handleCreateUser}>
                           <div className="form-group">
-                            <label className="form-label">{t('capacityLabel')}</label>
+                            <label className="form-label">{t('userName')}</label>
                             <input 
-                              type="number" 
+                              type="text" 
                               className="form-input" 
-                              value={newUserCapacity}
-                              onChange={(e) => setNewUserCapacity(Math.max(1, parseInt(e.target.value) || 15))}
+                              value={newUserName}
+                              onChange={(e) => setNewUserName(e.target.value)}
+                              placeholder={t('namePlaceholder')}
                             />
                           </div>
-                        )}
 
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
-                          <Plus size={14} />
-                          {t('createUser')}
+                          <div className="form-group">
+                            <label className="form-label">{t('phoneLabel')}</label>
+                            <input 
+                              type="tel" 
+                              className="form-input" 
+                              value={newUserPhone}
+                              onChange={(e) => setNewUserPhone(e.target.value)}
+                              placeholder={t('phonePlaceholder')}
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <label className="form-label">{t('passcodeLabel')}</label>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              value={newUserCode}
+                              onChange={(e) => setNewUserCode(e.target.value)}
+                              placeholder={t('enterPasscode')}
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <label className="form-label">{t('userRole')}</label>
+                            <select 
+                              className="form-input form-select"
+                              value={newUserRole}
+                              onChange={(e) => setNewUserRole(e.target.value as any)}
+                            >
+                              <option value="driver">{t('roleDriver')}</option>
+                              <option value="dispatcher">{t('roleDispatcher')}</option>
+                              <option value="admin">{t('roleAdmin')}</option>
+                            </select>
+                          </div>
+
+                          {newUserRole === 'driver' && (
+                            <div className="form-group">
+                              <label className="form-label">{t('capacityLabel')}</label>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                value={newUserCapacity}
+                                onChange={(e) => setNewUserCapacity(Math.max(1, parseInt(e.target.value) || 15))}
+                              />
+                            </div>
+                          )}
+
+                          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
+                            <Plus size={14} />
+                            {t('createUser')}
+                          </button>
+                        </form>
+                      </div>
+
+                      {/* WhatsApp Bot Connection Card */}
+                      <div className="card" style={{ border: '1px solid rgba(6, 182, 212, 0.25)', background: 'rgba(6, 182, 212, 0.02)' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px solid rgba(6, 182, 212, 0.15)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                          <Send size={16} />
+                          {lang === 'he' ? 'חיבור לבוט וואטסאפ בזמן אמת' : 'Real-time WhatsApp Bot Connection'}
+                        </h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '10px', marginBottom: '12px', lineHeight: '18px' }}>
+                          {lang === 'he' 
+                            ? 'הזן את כתובת שרת הבוט (למשל http://localhost:3001 או כתובת שרת ענן) כדי לשלוח התראת סינכרון יזומה לבוט מיידית בכל נסיעה.'
+                            : 'Enter the WhatsApp bot server URL (e.g., http://localhost:3001 or cloud server URL) to trigger sync notifications instantly.'}
+                        </p>
+                        <div className="form-group" style={{ marginBottom: '12px' }}>
+                          <input 
+                            type="url" 
+                            className="form-input" 
+                            placeholder="http://localhost:3001"
+                            value={whatsappBotUrl}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setWhatsappBotUrl(val);
+                              const currentConfig = dbService.getConfig();
+                              dbService.saveConfig({
+                                ...currentConfig,
+                                whatsappBotUrl: val
+                              });
+                            }}
+                            style={{ fontSize: '12px' }}
+                          />
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle size={12} />
+                          {lang === 'he' ? 'הגדרות החיבור נשמרות אוטומטית' : 'Connection settings saved automatically'}
+                        </div>
+                      </div>
+
+                      {/* Reset Data Card */}
+                      <div className="card" style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.02)' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#ef4444', borderBottom: '1px solid rgba(239, 68, 68, 0.15)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                          <Trash size={16} />
+                          {lang === 'he' ? 'איפוס וניקוי נתונים' : 'Data Reset operations'}
+                        </h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '10px', marginBottom: '12px', lineHeight: '18px' }}>
+                          {lang === 'he' 
+                            ? 'מחיקה של כל הנסיעות והסריקות בלבד (איפוס ליום חדש). רשימת הנהגים, המנהלים והסדרנים תישמר ללא שינוי.'
+                            : 'Clears all trip history and logs. Active user profiles (drivers, dispatchers, admins) remain untouched.'}
+                        </p>
+                        <button 
+                          onClick={() => {
+                            const confirmText = lang === 'he' 
+                              ? 'האם אתה בטוח שברצונך למחוק את כל היסטוריית הנסיעות והסריקות?\n(רשימת המשתמשים והנהגים תישמר)' 
+                              : 'Are you sure you want to delete all trip history?\n(Active users will be preserved)';
+                            if (window.confirm(confirmText)) {
+                              dbService.resetTrips();
+                              triggerToast(lang === 'he' ? 'היסטוריית הנסיעות נמחקה בהצלחה!' : 'Trip history deleted successfully!', 'success');
+                            }
+                          }} 
+                          className="btn btn-secondary" 
+                          style={{ width: '100%', borderColor: '#ef4444', color: '#ef4444', background: 'rgba(239, 68, 68, 0.05)', justifyContent: 'center' }}
+                        >
+                          <Trash size={14} style={{ marginRight: '6px' }} />
+                          {lang === 'he' ? 'מחק היסטוריית נסיעות (שמור נהגים ומשתמשים)' : 'Clear Trip History (Keep Users)'}
                         </button>
-                      </form>
+                      </div>
                     </div>
 
                     {/* Users list card */}
