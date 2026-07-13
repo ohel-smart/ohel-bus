@@ -721,7 +721,6 @@ export default function App() {
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioFromNumber, setTwilioFromNumber] = useState('');
   const [twilioRecipientSms, setTwilioRecipientSms] = useState('');
-  const [whatsappBotUrl, setWhatsappBotUrl] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
@@ -805,7 +804,6 @@ export default function App() {
     setTwilioAuthToken(config.twilioAuthToken || '');
     setTwilioFromNumber(config.twilioFromNumber || '');
     setTwilioRecipientSms(config.twilioRecipientSms || '');
-    setWhatsappBotUrl(config.whatsappBotUrl || '');
 
     return () => {
       unsubscribe();
@@ -3778,41 +3776,6 @@ export default function App() {
                             {t('createUser')}
                           </button>
                         </form>
-                      </div>
-
-                      {/* WhatsApp Bot Connection Card */}
-                      <div className="card" style={{ border: '1px solid rgba(6, 182, 212, 0.25)', background: 'rgba(6, 182, 212, 0.02)' }}>
-                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px solid rgba(6, 182, 212, 0.15)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                          <Send size={16} />
-                          {lang === 'he' ? 'חיבור לבוט וואטסאפ בזמן אמת' : 'Real-time WhatsApp Bot Connection'}
-                        </h3>
-                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '10px', marginBottom: '12px', lineHeight: '18px' }}>
-                          {lang === 'he' 
-                            ? 'הזן את כתובת שרת הבוט (למשל http://localhost:3001 או כתובת שרת ענן) כדי לשלוח התראת סינכרון יזומה לבוט מיידית בכל נסיעה.'
-                            : 'Enter the WhatsApp bot server URL (e.g., http://localhost:3001 or cloud server URL) to trigger sync notifications instantly.'}
-                        </p>
-                        <div className="form-group" style={{ marginBottom: '12px' }}>
-                          <input 
-                            type="url" 
-                            className="form-input" 
-                            placeholder="http://localhost:3001"
-                            value={whatsappBotUrl}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setWhatsappBotUrl(val);
-                              const currentConfig = dbService.getConfig();
-                              dbService.saveConfig({
-                                ...currentConfig,
-                                whatsappBotUrl: val
-                              });
-                            }}
-                            style={{ fontSize: '12px' }}
-                          />
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCircle size={12} />
-                          {lang === 'he' ? 'הגדרות החיבור נשמרות אוטומטית' : 'Connection settings saved automatically'}
-                        </div>
                       </div>
 
                       {/* Reset Data Card */}

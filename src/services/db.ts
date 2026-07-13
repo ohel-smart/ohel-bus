@@ -57,7 +57,6 @@ export interface GlobalConfig {
   twilioAuthToken?: string;
   twilioFromNumber?: string;
   twilioRecipientSms?: string;
-  whatsappBotUrl?: string;
 }
 
 // Coordinates (Precise physical locations for GPS verification and Map routing)
@@ -120,8 +119,7 @@ class DBService {
       twilioAccountSid: rawConfig.twilioAccountSid || '',
       twilioAuthToken: rawConfig.twilioAuthToken || '',
       twilioFromNumber: rawConfig.twilioFromNumber || '',
-      twilioRecipientSms: rawConfig.twilioRecipientSms || '',
-      whatsappBotUrl: rawConfig.whatsappBotUrl || ''
+      twilioRecipientSms: rawConfig.twilioRecipientSms || ''
     };
 
     let deletedUsers: string[] = [];
@@ -767,16 +765,6 @@ class DBService {
         },
         body: JSON.stringify({ action, data })
       }).catch(err => console.error("Google Sheets sync request error:", err));
-
-      // Trigger WhatsApp bot sync webhook if config has a whatsappBotUrl
-      if (config.whatsappBotUrl && (action === 'syncScan' || action === 'deleteScan' || action === 'resetTrips')) {
-        const cleanUrl = config.whatsappBotUrl.replace(/\/$/, '') + '/trigger-sync';
-        fetch(cleanUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, triggeredAt: new Date().toISOString() })
-        }).catch(err => console.error("WhatsApp bot webhook error:", err));
-      }
     } catch (e) {
       console.error("Google Sheets sync error:", e);
     }
