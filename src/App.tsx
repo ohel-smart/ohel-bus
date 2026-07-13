@@ -1090,12 +1090,8 @@ export default function App() {
     const todayScans = scans.filter(s => s.logicalDate === logicalToday);
     const totalPassengers = todayScans.reduce((sum, s) => sum + s.passengersCount, 0);
     
-    const scannedDriverIds = new Set(todayScans.map(s => s.driverId));
-    const activeLocationsDrivers = activeLocations.filter(loc => loc.role === 'driver' && loc.status !== 'break');
-    activeLocationsDrivers.forEach(d => scannedDriverIds.add(d.id));
-    
-    const scannedDispIds = new Set(todayScans.map(s => s.dispatcherId));
-    activeLocations.filter(loc => loc.role === 'dispatcher').forEach(disp => scannedDispIds.add(disp.id));
+    const scannedDriverIds = new Set(todayScans.map(s => s.driverId).filter(Boolean));
+    const scannedDispIds = new Set(todayScans.map(s => s.dispatcherId).filter(Boolean));
 
     return {
       tripsToday: todayScans.length,
