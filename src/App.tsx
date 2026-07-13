@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { 
-  MapPin, Users, Calendar, WifiOff, Settings, QrCode, LogOut, 
+  MapPin, Users, Calendar, WifiOff, QrCode, LogOut, 
   Plus, Trash, Edit, Search, AlertTriangle, Clock, Send, CheckCircle, 
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map
@@ -3016,13 +3016,7 @@ export default function App() {
                     <span>{t('usersManagement')}</span>
                   </button>
 
-                  <button 
-                    onClick={() => setActiveTab('settings')} 
-                    className={`sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
-                  >
-                    <Settings size={16} />
-                    <span>{t('settings')}</span>
-                  </button>
+                  {/* Settings button removed */}
                 </nav>
 
                 <div style={{ marginTop: 'auto' }}>
@@ -4279,13 +4273,7 @@ export default function App() {
                   <Users size={18} />
                   <span>{t('usersManagement')}</span>
                 </button>
-                <button 
-                  onClick={() => setActiveTab('settings')} 
-                  className={`bottom-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-                >
-                  <Settings size={18} />
-                  <span>{t('settings')}</span>
-                </button>
+                {/* Settings button removed */}
               </nav>
 
             </div>
