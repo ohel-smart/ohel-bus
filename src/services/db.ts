@@ -66,7 +66,7 @@ export const LOCATIONS = {
 };
 
 // Fallback Default Web App URL
-const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbx92x0urk2aCgtBuYCbVTkWNT9FHm_5dWOzVv8YXwE5qAh9PjUVKmEytHj0pdJ8_dhL/exec";
+const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbzcsY8BuSyeK0vXobpOuU9MGpW9QV_ryWXmYTk1148I0WvElXcaU6l0gyd19jE9w0Da/exec";
 
 // Default Pre-Populated Users (Used as offline/local fallback)
 const DEFAULT_USERS: User[] = [
@@ -114,8 +114,13 @@ class DBService {
         !rawConfig.googleSheetsUrl.includes("AKfycbwVnb0iH84jwtf6q2yk7JmuRQPV5HtQgBXtz1MWmyXoxi5J45UREctNsO_yCAsZzgZB") &&
         !rawConfig.googleSheetsUrl.includes("AKfycbwoM6FealKKCYwzHEGzwoehmg84HvzAmLQWG_bIZuNuajUfZIIJrdiWXgs1gDlCFxHr") &&
         !rawConfig.googleSheetsUrl.includes("AKfycbwtiL5SmzO-JNFkmsPkg2vYIhxh--FUE-37EcxIxufdNg49y__5V2wlIo8NWHSzYU2Q") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbz-3bwY36y1keWXwgk1t3MwwN4Y17YRofxm1yEGKdvOJcQz3TJPB79hWzZC_LkbtcI") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbyO_yVwkOXIzwUeMcywag26yOUiAUTGWfUdXszpwEfO22PD6-0XKJI8VogoeXyocXpT")
+        !rawConfig.googleSheetsUrl.includes("AKfycbz-3bwY36y1keWXwgk1t3MwwN4Y17YRofxm1yEGKdvOJcQz3TJPB79hWzZC_LkbtcI") && 
+        !rawConfig.googleSheetsUrl.includes("AKfycbyO_yVwkOXIzwUeMcywag26yOUiAUTGWfUdXszpwEfO22PD6-0XKJI8VogoeXyocXpT") &&
+        !rawConfig.googleSheetsUrl.includes("AKfycbx92x0urk2aCgtBuYCbVTkWNT9FHm_5dWOzVv8YXwE5qAh9PjUVKmEytHj0pdJ8_dhL") &&
+        !rawConfig.googleSheetsUrl.includes("AKfycbywEcrqnRH-BTGN0voKeXxugcUtRMJw2B4TNg1ckmb0ajBi0zD12Ju6FzZ4XDfX5EFn") &&
+        !rawConfig.googleSheetsUrl.includes("AKfycbwNpzAI4byP9Razq8FIr02Hc2YL8mdTnzFJ9PNAF5G35ufITP9ZdeQaxOJO2ZqaAFG0") &&
+        !rawConfig.googleSheetsUrl.includes("AKfycbzszN_VYZdw7kqY2nuUVw_ssduQhfMelvPlSZa6LsDzhW_-gsBIx7SM9M-sPBW0MYOQ") &&
+        !rawConfig.googleSheetsUrl.includes("AKfycbyc3BW65EOvMtOllITBJzEL0aU47jX-iAARz_TKlQMHz7h6zddh15tynhu_5Y_RmCQd")
         ? rawConfig.googleSheetsUrl 
         : DEFAULT_SHEETS_URL,
       googleMapsApiKey: rawConfig.googleMapsApiKey || '',
@@ -403,6 +408,16 @@ class DBService {
     return newScan;
   }
 
+  public addLocalScan(scan: Scan) {
+    const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
+    if (!scans.some((s: Scan) => s.id === scan.id)) {
+      scans.push(scan);
+      localStorage.setItem('tp_scans', JSON.stringify(scans));
+      this.scansCache = scans;
+      this.notify();
+    }
+  }
+
   public async updateScan(updatedScan: Scan) {
     const freshScan = {
       ...updatedScan,
@@ -472,7 +487,7 @@ class DBService {
       const actualArrivalTime = latestScan?.actualArrivalTime;
 
       if (latestScan && !actualArrivalTime) {
-        const startTime = new Date(latestScan.scannedAt).getTime();
+        const startTime = this.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate).getTime();
         const duration = latestScan.etaMinutes || 28;
         const endTime = startTime + (duration * 60000);
 
@@ -653,6 +668,31 @@ class DBService {
     });
 
     return attendance;
+  }
+
+  public parseScannedAt(scannedAtStr: string, logicalDateStr: string): Date {
+    const parsed = new Date(scannedAtStr);
+    if (parsed.getFullYear() < 1970) {
+      let timeStr = "00:00:00";
+      if (scannedAtStr.includes('T')) {
+        timeStr = scannedAtStr.split('T')[1].substring(0, 8);
+      } else {
+        const match = scannedAtStr.match(/\d{2}:\d{2}:\d{2}/);
+        if (match) timeStr = match[0];
+      }
+      let datePart = logicalDateStr;
+      if (logicalDateStr.includes('GMT') || logicalDateStr.length > 15) {
+        try {
+          const d = new Date(logicalDateStr);
+          datePart = d.toISOString().split('T')[0];
+        } catch(e) {}
+      } else if (logicalDateStr.includes('/')) {
+        const parts = logicalDateStr.split('/');
+        if (parts.length === 3) datePart = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      return new Date(`${datePart}T${timeStr}`);
+    }
+    return parsed;
   }
 
   // --- GPS Location & Distance Helpers ---

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   MapPin, Users, Calendar, WifiOff, QrCode, LogOut, 
@@ -812,6 +812,52 @@ export default function App() {
     };
   }, []);
 
+  // Pusher Real-Time WebSocket Listener
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    // Load Pusher client dynamically
+    import('pusher-js').then(({ default: Pusher }) => {
+      const pusher = new Pusher('2d25f01f84c2b80ad42a', {
+        cluster: 'us2',
+        forceTLS: true
+      });
+
+      const channel = pusher.subscribe('transit-updates');
+      
+      channel.bind('scanned', (data: any) => {
+        console.log('[Pusher] Received scanned event:', data);
+        if (data && data.id) {
+          dbService.addLocalScan(data);
+          
+          if (data.driverId === currentUser.id && currentUser.role === 'driver') {
+            triggerToast(
+              lang === 'he' 
+                ? `הנסיעה שלך אושרה! זמן הגעה משוער: ${data.expectedArrivalTime || ''}`
+                : `Trip confirmed! ETA: ${data.expectedArrivalTime || ''}`, 
+              'success'
+            );
+          } else if (currentUser.role === 'dispatcher' || currentUser.role === 'admin') {
+            triggerToast(
+              lang === 'he'
+                ? `סריקה נקלטה בהצלחה לנהג: ${data.driverName}`
+                : `Scan processed for driver: ${data.driverName}`,
+              'success'
+            );
+          }
+        }
+      });
+
+      return () => {
+        channel.unbind_all();
+        pusher.unsubscribe('transit-updates');
+        pusher.disconnect();
+      };
+    }).catch(err => {
+      console.error('[Pusher] Failed to load pusher-js:', err);
+    });
+  }, [currentUser, lang]);
+
   // Deep linking simulator URL query scanner
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'dispatcher' || users.length === 0) return;
@@ -1188,14 +1234,48 @@ export default function App() {
     const loc = activeLocations.find(l => l.id === currentUser?.id);
     if (!loc || loc.status !== 'en_route') return false;
     
-    // Calculate remaining minutes from static trip start time and initial ETA duration
-    const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
-    const durationMs = (loc.etaMinutes || 28) * 60000;
+    // Find the latest scan for this driver to get the static trip start time
+    const driverScans = scans.filter(s => s.driverId === currentUser?.id);
+    if (driverScans.length === 0) return false;
+    
+    driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
+    const latestScan = driverScans[0];
+    
+    const startTime = dbService.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate).getTime();
+    const durationMs = (latestScan.etaMinutes || 28) * 60000;
     const arrivalTimeMs = startTime + durationMs;
     const remainingMins = (arrivalTimeMs - Date.now()) / 60000;
     
     return remainingMins <= 5;
-  }, [activeLocations, currentUser]);
+  }, [activeLocations, currentUser, scans]);
+
+  // Tracks scan IDs already auto-closed below, so the DB call only fires once per trip.
+  const autoClosedScanIdsRef = useRef<Set<string>>(new Set());
+
+  // Once the barcode reappears (shouldShowQrEvenEnRoute), close out the trip record
+  // (stamp actualArrivalTime) so it doesn't linger open forever in the sheet.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'driver') return;
+    if (!shouldShowQrEvenEnRoute) return;
+
+    const loc = activeLocations.find(l => l.id === currentUser.id);
+    if (!loc || loc.status !== 'en_route') return;
+
+    const driverScans = scans.filter(s => s.driverId === currentUser.id);
+    if (driverScans.length === 0) return;
+    driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
+    const latestScan = driverScans[0];
+
+    if (latestScan.actualArrivalTime) return;
+    if (autoClosedScanIdsRef.current.has(latestScan.id)) return;
+
+    autoClosedScanIdsRef.current.add(latestScan.id);
+    dbService.updateDriverTripState(currentUser.id, 'idle', loc.direction ?? null);
+    triggerToast(
+      lang === 'he' ? 'הנסיעה נסגרה אוטומטית - התקרבת ליעד' : 'Trip auto-closed - approaching destination',
+      'success'
+    );
+  }, [shouldShowQrEvenEnRoute, activeLocations, scans, currentUser]);
 
   const activeArrivalsTo770 = useMemo(() => {
     return activeLocations
@@ -2485,6 +2565,22 @@ export default function App() {
                   const loc = activeLocations.find(l => l.id === currentUser.id);
                   const isDriverEnRoute = loc?.status === 'en_route';
                   const currentDriverDirection = loc?.direction;
+                  
+                  let expectedTimeStr = '--:--';
+                  if (isDriverEnRoute) {
+                    const driverScans = scans.filter(s => s.driverId === currentUser.id);
+                    if (driverScans.length > 0) {
+                      driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
+                      const latestScan = driverScans[0];
+                      if (latestScan && latestScan.scannedAt) {
+                        const startTime = dbService.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate);
+                        const duration = latestScan.etaMinutes || 28;
+                        const arrivalTime = new Date(startTime.getTime() + duration * 60000);
+                        expectedTimeStr = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                      }
+                    }
+                  }
+
                   return (isDriverEnRoute && !shouldShowQrEvenEnRoute) ? (
                     <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
@@ -2509,7 +2605,7 @@ export default function App() {
                           {lang === 'he' ? 'שעת הגעה צפויה' : 'Expected Arrival Time'}
                         </span>
                         <strong style={{ fontSize: '24px', color: '#fff', display: 'block', fontFamily: 'monospace' }}>
-                          {loc?.expectedArrivalTime || '--:--'}
+                          {expectedTimeStr}
                         </strong>
                       </div>
 
