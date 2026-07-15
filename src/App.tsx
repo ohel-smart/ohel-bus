@@ -2225,7 +2225,9 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime
+                                        ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
+                                        : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -2268,7 +2270,9 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime
+                                        ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
+                                        : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -2506,57 +2510,60 @@ export default function App() {
           {currentUser.role === 'driver' && (
             <div className="role-mobile-wrapper">
               
-              <div style={{ background: 'var(--bg-secondary)', padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block' }}>{t('driverTitle')}</span>
-                  <strong style={{ fontSize: '14px', color: '#fff' }}>{currentUser.name.replace(' (נהג)', '')}</strong>
+              <div style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                <div style={{ padding: '16px 20px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block' }}>{t('driverTitle')}</span>
+                    <strong style={{ fontSize: '14px', color: '#fff' }}>{currentUser.name.replace(' (נהג)', '')}</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {(() => {
+                      const loc = activeLocations.find(l => l.id === currentUser.id);
+                      const status = loc?.status || 'idle';
+                      let badgeClass = 'badge-secondary';
+                      let text = t('statusIdle');
+                      if (status === 'en_route') {
+                        badgeClass = 'badge-warning';
+                        text = t('statusEnRoute');
+                      } else if (status === 'break') {
+                        badgeClass = 'badge-danger';
+                        text = t('statusBreak');
+                      }
+                      return (
+                        <span className={`badge ${badgeClass}`} style={{ fontSize: '12px', padding: '4px 8px' }}>
+                          {text}
+                        </span>
+                      );
+                    })()}
+
+                    {/* Language Switch Button */}
+                    <button
+                      onClick={() => setLang(lang === 'he' ? 'en' : 'he')}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {lang === 'he' ? 'EN' : 'עב'}
+                    </button>
+                  </div>
                 </div>
 
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent)', fontFamily: 'monospace', display: 'block' }}>
+                {/* Live Clock Widget */}
+                <div style={{ padding: '2px 20px 16px', display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '10px' }}>
+                  <strong style={{ fontSize: '32px', fontWeight: 800, color: '#fff', fontFamily: 'monospace', letterSpacing: '1px', lineHeight: 1 }}>
                     {currentLiveTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/New_York' })}
-                  </span>
-                  <span style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block' }}>
+                  </strong>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.3px' }}>
                     {currentLiveTime.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/New_York' })}
                   </span>
-                </div>
-
-                {/* Language Switch Button */}
-                <button 
-                  onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
-                  style={{ 
-                    background: 'rgba(255,255,255,0.05)', 
-                    border: '1px solid var(--border-color)', 
-                    borderRadius: '6px',
-                    padding: '4px 10px',
-                    color: '#fff', 
-                    cursor: 'pointer', 
-                    fontSize: '11px', 
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {lang === 'he' ? 'EN' : 'עב'}
-                </button>
-                
-                <div>
-                  {(() => {
-                    const loc = activeLocations.find(l => l.id === currentUser.id);
-                    const status = loc?.status || 'idle';
-                    let badgeClass = 'badge-secondary';
-                    let text = t('statusIdle');
-                    if (status === 'en_route') {
-                      badgeClass = 'badge-warning';
-                      text = t('statusEnRoute');
-                    } else if (status === 'break') {
-                      badgeClass = 'badge-danger';
-                      text = t('statusBreak');
-                    }
-                    return (
-                      <span className={`badge ${badgeClass}`} style={{ fontSize: '12px', padding: '4px 8px' }}>
-                        {text}
-                      </span>
-                    );
-                  })()}
                 </div>
               </div>
 
@@ -2567,6 +2574,7 @@ export default function App() {
                   const currentDriverDirection = loc?.direction;
                   
                   let expectedTimeStr = '--:--';
+                  let remainingMinutes: number | null = null;
                   if (isDriverEnRoute) {
                     const driverScans = scans.filter(s => s.driverId === currentUser.id);
                     if (driverScans.length > 0) {
@@ -2575,119 +2583,155 @@ export default function App() {
                       if (latestScan && latestScan.scannedAt) {
                         const startTime = dbService.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate);
                         const duration = latestScan.etaMinutes || 28;
-                        const arrivalTime = new Date(startTime.getTime() + duration * 60000);
+                        const arrivalTimeMs = startTime.getTime() + duration * 60000;
+                        const arrivalTime = new Date(arrivalTimeMs);
                         expectedTimeStr = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                        remainingMinutes = Math.max(0, Math.round((arrivalTimeMs - currentLiveTime.getTime()) / 60000));
                       }
                     }
                   }
 
+                  const routeColor = currentDriverDirection === 'to_ohel' ? 'var(--accent-route-ohel)' : 'var(--accent)';
+                  const routeColorRgb = currentDriverDirection === 'to_ohel' ? '6, 182, 212' : '226, 176, 78';
+
                   return (isDriverEnRoute && !shouldShowQrEvenEnRoute) ? (
-                    <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                        <div className="pulsing-glow" style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '16px', borderRadius: '50%' }}>
-                          <Navigation size={32} color="#10b981" />
+                    <div className="card" style={{
+                      padding: '28px 22px',
+                      textAlign: 'center',
+                      background: `linear-gradient(180deg, rgba(${routeColorRgb}, 0.08) 0%, rgba(255,255,255,0.02) 55%)`,
+                      border: `1px solid rgba(${routeColorRgb}, 0.25)`,
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '18px' }}>
+                        <div className="pulsing-glow" style={{ background: `rgba(${routeColorRgb}, 0.12)`, padding: '18px', borderRadius: '50%' }}>
+                          <Navigation size={34} color={routeColor} style={{ transform: currentDriverDirection === 'to_ohel' ? 'rotate(0deg)' : 'rotate(180deg)' }} />
                         </div>
                       </div>
 
-                      <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: '#fff' }}>
+                      <h3 style={{ fontSize: '21px', fontWeight: 800, marginBottom: '10px', color: '#fff' }}>
                         {lang === 'he' ? 'הנהג בנסיעה' : 'Driver in Trip'}
                       </h3>
-                      
-                      <p style={{ fontSize: '14px', color: 'var(--accent)', fontWeight: 'bold', marginBottom: '16px' }}>
-                        {currentDriverDirection === 'to_ohel' 
-                          ? (lang === 'he' ? 'בדרך מ-770 לאוהל חב"ד ➔' : 'En route: From 770 to Chabad Ohel ➔')
-                          : (lang === 'he' ? 'בדרך מהאוהל ל-770 ➔' : 'En route: From Ohel to 770 ➔')
-                        }
-                      </p>
 
-                      <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-                          {lang === 'he' ? 'שעת הגעה צפויה' : 'Expected Arrival Time'}
+                      {/* Route breadcrumb */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '22px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: currentDriverDirection === 'to_ohel' ? 'var(--accent)' : routeColor }}>
+                          {currentDriverDirection === 'to_ohel' ? '770' : (lang === 'he' ? 'אוהל חב"ד' : 'Ohel')}
                         </span>
-                        <strong style={{ fontSize: '24px', color: '#fff', display: 'block', fontFamily: 'monospace' }}>
-                          {expectedTimeStr}
-                        </strong>
+                        <div style={{ flex: '0 0 44px', height: '2px', background: `linear-gradient(90deg, rgba(${routeColorRgb},0.15), rgba(${routeColorRgb},0.7))`, position: 'relative' }}>
+                          <Navigation size={12} color={routeColor} style={{ position: 'absolute', top: '-5px', right: lang === 'he' ? 'auto' : '-4px', left: lang === 'he' ? '-4px' : 'auto', transform: lang === 'he' ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: currentDriverDirection === 'to_ohel' ? routeColor : 'var(--accent)' }}>
+                          {currentDriverDirection === 'to_ohel' ? (lang === 'he' ? 'אוהל חב"ד' : 'Ohel') : '770'}
+                        </span>
+                      </div>
+
+                      {/* ETA stat row */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '22px' }}>
+                        <div style={{ background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '14px 10px' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                            {lang === 'he' ? 'שעת הגעה צפויה' : 'Expected Arrival'}
+                          </span>
+                          <strong style={{ fontSize: '26px', color: '#fff', display: 'block', fontFamily: 'monospace', lineHeight: 1.1 }}>
+                            {expectedTimeStr}
+                          </strong>
+                        </div>
+                        <div style={{ background: `rgba(${routeColorRgb}, 0.1)`, border: `1px solid rgba(${routeColorRgb}, 0.25)`, borderRadius: '14px', padding: '14px 10px' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                            {lang === 'he' ? 'זמן נסיעה נותר' : 'Time Remaining'}
+                          </span>
+                          <strong style={{ fontSize: '26px', color: routeColor, display: 'block', lineHeight: 1.1 }}>
+                            {remainingMinutes !== null ? (lang === 'he' ? `${remainingMinutes} דק'` : `${remainingMinutes} min`) : '--'}
+                          </strong>
+                        </div>
                       </div>
 
                       {/* Navigation Options Container */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
                         {/* Google Maps Button */}
-                        <a 
-                          href={currentDriverDirection === 'to_ohel' 
-                            ? `https://www.google.com/maps/dir/?api=1&destination=${LOCATIONS['Ohel'].latitude},${LOCATIONS['Ohel'].longitude}` 
+                        <a
+                          href={currentDriverDirection === 'to_ohel'
+                            ? `https://www.google.com/maps/dir/?api=1&destination=${LOCATIONS['Ohel'].latitude},${LOCATIONS['Ohel'].longitude}`
                             : `https://www.google.com/maps/dir/?api=1&destination=${LOCATIONS['770'].latitude},${LOCATIONS['770'].longitude}`
                           }
-                          target="_blank" 
+                          target="_blank"
                           rel="noopener noreferrer"
-                          className="btn btn-secondary" 
-                          style={{ 
-                            padding: '10px 4px', 
-                            fontSize: '12px', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            gap: '6px',
-                            background: 'rgba(255,255,255,0.05)',
+                          className="btn btn-secondary"
+                          style={{
+                            padding: '13px 4px',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '7px',
+                            background: 'rgba(255,255,255,0.06)',
                             borderColor: 'var(--border-color)',
                             color: '#fff',
                             textDecoration: 'none',
-                            borderRadius: '8px'
+                            borderRadius: '12px',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
                           }}
                         >
-                          <Map size={14} />
+                          <Map size={15} />
                           {lang === 'he' ? 'ניווט ב-Google' : 'Google Maps'}
                         </a>
 
                         {/* Waze Button */}
-                        <a 
-                          href={currentDriverDirection === 'to_ohel' 
-                            ? `https://waze.com/ul?ll=${LOCATIONS['Ohel'].latitude},${LOCATIONS['Ohel'].longitude}&navigate=yes` 
+                        <a
+                          href={currentDriverDirection === 'to_ohel'
+                            ? `https://waze.com/ul?ll=${LOCATIONS['Ohel'].latitude},${LOCATIONS['Ohel'].longitude}&navigate=yes`
                             : `https://waze.com/ul?ll=${LOCATIONS['770'].latitude},${LOCATIONS['770'].longitude}&navigate=yes`
                           }
-                          target="_blank" 
+                          target="_blank"
                           rel="noopener noreferrer"
-                          className="btn" 
-                          style={{ 
-                            padding: '10px 4px', 
-                            fontSize: '12px', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            gap: '6px',
+                          className="btn"
+                          style={{
+                            padding: '13px 4px',
+                            fontSize: '13px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '7px',
                             background: 'rgba(51, 204, 255, 0.15)',
-                            border: '1px solid rgba(51, 204, 255, 0.3)',
+                            border: '1px solid rgba(51, 204, 255, 0.35)',
                             color: '#33ccff',
                             textDecoration: 'none',
-                            borderRadius: '8px',
-                            fontWeight: 'bold'
+                            borderRadius: '12px',
+                            fontWeight: 'bold',
+                            boxShadow: '0 2px 8px rgba(51, 204, 255, 0.08)'
                           }}
                         >
-                          <Navigation size={14} style={{ transform: 'rotate(45deg)' }} />
+                          <Navigation size={15} style={{ transform: 'rotate(45deg)' }} />
                           {lang === 'he' ? 'ניווט ב-Waze' : 'Waze'}
                         </a>
                       </div>
 
                       {/* End Trip button */}
-                      <button 
+                      <button
                         onClick={() => handleEndTripWithGpsCheck(loc)}
-                        className="btn btn-primary" 
-                        style={{ 
-                          width: '100%', 
-                          padding: '14px', 
-                          fontSize: '15px', 
+                        className="btn btn-primary"
+                        style={{
+                          width: '100%',
+                          padding: '15px',
+                          fontSize: '15px',
                           fontWeight: 'bold',
                           background: 'var(--success)',
                           color: '#000',
                           border: 'none',
+                          borderRadius: '12px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '6px'
+                          gap: '6px',
+                          boxShadow: '0 4px 14px rgba(16, 185, 129, 0.25)'
                         }}
                       >
-                        <CheckCircle size={16} />
+                        <CheckCircle size={17} />
                         {lang === 'he' ? 'הגעתי ליעד (סיים נסיעה)' : 'Arrived at Destination (End Trip)'}
                       </button>
+                      <p style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: '15px' }}>
+                        {lang === 'he' ? 'הכפתור פעיל רק במרחק של עד 1 ק"מ מהיעד' : 'Button is active only within 1km of the destination'}
+                      </p>
                     </div>
                   ) : (
                     <div className="card" style={{ padding: '30px 20px', textAlign: 'center' }}>
@@ -2911,7 +2955,9 @@ export default function App() {
                                       fontWeight: 'bold'
                                     }}
                                   >
-                                    {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    {arr.expectedArrivalTime
+                                      ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
+                                      : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
                               </div>
@@ -2953,7 +2999,9 @@ export default function App() {
                                       fontWeight: 'bold'
                                     }}
                                   >
-                                    {arr.expectedArrivalTime ? `${lang === 'he' ? 'הגעה ב-' : 'Arrival: '}${arr.expectedArrivalTime}` : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                    {arr.expectedArrivalTime
+                                      ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
+                                      : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
                               </div>
