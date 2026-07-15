@@ -66,7 +66,30 @@ export const LOCATIONS = {
 };
 
 // Fallback Default Web App URL
-const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbzcsY8BuSyeK0vXobpOuU9MGpW9QV_ryWXmYTk1148I0WvElXcaU6l0gyd19jE9w0Da/exec";
+const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbygfgRFNFwPqcX0XK3P9GNbYKWW89oSh1rCQ6k8WY6dEskVPYW0qkm8xuKXdwhpNLel/exec";
+
+// Old/retired deployment URLs — if a user's cached local config still points at one of
+// these, fall back to DEFAULT_SHEETS_URL instead of silently talking to a dead deployment.
+const BLOCKED_SHEETS_URL_IDS = [
+  "AKfycbwBDFDOITw1G9TRo05flrcGGMB05SNQzkZLnLgKHSF6u6JohWdJvctnNyv8j-0AYa9S",
+  "AKfycbytfHnxo1rsPmmx7bjFTlgWc4h2MJrYce5E_r5MBV64ouNcrLppm90aCsW40GRlNWWT",
+  "AKfycbzgGtU1PUlLNqCfbol9b68tXDo5m6vIBZBdrIqsonDZml8dVCnTUHkTPqC_-y6O_Jl1",
+  "AKfycbwCIg6Npl01Hk8_Y2T9ZIBYRPlHXtJfO6G_a4DVouHieHovoOMqZxE01X8mgJKsRD1U",
+  "AKfycbzWBuis76UbkEziZmnA0jzspOLRtLfbunq5PtS9RtTpew-nkxCAmkX5hhz_fBliJTrU",
+  "AKfycbwaHPeJ20BKaveyGzKe4MEUAoiyP8q55m2S4J8oJyv3Fy1whWfbwnBEcZ1C5UMJRxUI",
+  "AKfycbwhc_Mjh_8nyu-wikew74nKe0DUJu9hLRo9eJCLwfoAApS9enUrSpTfS7f0idwyVAIY",
+  "AKfycbwVnb0iH84jwtf6q2yk7JmuRQPV5HtQgBXtz1MWmyXoxi5J45UREctNsO_yCAsZzgZB",
+  "AKfycbwoM6FealKKCYwzHEGzwoehmg84HvzAmLQWG_bIZuNuajUfZIIJrdiWXgs1gDlCFxHr",
+  "AKfycbwtiL5SmzO-JNFkmsPkg2vYIhxh--FUE-37EcxIxufdNg49y__5V2wlIo8NWHSzYU2Q",
+  "AKfycbz-3bwY36y1keWXwgk1t3MwwN4Y17YRofxm1yEGKdvOJcQz3TJPB79hWzZC_LkbtcI",
+  "AKfycbyO_yVwkOXIzwUeMcywag26yOUiAUTGWfUdXszpwEfO22PD6-0XKJI8VogoeXyocXpT",
+  "AKfycbx92x0urk2aCgtBuYCbVTkWNT9FHm_5dWOzVv8YXwE5qAh9PjUVKmEytHj0pdJ8_dhL",
+  "AKfycbywEcrqnRH-BTGN0voKeXxugcUtRMJw2B4TNg1ckmb0ajBi0zD12Ju6FzZ4XDfX5EFn",
+  "AKfycbwNpzAI4byP9Razq8FIr02Hc2YL8mdTnzFJ9PNAF5G35ufITP9ZdeQaxOJO2ZqaAFG0",
+  "AKfycbzszN_VYZdw7kqY2nuUVw_ssduQhfMelvPlSZa6LsDzhW_-gsBIx7SM9M-sPBW0MYOQ",
+  "AKfycbyc3BW65EOvMtOllITBJzEL0aU47jX-iAARz_TKlQMHz7h6zddh15tynhu_5Y_RmCQd",
+  "AKfycbzcsY8BuSyeK0vXobpOuU9MGpW9QV_ryWXmYTk1148I0WvElXcaU6l0gyd19jE9w0Da"
+];
 
 // Default Pre-Populated Users (Used as offline/local fallback)
 const DEFAULT_USERS: User[] = [
@@ -103,25 +126,8 @@ class DBService {
     
     this.configCache = {
       reportEmail: rawConfig.reportEmail || 'manager@transit.pro',
-      googleSheetsUrl: rawConfig.googleSheetsUrl && 
-        !rawConfig.googleSheetsUrl.includes("AKfycbwBDFDOITw1G9TRo05flrcGGMB05SNQzkZLnLgKHSF6u6JohWdJvctnNyv8j-0AYa9S") && 
-        !rawConfig.googleSheetsUrl.includes("AKfycbytfHnxo1rsPmmx7bjFTlgWc4h2MJrYce5E_r5MBV64ouNcrLppm90aCsW40GRlNWWT") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbzgGtU1PUlLNqCfbol9b68tXDo5m6vIBZBdrIqsonDZml8dVCnTUHkTPqC_-y6O_Jl1") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwCIg6Npl01Hk8_Y2T9ZIBYRPlHXtJfO6G_a4DVouHieHovoOMqZxE01X8mgJKsRD1U") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbzWBuis76UbkEziZmnA0jzspOLRtLfbunq5PtS9RtTpew-nkxCAmkX5hhz_fBliJTrU") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwaHPeJ20BKaveyGzKe4MEUAoiyP8q55m2S4J8oJyv3Fy1whWfbwnBEcZ1C5UMJRxUI") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwhc_Mjh_8nyu-wikew74nKe0DUJu9hLRo9eJCLwfoAApS9enUrSpTfS7f0idwyVAIY") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwVnb0iH84jwtf6q2yk7JmuRQPV5HtQgBXtz1MWmyXoxi5J45UREctNsO_yCAsZzgZB") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwoM6FealKKCYwzHEGzwoehmg84HvzAmLQWG_bIZuNuajUfZIIJrdiWXgs1gDlCFxHr") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwtiL5SmzO-JNFkmsPkg2vYIhxh--FUE-37EcxIxufdNg49y__5V2wlIo8NWHSzYU2Q") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbz-3bwY36y1keWXwgk1t3MwwN4Y17YRofxm1yEGKdvOJcQz3TJPB79hWzZC_LkbtcI") && 
-        !rawConfig.googleSheetsUrl.includes("AKfycbyO_yVwkOXIzwUeMcywag26yOUiAUTGWfUdXszpwEfO22PD6-0XKJI8VogoeXyocXpT") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbx92x0urk2aCgtBuYCbVTkWNT9FHm_5dWOzVv8YXwE5qAh9PjUVKmEytHj0pdJ8_dhL") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbywEcrqnRH-BTGN0voKeXxugcUtRMJw2B4TNg1ckmb0ajBi0zD12Ju6FzZ4XDfX5EFn") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbwNpzAI4byP9Razq8FIr02Hc2YL8mdTnzFJ9PNAF5G35ufITP9ZdeQaxOJO2ZqaAFG0") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbzszN_VYZdw7kqY2nuUVw_ssduQhfMelvPlSZa6LsDzhW_-gsBIx7SM9M-sPBW0MYOQ") &&
-        !rawConfig.googleSheetsUrl.includes("AKfycbyc3BW65EOvMtOllITBJzEL0aU47jX-iAARz_TKlQMHz7h6zddh15tynhu_5Y_RmCQd")
-        ? rawConfig.googleSheetsUrl 
+      googleSheetsUrl: rawConfig.googleSheetsUrl && !BLOCKED_SHEETS_URL_IDS.some(id => rawConfig.googleSheetsUrl.includes(id))
+        ? rawConfig.googleSheetsUrl
         : DEFAULT_SHEETS_URL,
       googleMapsApiKey: rawConfig.googleMapsApiKey || '',
       twilioAccountSid: rawConfig.twilioAccountSid || '',
