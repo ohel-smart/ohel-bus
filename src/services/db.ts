@@ -502,7 +502,9 @@ class DBService {
           direction = latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770';
           etaMinutes = Math.max(1, Math.round((endTime - now) / 60000));
           scannedAt = latestScan.scannedAt;
-          expectedArrivalTime = latestScan.expectedArrivalTime;
+          // The sheet no longer stores expected arrival - derive it from scan time + ETA.
+          expectedArrivalTime = latestScan.expectedArrivalTime
+            || new Date(endTime).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
         }
       }
 
