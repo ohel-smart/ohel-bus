@@ -2399,9 +2399,7 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.expectedArrivalTime
-                                        ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
-                                        : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime || (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -2444,9 +2442,7 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.expectedArrivalTime
-                                        ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
-                                        : (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime || (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
