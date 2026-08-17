@@ -15,6 +15,7 @@ const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSiz
 const tdCentral: CSSProperties = { padding: '8px 12px', whiteSpace: 'nowrap' };
 import { Html5Qrcode } from 'html5-qrcode';
 import logo from './assets/logo.png';
+import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
 import './App.css';
 
 const TRANSLATIONS = {
@@ -1970,7 +1971,7 @@ export default function App() {
       const dir = locale === 'he' ? 'rtl' : 'ltr';
       return `<div class="lang-section" data-lang="${locale}" dir="${dir}">
         <div class="report-header">
-          <img src="${logo}" alt="Ohel Smart" class="logo" />
+          <img src="${logoDark}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
             <div class="driver-name">${t.driver}: ${selectedDriverForPdf}</div>
