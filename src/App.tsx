@@ -1975,7 +1975,7 @@ export default function App() {
       </body></html>`;
 
     const printWindow = window.open('', '_blank');
-    if (!printWindow) { triggerToast(lang === 'he' ? 'החלון נחסם - אפשר חלונות קופצים' : 'Popup blocked - allow popups', 'error'); return; }
+    if (!printWindow) { triggerToast(lang === 'he' ? 'החלון נחסם - אפשר חלונות קופצים' : 'Popup blocked - allow popups', 'danger'); return; }
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.focus();
