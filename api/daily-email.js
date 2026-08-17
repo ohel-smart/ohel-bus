@@ -57,13 +57,17 @@ export default async function handler(req, res) {
 
   const dayScans = scans.filter(s => String(s.logicalDate || '').slice(0, 10) === target);
   let totalPassengers = 0;
-  const drivers = new Set(), dispatchers = new Set();
+  // Map name -> set of origins they departed from, so the summary shows WHERE each one left from.
+  const drivers = new Map(), dispatchers = new Map();
   for (const s of dayScans) {
     const n = parseInt(s.passengersCount, 10); if (!isNaN(n)) totalPassengers += n;
-    const dn = String(s.driverName || '').replace(' (נהג)', '').trim(); if (dn) drivers.add(dn);
+    const origin = s.departureLocation === '770' ? '770' : 'אוהל';
+    const dn = String(s.driverName || '').replace(' (נהג)', '').trim();
+    if (dn) { if (!drivers.has(dn)) drivers.set(dn, new Set()); drivers.get(dn).add(origin); }
     const ds = String(s.dispatcherName || '').replace(' (סדרן)', '').trim();
-    if (ds && ds !== 'דיווח עצמי') dispatchers.add(ds);
+    if (ds && ds !== 'דיווח עצמי') { if (!dispatchers.has(ds)) dispatchers.set(ds, new Set()); dispatchers.get(ds).add(origin); }
   }
+  const formatWithOrigins = m => [...m.entries()].map(([name, origins]) => `${name} (${[...origins].join(', ')})`).join(', ') || 'אין';
   const totalRides = dayScans.length;
   const hebrewDate = hebrewDateOf(target);
 
@@ -80,8 +84,8 @@ export default async function handler(req, res) {
     <ul>
       <li>🚗 סה"כ נסיעות: <b>${totalRides}</b></li>
       <li>👥 סה"כ אנשים שנסעו: <b>${totalPassengers}</b></li>
-      <li>👨‍✈️ נהגים פעילים: <b>${drivers.size}</b> (${esc([...drivers].join(', ') || 'אין')})</li>
-      <li>👤 סדרנים פעילים: <b>${dispatchers.size}</b> (${esc([...dispatchers].join(', ') || 'אין')})</li>
+      <li>👨‍✈️ נהגים פעילים: <b>${drivers.size}</b> (${esc(formatWithOrigins(drivers))})</li>
+      <li>👤 סדרנים פעילים: <b>${dispatchers.size}</b> (${esc(formatWithOrigins(dispatchers))})</li>
     </ul>
     ${totalRides ? `<table style="border-collapse:collapse;width:100%;font-size:14px;">
       <thead><tr style="background:#f3f3f3;">
