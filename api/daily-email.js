@@ -3,8 +3,20 @@
 // which — unlike the free Render bot — never spins down, so the email is reliable.
 // Reads the current ride data from the Apps Script endpoint (same source the app uses).
 
+import { HDate } from '@hebcal/core';
+
 const SHEETS_URL = process.env.SHEETS_URL ||
   "https://script.google.com/macros/s/AKfycbygfgRFNFwPqcX0XK3P9GNbYKWW89oSh1rCQ6k8WY6dEskVPYW0qkm8xuKXdwhpNLel/exec";
+
+// Hebrew date (niqqud stripped) via @hebcal/core — reliable regardless of the
+// serverless runtime's ICU build, unlike Intl's 'he-IL-u-ca-hebrew'.
+function hebrewDateOf(dateStr) {
+  try {
+    return new HDate(new Date(dateStr + 'T12:00:00')).renderGematriya().replace(/[֑-ׇ]/g, '');
+  } catch {
+    return '';
+  }
+}
 
 // YYYY-MM-DD for a moment, in New York time (matches the app's logicalDate).
 function nyDateStr(d) {
@@ -53,9 +65,7 @@ export default async function handler(req, res) {
     if (ds && ds !== 'דיווח עצמי') dispatchers.add(ds);
   }
   const totalRides = dayScans.length;
-  const hebrewDate = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
-    day: 'numeric', month: 'long', year: 'numeric'
-  }).format(new Date(target + 'T12:00:00'));
+  const hebrewDate = hebrewDateOf(target);
 
   const rows = dayScans.map(s => `<tr>
     <td style="padding:6px 10px;border:1px solid #ddd;">${esc(String(s.driverName || '—').replace(' (נהג)', ''))}</td>
