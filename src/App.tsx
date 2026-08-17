@@ -1137,11 +1137,12 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, searchText, dateFilter]);
 
-  // --- Central Summary (master table): rides grouped by day, newest day first ---
+  // --- Central Summary (master table): rides grouped by day, then by time slot, ---
+  // --- outbound (הלוך) and return (חזור) paired on the same row per slot.       ---
   const centralSummary = useMemo(() => {
     const BIG_BUS_MIN_CAPACITY = 25; // capacity >= this counts as "אוטובוס גדול"
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
-    // built-in Map constructor here, so group with a plain object instead.
+    // built-in Map constructor here, so group with plain objects instead.
     const byDay: Record<string, Scan[]> = {};
     for (const s of scans) {
       if (!s.logicalDate) continue;
@@ -1151,29 +1152,51 @@ export default function App() {
     return days.map(dateStr => {
       const dayDate = new Date(dateStr + 'T12:00:00');
       const isToday = dateStr === logicalToday;
-      const rides = byDay[dateStr]
-        .slice()
-        .sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
-        .map(s => {
-          const when = new Date(s.scannedAt);
-          const isReturn = s.departureLocation === 'Ohel';
-          return {
-            id: s.id,
-            direction: (isReturn ? 'return' : 'outbound') as 'return' | 'outbound',
-            // Central summary rounds times to the nearest half hour, except today (kept exact).
-            time: isToday ? exactTimeStr(when) : roundToHalfHourStr(when),
-            passengers: s.passengersCount,
-            driver: (s.driverName || '').replace(' (נהג)', ''),
-            bigBus: (s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY,
-          };
-        });
+
+      type Slot = {
+        time: string;
+        outPax: number; outDrivers: string[]; hasOut: boolean;
+        backPax: number; backDrivers: string[]; hasBack: boolean;
+        bigBus: boolean;
+      };
+      const slots: Record<string, Slot> = {};
+      byDay[dateStr].forEach(s => {
+        const when = new Date(s.scannedAt);
+        // Central summary rounds times to the nearest half hour, except today (kept exact).
+        const time = isToday ? exactTimeStr(when) : roundToHalfHourStr(when);
+        const slot = (slots[time] ||= { time, outPax: 0, outDrivers: [], hasOut: false, backPax: 0, backDrivers: [], hasBack: false, bigBus: false });
+        const driverName = (s.driverName || '').replace(' (נהג)', '');
+        if (s.departureLocation === '770') {
+          slot.hasOut = true;
+          slot.outPax += s.passengersCount || 0;
+          if (driverName && !slot.outDrivers.includes(driverName)) slot.outDrivers.push(driverName);
+        } else {
+          slot.hasBack = true;
+          slot.backPax += s.passengersCount || 0;
+          if (driverName && !slot.backDrivers.includes(driverName)) slot.backDrivers.push(driverName);
+        }
+        if ((s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY) slot.bigBus = true;
+      });
+
+      const rows = Object.values(slots)
+        .sort((a, b) => a.time.localeCompare(b.time))
+        .map(slot => ({
+          timeOut: slot.hasOut ? slot.time : '',
+          paxOut: slot.hasOut ? slot.outPax : null,
+          driverOut: slot.outDrivers.join(', '),
+          driverBack: slot.backDrivers.join(', '),
+          timeBack: slot.hasBack ? slot.time : '',
+          paxBack: slot.hasBack ? slot.backPax : null,
+          bigBus: slot.bigBus,
+        }));
+
       return {
         dateStr,
         isToday,
         hebrewDate: getHebrewDate(dayDate),
         parsha: getWeeklyParsha(dayDate),
         gregorian: dayDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-        rides,
+        rows,
       };
     });
   }, [scans, logicalToday]);
@@ -1868,16 +1891,16 @@ export default function App() {
 
   const handleExportCentralToCsv = () => {
     const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const colHeaders = ['פרשה', 'תאריך עברי', 'תאריך לועזי', 'כיוון', 'שעה', 'אנשים', 'נהג', 'אוטובוס גדול'];
+    const colHeaders = ['פרשה', 'תאריך עברי', 'תאריך לועזי', 'שעת הלוך', 'אנשים בהלוך', 'נהג הלוך', 'נהג חזור', 'שעת חזור', 'אנשים בחזור', 'אוטובוס גדול'];
     const lines: string[] = [];
     centralSummary.forEach(day => {
       lines.push(q(`יום: ${day.hebrewDate}  |  ${day.gregorian}${day.parsha ? `  |  פרשת ${day.parsha}` : ''}`));
       lines.push(colHeaders.map(q).join(','));
-      day.rides.forEach(r => {
+      day.rows.forEach(r => {
         lines.push([
           q(day.parsha), q(day.hebrewDate), q(day.gregorian),
-          q(r.direction === 'return' ? 'חזור' : 'הלוך'),
-          q(r.time), q(r.passengers), q(r.driver),
+          q(r.timeOut), q(r.paxOut ?? ''), q(r.driverOut),
+          q(r.driverBack), q(r.timeBack), q(r.paxBack ?? ''),
           q(r.bigBus ? 'כן' : 'לא')
         ].join(','));
       });
@@ -3413,27 +3436,31 @@ export default function App() {
                             {day.isToday && <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום (שעות מדויקות)' : 'Today (exact times)'}</span>}
                           </div>
                           <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '560px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '760px' }}>
                               <thead>
                                 <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                                  <th style={thCentral}>{lang === 'he' ? 'כיוון' : 'Direction'}</th>
+                                  <th style={{ ...thCentral, color: 'var(--accent)' }} colSpan={3}>{lang === 'he' ? 'הלוך' : 'Outbound'}</th>
+                                  <th style={{ ...thCentral, color: '#06b6d4' }} colSpan={3}>{lang === 'he' ? 'חזור' : 'Return'}</th>
+                                  <th style={thCentral} rowSpan={2}>{lang === 'he' ? 'אוטובוס גדול' : 'Big Bus'}</th>
+                                </tr>
+                                <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left', borderTop: '1px solid var(--border-color)' }}>
                                   <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'אוטובוס גדול' : 'Big Bus'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {day.rides.map(r => (
-                                  <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                    <td style={tdCentral}>
-                                      <span style={{ color: r.direction === 'return' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
-                                        {r.direction === 'return' ? (lang === 'he' ? 'חזור' : 'Return') : (lang === 'he' ? 'הלוך' : 'Outbound')}
-                                      </span>
-                                    </td>
-                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
-                                    <td style={tdCentral}>{r.passengers}</td>
-                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
+                                {day.rows.map((r, i) => (
+                                  <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: r.timeOut ? '#fff' : 'var(--text-secondary)' }}>{r.timeOut || '—'}</td>
+                                    <td style={tdCentral}>{r.paxOut ?? '—'}</td>
+                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driverOut || '—'}</td>
+                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driverBack || '—'}</td>
+                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: r.timeBack ? '#fff' : 'var(--text-secondary)' }}>{r.timeBack || '—'}</td>
+                                    <td style={tdCentral}>{r.paxBack ?? '—'}</td>
                                     <td style={tdCentral}>{r.bigBus ? (lang === 'he' ? 'כן' : 'Yes') : (lang === 'he' ? 'לא' : 'No')}</td>
                                   </tr>
                                 ))}

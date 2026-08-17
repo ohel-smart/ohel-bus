@@ -100,7 +100,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         from: process.env.MAIL_FROM || 'Ohel Bus <onboarding@resend.dev>',
         to: to.split(',').map(x => x.trim()),
-        subject: `סיכום נסיעות יומי - אוהל בוס (${target})`,
+        subject: `סיכום נסיעות יומי - אוהל בוס (${target}${hebrewDate ? ' | ' + hebrewDate : ''})`,
         html
       })
     });
