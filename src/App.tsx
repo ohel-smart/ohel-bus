@@ -2557,11 +2557,11 @@ export default function App() {
                 </div>
 
                 {/* Live Clock Widget */}
-                <div style={{ padding: '2px 20px 16px', display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '10px' }}>
-                  <strong style={{ fontSize: '32px', fontWeight: 800, color: '#fff', fontFamily: 'monospace', letterSpacing: '1px', lineHeight: 1 }}>
+                <div style={{ padding: '0 20px 8px', display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '8px' }}>
+                  <strong style={{ fontSize: '18px', fontWeight: 700, color: '#fff', fontFamily: 'monospace', letterSpacing: '0.5px', lineHeight: 1 }}>
                     {currentLiveTime.toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/New_York' })}
                   </strong>
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.3px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>
                     {currentLiveTime.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/New_York' })}
                   </span>
                 </div>

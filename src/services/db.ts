@@ -719,11 +719,44 @@ class DBService {
   public async getRouteEtaMinutes(lat: number, lng: number, direction: Direction): Promise<number> {
     if (!direction) return 0;
     const destination = direction === 'to_ohel' ? LOCATIONS['Ohel'] : LOCATIONS['770'];
-    
+
     const config = this.getConfig() as any;
+    // Prefer the build-time env key (available on EVERY device, incl. the dispatcher who scans),
+    // fall back to the per-browser saved config key.
+    const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || config.googleMapsApiKey;
+
+    // 1. Google Routes API (v2) — live traffic-aware ETA, identical to what Google Maps shows.
+    if (apiKey) {
+      try {
+        const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': 'routes.duration'
+          },
+          body: JSON.stringify({
+            origin: { location: { latLng: { latitude: lat, longitude: lng } } },
+            destination: { location: { latLng: { latitude: destination.latitude, longitude: destination.longitude } } },
+            travelMode: 'DRIVE',
+            routingPreference: 'TRAFFIC_AWARE'
+          })
+        });
+        const data = await response.json();
+        const durationStr: string | undefined = data?.routes?.[0]?.duration;
+        if (durationStr) {
+          const seconds = parseInt(String(durationStr).replace('s', ''), 10);
+          if (!isNaN(seconds) && seconds > 0) {
+            return Math.max(1, Math.round(seconds / 60));
+          }
+        }
+      } catch (e) {
+        console.error('Routes API ETA error:', e);
+      }
+    }
+
+    // 2. Fallback: Google Apps Script server-side Directions (legacy, less accurate — kept as backup only).
     const url = config.googleSheetsUrl;
-    
-    // 1. Try Google Apps Script Server-Side Directions Service (No API key needed, no CORS issues)
     if (url) {
       try {
         const queryUrl = `${url}${url.includes('?') ? '&' : '?'}action=getGoogleEta&origin=${lat},${lng}&destination=${destination.latitude},${destination.longitude}`;
@@ -733,34 +766,15 @@ class DBService {
           return data.etaMinutes;
         }
       } catch (e) {
-        console.error("Failed to fetch Google Maps ETA from Apps Script:", e);
+        console.error('Failed to fetch Google Maps ETA from Apps Script:', e);
       }
     }
-    
-    // 2. Fallback to direct client-side Distance Matrix if key is provided (might hit CORS depending on API setup)
-    const apiKey = config.googleMapsApiKey;
-    if (apiKey) {
-      try {
-        const response = await fetch(
-          `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat},${lng}&destinations=${destination.latitude},${destination.longitude}&key=${apiKey}`
-        );
-        const data = await response.json();
-        if (data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0]) {
-          const element = data.rows[0].elements[0];
-          if (element.status === 'OK' && element.duration) {
-            return Math.round(element.duration.value / 60);
-          }
-        }
-      } catch (e) {
-        console.error("Google Maps Distance Matrix error:", e);
-      }
-    }
-    
-    // 3. Fallback formula: Haversine distance * NYC winding coefficient / typical speed
+
+    // 3. Final fallback: Haversine distance * NYC winding coefficient / typical speed.
     const distanceKm = this.calculateHaversineDistance(lat, lng, destination.latitude, destination.longitude);
     const roadDistanceKm = distanceKm * 1.28;
     const averageSpeedKmh = 38; // ~24 mph
-    
+
     let eta = Math.round((roadDistanceKm / averageSpeedKmh) * 60);
     if (distanceKm < 0.2) {
       eta = 0;
