@@ -1142,6 +1142,8 @@ export default function App() {
   // --- with a direction column: כיוון | שעה | נהג | אנשים | אוטובוס גדול. ---
   const BIG_BUS_MIN_CAPACITY = 25; // capacity >= this counts as "אוטובוס גדול"
   const [centralBigBusOnly, setCentralBigBusOnly] = useState(false);
+  const [centralDateFrom, setCentralDateFrom] = useState('');
+  const [centralDateTo, setCentralDateTo] = useState('');
 
   const centralSummary = useMemo(() => {
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
@@ -1149,6 +1151,8 @@ export default function App() {
     const byDay: Record<string, Scan[]> = {};
     for (const s of scans) {
       if (!s.logicalDate) continue;
+      if (centralDateFrom && s.logicalDate < centralDateFrom) continue;
+      if (centralDateTo && s.logicalDate > centralDateTo) continue;
       (byDay[s.logicalDate] ||= []).push(s);
     }
     const days = Object.keys(byDay).sort((a, b) => (a < b ? 1 : -1)); // newest first
@@ -1162,9 +1166,13 @@ export default function App() {
         .map(s => {
           const when = new Date(s.scannedAt);
           const bigBus = (s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY;
+          const isReturn = s.departureLocation === 'Ohel';
           return {
             id: s.id,
-            direction: (s.departureLocation === 'Ohel' ? 'return' : 'outbound') as 'return' | 'outbound',
+            direction: (isReturn ? 'return' : 'outbound') as 'return' | 'outbound',
+            // Explicit origin -> destination, not just an abstract "outbound/return" label.
+            routeLabel: isReturn ? 'אוהל ← 770' : '770 ← אוהל',
+            routeLabelEn: isReturn ? 'Ohel -> 770' : '770 -> Ohel',
             // Central summary always rounds to the nearest half hour, including today's rows.
             time: roundToHalfHourStr(when),
             driver: (s.driverName || '').replace(' (נהג)', ''),
@@ -1183,7 +1191,7 @@ export default function App() {
         rows,
       };
     }).filter(day => day.rows.length > 0);
-  }, [scans, logicalToday, centralBigBusOnly]);
+  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo]);
 
   // --- Stats calculations ---
   const stats = useMemo(() => {
@@ -1883,7 +1891,7 @@ export default function App() {
       day.rows.forEach(r => {
         lines.push([
           q(day.parsha), q(day.hebrewDate), q(day.gregorian),
-          q(r.direction === 'return' ? 'חזור' : 'הלוך'),
+          q(r.routeLabel),
           q(r.time), q(r.driver), q(r.passengers),
           q(r.bigBus ? 'כן' : 'לא')
         ].join(','));
@@ -1896,7 +1904,8 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `central_summary${centralBigBusOnly ? '_big_bus' : ''}_${new Date().toISOString().split('T')[0]}.csv`);
+    const rangeSuffix = (centralDateFrom || centralDateTo) ? `_${centralDateFrom || 'start'}_to_${centralDateTo || 'now'}` : `_${new Date().toISOString().split('T')[0]}`;
+    link.setAttribute("download", `central_summary${centralBigBusOnly ? '_big_bus' : ''}${rangeSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3476,12 +3485,30 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Filter + per-driver PDF toolbar */}
+                    {/* Filter + date range + per-driver PDF toolbar */}
                     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
                         <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                         {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
                       </label>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'מתאריך' : 'From'}</span>
+                        <input
+                          type="date" value={centralDateFrom} onChange={e => setCentralDateFrom(e.target.value)}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        />
+                        <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עד תאריך' : 'To'}</span>
+                        <input
+                          type="date" value={centralDateTo} onChange={e => setCentralDateTo(e.target.value)}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        />
+                        {(centralDateFrom || centralDateTo) && (
+                          <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
+                            {lang === 'he' ? 'נקה' : 'Clear'}
+                          </button>
+                        )}
+                      </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginInlineStart: 'auto', flexWrap: 'wrap' }}>
                         <select
@@ -3528,7 +3555,7 @@ export default function App() {
                                   <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
                                     <td style={tdCentral}>
                                       <span style={{ color: r.direction === 'return' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
-                                        {r.direction === 'return' ? (lang === 'he' ? 'חזור' : 'Return') : (lang === 'he' ? 'הלוך' : 'Outbound')}
+                                        {lang === 'he' ? r.routeLabel : r.routeLabelEn}
                                       </span>
                                     </td>
                                     <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
