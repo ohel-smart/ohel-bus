@@ -68,6 +68,14 @@ export const LOCATIONS = {
 // Fallback Default Web App URL
 const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbygfgRFNFwPqcX0XK3P9GNbYKWW89oSh1rCQ6k8WY6dEskVPYW0qkm8xuKXdwhpNLel/exec";
 
+// Public client-side Google Maps key (Routes API), used for the live traffic-aware ETA.
+// A client Maps key is ALWAYS visible in the shipped JS bundle, so exposure here is
+// unavoidable and expected. This key is locked down in Google Cloud to the site's
+// HTTP referrers (ohel-bus.vercel.app + localhost) and capped by a daily Routes API
+// quota, so a copied key is worthless off-domain / bounded in cost. Prefer the build
+// env var when present; this constant guarantees every device has a working key.
+const DEFAULT_GOOGLE_MAPS_API_KEY = "AIzaSyAw9YueiwU3xsjjpOPy4PsHq3uS0X5IW54";
+
 // Old/retired deployment URLs — if a user's cached local config still points at one of
 // these, fall back to DEFAULT_SHEETS_URL instead of silently talking to a dead deployment.
 const BLOCKED_SHEETS_URL_IDS = [
@@ -723,7 +731,7 @@ class DBService {
     const config = this.getConfig() as any;
     // Prefer the build-time env key (available on EVERY device, incl. the dispatcher who scans),
     // fall back to the per-browser saved config key.
-    const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || config.googleMapsApiKey;
+    const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || config.googleMapsApiKey || DEFAULT_GOOGLE_MAPS_API_KEY;
 
     // 1. Google Routes API (v2) — live traffic-aware ETA, identical to what Google Maps shows.
     if (apiKey) {
