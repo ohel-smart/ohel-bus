@@ -1,13 +1,18 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   MapPin, Users, Calendar, WifiOff, QrCode, LogOut, 
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle, 
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
-  Mail, Download, Copy, MessageSquare, Navigation, Map
+  Mail, Download, Copy, MessageSquare, Navigation, Map, Table
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
+import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr } from './services/hebrewDate';
+
+// Shared cell styles for the central master summary table.
+const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
+const tdCentral: CSSProperties = { padding: '8px 12px', whiteSpace: 'nowrap' };
 import { Html5Qrcode } from 'html5-qrcode';
 import logo from './assets/logo.png';
 import './App.css';
@@ -1132,6 +1137,47 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, searchText, dateFilter]);
 
+  // --- Central Summary (master table): rides grouped by day, newest day first ---
+  const centralSummary = useMemo(() => {
+    const BIG_BUS_MIN_CAPACITY = 25; // capacity >= this counts as "אוטובוס גדול"
+    // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
+    // built-in Map constructor here, so group with a plain object instead.
+    const byDay: Record<string, Scan[]> = {};
+    for (const s of scans) {
+      if (!s.logicalDate) continue;
+      (byDay[s.logicalDate] ||= []).push(s);
+    }
+    const days = Object.keys(byDay).sort((a, b) => (a < b ? 1 : -1)); // newest first
+    return days.map(dateStr => {
+      const dayDate = new Date(dateStr + 'T12:00:00');
+      const isToday = dateStr === logicalToday;
+      const rides = byDay[dateStr]
+        .slice()
+        .sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
+        .map(s => {
+          const when = new Date(s.scannedAt);
+          const isReturn = s.departureLocation === 'Ohel';
+          return {
+            id: s.id,
+            direction: (isReturn ? 'return' : 'outbound') as 'return' | 'outbound',
+            // Central summary rounds times to the nearest half hour, except today (kept exact).
+            time: isToday ? exactTimeStr(when) : roundToHalfHourStr(when),
+            passengers: s.passengersCount,
+            driver: (s.driverName || '').replace(' (נהג)', ''),
+            bigBus: (s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY,
+          };
+        });
+      return {
+        dateStr,
+        isToday,
+        hebrewDate: getHebrewDate(dayDate),
+        parsha: getWeeklyParsha(dayDate),
+        gregorian: dayDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        rides,
+      };
+    });
+  }, [scans, logicalToday]);
+
   // --- Stats calculations ---
   const stats = useMemo(() => {
     const todayScans = scans.filter(s => s.logicalDate === logicalToday);
@@ -1818,6 +1864,36 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
     triggerToast(lang === 'he' ? 'רשימת המשתמשים יוצאה בהצלחה' : 'Users list exported successfully', 'success');
+  };
+
+  const handleExportCentralToCsv = () => {
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const colHeaders = ['פרשה', 'תאריך עברי', 'תאריך לועזי', 'כיוון', 'שעה', 'אנשים', 'נהג', 'אוטובוס גדול'];
+    const lines: string[] = [];
+    centralSummary.forEach(day => {
+      lines.push(q(`יום: ${day.hebrewDate}  |  ${day.gregorian}${day.parsha ? `  |  פרשת ${day.parsha}` : ''}`));
+      lines.push(colHeaders.map(q).join(','));
+      day.rides.forEach(r => {
+        lines.push([
+          q(day.parsha), q(day.hebrewDate), q(day.gregorian),
+          q(r.direction === 'return' ? 'חזור' : 'הלוך'),
+          q(r.time), q(r.passengers), q(r.driver),
+          q(r.bigBus ? 'כן' : 'לא')
+        ].join(','));
+      });
+      lines.push('');
+    });
+
+    const csvContent = "﻿" + lines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `central_summary_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast(lang === 'he' ? 'הטבלה המרכזית יוצאה לאקסל בהצלחה' : 'Central table exported to Excel', 'success');
   };
 
   const handleOpenMailClient = () => {
@@ -3120,16 +3196,24 @@ export default function App() {
                     <span>{t('situationReport')}</span>
                   </button>
 
-                  <button 
-                    onClick={() => setActiveTab('history')} 
+                  <button
+                    onClick={() => setActiveTab('history')}
                     className={`sidebar-item ${activeTab === 'history' ? 'active' : ''}`}
                   >
                     <Calendar size={16} />
                     <span>{t('fleetActivity')}</span>
                   </button>
 
-                  <button 
-                    onClick={() => setActiveTab('users')} 
+                  <button
+                    onClick={() => setActiveTab('central')}
+                    className={`sidebar-item ${activeTab === 'central' ? 'active' : ''}`}
+                  >
+                    <Table size={16} />
+                    <span>{lang === 'he' ? 'טבלה מרכזית' : 'Master Table'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('users')}
                     className={`sidebar-item ${activeTab === 'users' ? 'active' : ''}`}
                   >
                     <Users size={16} />
@@ -3274,6 +3358,74 @@ export default function App() {
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* TAB: CENTRAL MASTER SUMMARY TABLE */}
+                {activeTab === 'central' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Table size={22} color="var(--accent)" />
+                          {lang === 'he' ? 'טבלת סיכום מרכזית' : 'Master Summary Table'}
+                        </h2>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {lang === 'he'
+                            ? 'כל הנסיעות לפי ימים — פרשה, תאריך עברי ולועזי, שעות מעוגלות לחצי שעה (חוץ מהיום), נהגים ואנשים. ניתן להוריד לאקסל.'
+                            : 'All rides by day — parsha, Hebrew & Gregorian dates, half-hour-rounded times (except today), drivers and passengers. Exportable to Excel.'}
+                        </p>
+                      </div>
+                      <button onClick={handleExportCentralToCsv} className="btn btn-primary" style={{ padding: '10px 16px', fontSize: '13px' }}>
+                        <Download size={15} />
+                        <span>{lang === 'he' ? 'הורדה לאקסל' : 'Export to Excel'}</span>
+                      </button>
+                    </div>
+
+                    {centralSummary.length === 0 ? (
+                      <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        {lang === 'he' ? 'אין נתונים להצגה עדיין' : 'No data yet'}
+                      </div>
+                    ) : (
+                      centralSummary.map(day => (
+                        <div key={day.dateStr} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                          <div style={{ padding: '12px 16px', background: 'rgba(226,176,78,0.08)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <strong style={{ color: '#fff', fontSize: '14px' }}>{day.hebrewDate}</strong>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{day.gregorian}</span>
+                            {day.parsha && <span style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>· {lang === 'he' ? 'פרשת' : 'Parashat'} {day.parsha}</span>}
+                            {day.isToday && <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום (שעות מדויקות)' : 'Today (exact times)'}</span>}
+                          </div>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '560px' }}>
+                              <thead>
+                                <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                  <th style={thCentral}>{lang === 'he' ? 'כיוון' : 'Direction'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'אוטובוס גדול' : 'Big Bus'}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {day.rides.map(r => (
+                                  <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                    <td style={tdCentral}>
+                                      <span style={{ color: r.direction === 'return' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
+                                        {r.direction === 'return' ? (lang === 'he' ? 'חזור' : 'Return') : (lang === 'he' ? 'הלוך' : 'Outbound')}
+                                      </span>
+                                    </td>
+                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
+                                    <td style={tdCentral}>{r.passengers}</td>
+                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
+                                    <td style={tdCentral}>{r.bigBus ? (lang === 'he' ? 'כן' : 'Yes') : (lang === 'he' ? 'לא' : 'No')}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 )}
 
                 {/* TAB: REAL-TIME SITUATION ASSESSMENT */}
@@ -4484,15 +4636,22 @@ export default function App() {
                   <FileText size={18} />
                   <span>{t('situationReport')}</span>
                 </button>
-                <button 
-                  onClick={() => setActiveTab('history')} 
+                <button
+                  onClick={() => setActiveTab('history')}
                   className={`bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
                 >
                   <Calendar size={18} />
                   <span>{t('fleetActivity')}</span>
                 </button>
-                <button 
-                  onClick={() => setActiveTab('users')} 
+                <button
+                  onClick={() => setActiveTab('central')}
+                  className={`bottom-nav-item ${activeTab === 'central' ? 'active' : ''}`}
+                >
+                  <Table size={18} />
+                  <span>{lang === 'he' ? 'טבלה' : 'Table'}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('users')}
                   className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}
                 >
                   <Users size={18} />
