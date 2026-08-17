@@ -1137,12 +1137,15 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, searchText, dateFilter]);
 
-  // --- Central Summary (master table): rides grouped by day, then by time slot, ---
-  // --- outbound (הלוך) and return (חזור) paired on the same row per slot.       ---
+  // --- Central Summary (master table): one row per ride, grouped by day. ---
+  // --- Outbound (הלוך) and return (חזור) are separate rows, each tagged ---
+  // --- with a direction column: כיוון | שעה | נהג | אנשים | אוטובוס גדול. ---
+  const BIG_BUS_MIN_CAPACITY = 25; // capacity >= this counts as "אוטובוס גדול"
+  const [centralBigBusOnly, setCentralBigBusOnly] = useState(false);
+
   const centralSummary = useMemo(() => {
-    const BIG_BUS_MIN_CAPACITY = 25; // capacity >= this counts as "אוטובוס גדול"
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
-    // built-in Map constructor here, so group with plain objects instead.
+    // built-in Map constructor here, so group with a plain object instead.
     const byDay: Record<string, Scan[]> = {};
     for (const s of scans) {
       if (!s.logicalDate) continue;
@@ -1153,42 +1156,23 @@ export default function App() {
       const dayDate = new Date(dateStr + 'T12:00:00');
       const isToday = dateStr === logicalToday;
 
-      type Slot = {
-        time: string;
-        outPax: number; outDrivers: string[]; hasOut: boolean;
-        backPax: number; backDrivers: string[]; hasBack: boolean;
-        bigBus: boolean;
-      };
-      const slots: Record<string, Slot> = {};
-      byDay[dateStr].forEach(s => {
-        const when = new Date(s.scannedAt);
-        // Central summary rounds times to the nearest half hour, except today (kept exact).
-        const time = isToday ? exactTimeStr(when) : roundToHalfHourStr(when);
-        const slot = (slots[time] ||= { time, outPax: 0, outDrivers: [], hasOut: false, backPax: 0, backDrivers: [], hasBack: false, bigBus: false });
-        const driverName = (s.driverName || '').replace(' (נהג)', '');
-        if (s.departureLocation === '770') {
-          slot.hasOut = true;
-          slot.outPax += s.passengersCount || 0;
-          if (driverName && !slot.outDrivers.includes(driverName)) slot.outDrivers.push(driverName);
-        } else {
-          slot.hasBack = true;
-          slot.backPax += s.passengersCount || 0;
-          if (driverName && !slot.backDrivers.includes(driverName)) slot.backDrivers.push(driverName);
-        }
-        if ((s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY) slot.bigBus = true;
-      });
-
-      const rows = Object.values(slots)
-        .sort((a, b) => a.time.localeCompare(b.time))
-        .map(slot => ({
-          timeOut: slot.hasOut ? slot.time : '',
-          paxOut: slot.hasOut ? slot.outPax : null,
-          driverOut: slot.outDrivers.join(', '),
-          driverBack: slot.backDrivers.join(', '),
-          timeBack: slot.hasBack ? slot.time : '',
-          paxBack: slot.hasBack ? slot.backPax : null,
-          bigBus: slot.bigBus,
-        }));
+      const rows = byDay[dateStr]
+        .slice()
+        .sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
+        .map(s => {
+          const when = new Date(s.scannedAt);
+          const bigBus = (s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY;
+          return {
+            id: s.id,
+            direction: (s.departureLocation === 'Ohel' ? 'return' : 'outbound') as 'return' | 'outbound',
+            // Central summary always rounds to the nearest half hour, including today's rows.
+            time: roundToHalfHourStr(when),
+            driver: (s.driverName || '').replace(' (נהג)', ''),
+            passengers: s.passengersCount,
+            bigBus,
+          };
+        })
+        .filter(r => !centralBigBusOnly || r.bigBus);
 
       return {
         dateStr,
@@ -1198,8 +1182,8 @@ export default function App() {
         gregorian: dayDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }),
         rows,
       };
-    });
-  }, [scans, logicalToday]);
+    }).filter(day => day.rows.length > 0);
+  }, [scans, logicalToday, centralBigBusOnly]);
 
   // --- Stats calculations ---
   const stats = useMemo(() => {
@@ -1891,7 +1875,7 @@ export default function App() {
 
   const handleExportCentralToCsv = () => {
     const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const colHeaders = ['פרשה', 'תאריך עברי', 'תאריך לועזי', 'שעת הלוך', 'אנשים בהלוך', 'נהג הלוך', 'נהג חזור', 'שעת חזור', 'אנשים בחזור', 'אוטובוס גדול'];
+    const colHeaders = ['פרשה', 'תאריך עברי', 'תאריך לועזי', 'כיוון', 'שעה', 'נהג', 'אנשים', 'אוטובוס גדול'];
     const lines: string[] = [];
     centralSummary.forEach(day => {
       lines.push(q(`יום: ${day.hebrewDate}  |  ${day.gregorian}${day.parsha ? `  |  פרשת ${day.parsha}` : ''}`));
@@ -1899,8 +1883,8 @@ export default function App() {
       day.rows.forEach(r => {
         lines.push([
           q(day.parsha), q(day.hebrewDate), q(day.gregorian),
-          q(r.timeOut), q(r.paxOut ?? ''), q(r.driverOut),
-          q(r.driverBack), q(r.timeBack), q(r.paxBack ?? ''),
+          q(r.direction === 'return' ? 'חזור' : 'הלוך'),
+          q(r.time), q(r.driver), q(r.passengers),
           q(r.bigBus ? 'כן' : 'לא')
         ].join(','));
       });
@@ -1912,11 +1896,81 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `central_summary_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `central_summary${centralBigBusOnly ? '_big_bus' : ''}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     triggerToast(lang === 'he' ? 'הטבלה המרכזית יוצאה לאקסל בהצלחה' : 'Central table exported to Excel', 'success');
+  };
+
+  // --- Per-driver detailed PDF report (via browser print -> "Save as PDF") ---
+  // jsPDF's built-in fonts don't support Hebrew glyphs without embedding a custom
+  // font, so a real browser print window is the reliable way to get correct
+  // Hebrew/RTL rendering in the exported PDF.
+  const driverNamesForPdf = useMemo(() => {
+    const names = new Set<string>();
+    users.filter(u => u.role === 'driver').forEach(u => names.add(u.name.replace(' (נהג)', '')));
+    scans.forEach(s => { if (s.driverName) names.add(s.driverName.replace(' (נהג)', '')); });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
+  }, [users, scans]);
+
+  const [selectedDriverForPdf, setSelectedDriverForPdf] = useState('');
+
+  const handleExportDriverPdf = () => {
+    if (!selectedDriverForPdf) return;
+    const BIG_BUS_MIN_CAPACITY = 25;
+    const driverScans = scans
+      .filter(s => (s.driverName || '').replace(' (נהג)', '') === selectedDriverForPdf)
+      .slice()
+      .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+
+    const totalRides = driverScans.length;
+    const totalPassengers = driverScans.reduce((sum, s) => sum + (s.passengersCount || 0), 0);
+
+    const rowsHtml = driverScans.map(s => {
+      const when = new Date(s.scannedAt);
+      const dayDate = new Date((s.logicalDate || '') + 'T12:00:00');
+      const isReturn = s.departureLocation === 'Ohel';
+      const bigBus = (s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY;
+      return `<tr>
+        <td>${getHebrewDate(dayDate)}</td>
+        <td>${dayDate.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
+        <td>${isReturn ? 'חזור' : 'הלוך'}</td>
+        <td>${exactTimeStr(when)}</td>
+        <td>${s.passengersCount ?? ''}</td>
+        <td>${bigBus ? 'כן' : 'לא'}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+      <title>דו"ח נהג - ${selectedDriverForPdf}</title>
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #111; }
+        h1 { font-size: 20px; margin-bottom: 4px; }
+        .sub { color: #555; font-size: 13px; margin-bottom: 18px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: right; }
+        th { background: #f0f0f0; }
+        .stats { margin-bottom: 16px; font-size: 14px; }
+        .stats b { color: #000; }
+        @media print { body { padding: 0; } }
+      </style></head>
+      <body>
+        <h1>דו"ח נסיעות מפורט — ${selectedDriverForPdf}</h1>
+        <div class="sub">מערכת אוהל בוס · הופק בתאריך ${new Date().toLocaleDateString('he-IL')}</div>
+        <div class="stats">🚗 סה"כ נסיעות: <b>${totalRides}</b> &nbsp;&nbsp; 👥 סה"כ נוסעים שהסיע: <b>${totalPassengers}</b></div>
+        <table>
+          <thead><tr><th>תאריך עברי</th><th>תאריך לועזי</th><th>כיוון</th><th>שעה</th><th>אנשים</th><th>אוטובוס גדול</th></tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="6">אין נסיעות רשומות</td></tr>'}</tbody>
+        </table>
+      </body></html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { triggerToast(lang === 'he' ? 'החלון נחסם - אפשר חלונות קופצים' : 'Popup blocked - allow popups', 'error'); return; }
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 300);
   };
 
   const handleCopyReturnLink = () => {
@@ -3406,8 +3460,8 @@ export default function App() {
                         </h2>
                         <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                           {lang === 'he'
-                            ? 'כל הנסיעות לפי ימים — פרשה, תאריך עברי ולועזי, שעות מעוגלות לחצי שעה (חוץ מהיום), נהגים ואנשים. ניתן להוריד לאקסל.'
-                            : 'All rides by day — parsha, Hebrew & Gregorian dates, half-hour-rounded times (except today), drivers and passengers. Exportable to Excel.'}
+                            ? 'כל הנסיעות לפי ימים — פרשה, תאריך עברי ולועזי, שעות מעוגלות לחצי שעה, נהגים ואנשים. ניתן להוריד לאקסל.'
+                            : 'All rides by day — parsha, Hebrew & Gregorian dates, times rounded to the nearest half hour, drivers and passengers. Exportable to Excel.'}
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -3422,9 +3476,32 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* Filter + per-driver PDF toolbar */}
+                    <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
+                        {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
+                      </label>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginInlineStart: 'auto', flexWrap: 'wrap' }}>
+                        <select
+                          value={selectedDriverForPdf}
+                          onChange={e => setSelectedDriverForPdf(e.target.value)}
+                          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        >
+                          <option value="">{lang === 'he' ? 'בחר נהג...' : 'Select driver...'}</option>
+                          {driverNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                        <button onClick={handleExportDriverPdf} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5 }}>
+                          <FileText size={15} />
+                          <span>{lang === 'he' ? 'דו"ח PDF לנהג' : 'Driver PDF report'}</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {centralSummary.length === 0 ? (
                       <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        {lang === 'he' ? 'אין נתונים להצגה עדיין' : 'No data yet'}
+                        {lang === 'he' ? 'אין נתונים להצגה' : 'No data to display'}
                       </div>
                     ) : (
                       centralSummary.map(day => (
@@ -3433,34 +3510,30 @@ export default function App() {
                             <strong style={{ color: '#fff', fontSize: '14px' }}>{day.hebrewDate}</strong>
                             <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{day.gregorian}</span>
                             {day.parsha && <span style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>· {lang === 'he' ? 'פרשת' : 'Parashat'} {day.parsha}</span>}
-                            {day.isToday && <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום (שעות מדויקות)' : 'Today (exact times)'}</span>}
+                            {day.isToday && <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום' : 'Today'}</span>}
                           </div>
                           <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '760px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
                               <thead>
                                 <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                                  <th style={{ ...thCentral, color: 'var(--accent)' }} colSpan={3}>{lang === 'he' ? 'הלוך' : 'Outbound'}</th>
-                                  <th style={{ ...thCentral, color: '#06b6d4' }} colSpan={3}>{lang === 'he' ? 'חזור' : 'Return'}</th>
-                                  <th style={thCentral} rowSpan={2}>{lang === 'he' ? 'אוטובוס גדול' : 'Big Bus'}</th>
-                                </tr>
-                                <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left', borderTop: '1px solid var(--border-color)' }}>
+                                  <th style={thCentral}>{lang === 'he' ? 'כיוון' : 'Direction'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
+                                  <th style={thCentral}>{lang === 'he' ? 'אוטובוס גדול' : 'Big Bus'}</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {day.rows.map((r, i) => (
-                                  <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: r.timeOut ? '#fff' : 'var(--text-secondary)' }}>{r.timeOut || '—'}</td>
-                                    <td style={tdCentral}>{r.paxOut ?? '—'}</td>
-                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driverOut || '—'}</td>
-                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driverBack || '—'}</td>
-                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: r.timeBack ? '#fff' : 'var(--text-secondary)' }}>{r.timeBack || '—'}</td>
-                                    <td style={tdCentral}>{r.paxBack ?? '—'}</td>
+                                {day.rows.map(r => (
+                                  <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                    <td style={tdCentral}>
+                                      <span style={{ color: r.direction === 'return' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
+                                        {r.direction === 'return' ? (lang === 'he' ? 'חזור' : 'Return') : (lang === 'he' ? 'הלוך' : 'Outbound')}
+                                      </span>
+                                    </td>
+                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
+                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
+                                    <td style={tdCentral}>{r.passengers}</td>
                                     <td style={tdCentral}>{r.bigBus ? (lang === 'he' ? 'כן' : 'Yes') : (lang === 'he' ? 'לא' : 'No')}</td>
                                   </tr>
                                 ))}
