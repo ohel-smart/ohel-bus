@@ -1896,6 +1896,18 @@ export default function App() {
     triggerToast(lang === 'he' ? 'הטבלה המרכזית יוצאה לאקסל בהצלחה' : 'Central table exported to Excel', 'success');
   };
 
+  const handleCopyReturnLink = () => {
+    const link = `${window.location.origin}/?report=return`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(
+        () => triggerToast(lang === 'he' ? 'קישור הדיווח לנהגים הועתק!' : 'Driver report link copied!', 'success'),
+        () => triggerToast(link, 'success')
+      );
+    } else {
+      triggerToast(link, 'success');
+    }
+  };
+
   const handleOpenMailClient = () => {
     if (!emailPreviewHtml) return;
     const subject = emailPreviewType === 'daily' 
@@ -3375,10 +3387,16 @@ export default function App() {
                             : 'All rides by day — parsha, Hebrew & Gregorian dates, half-hour-rounded times (except today), drivers and passengers. Exportable to Excel.'}
                         </p>
                       </div>
-                      <button onClick={handleExportCentralToCsv} className="btn btn-primary" style={{ padding: '10px 16px', fontSize: '13px' }}>
-                        <Download size={15} />
-                        <span>{lang === 'he' ? 'הורדה לאקסל' : 'Export to Excel'}</span>
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button onClick={handleCopyReturnLink} className="btn btn-secondary" style={{ padding: '10px 16px', fontSize: '13px', color: '#fff' }}>
+                          <Copy size={15} />
+                          <span>{lang === 'he' ? 'קישור דיווח לנהגים' : 'Driver report link'}</span>
+                        </button>
+                        <button onClick={handleExportCentralToCsv} className="btn btn-primary" style={{ padding: '10px 16px', fontSize: '13px' }}>
+                          <Download size={15} />
+                          <span>{lang === 'he' ? 'הורדה לאקסל' : 'Export to Excel'}</span>
+                        </button>
+                      </div>
                     </div>
 
                     {centralSummary.length === 0 ? (
