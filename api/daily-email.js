@@ -71,30 +71,56 @@ export default async function handler(req, res) {
   const totalRides = dayScans.length;
   const hebrewDate = hebrewDateOf(target);
 
-  const rows = dayScans.map(s => `<tr>
-    <td style="padding:6px 10px;border:1px solid #ddd;">${esc(String(s.driverName || '—').replace(' (נהג)', ''))}</td>
-    <td style="padding:6px 10px;border:1px solid #ddd;">${s.departureLocation === '770' ? '770' : 'אוהל'}</td>
-    <td style="padding:6px 10px;border:1px solid #ddd;text-align:center;">${esc(s.passengersCount ?? '—')}</td>
-    <td style="padding:6px 10px;border:1px solid #ddd;">${esc(String(s.dispatcherName || '—').replace(' (סדרן)', ''))}</td>
+  // Brand palette (matches the driver PDF report) — inlined per-element since
+  // email clients don't reliably support CSS custom properties or <style> classes.
+  const GOLD = '#b9872f', GOLD_BG = '#fbf3e3', INK = '#1a1a1a', MUTED = '#6b6b6b', BORDER = '#e3d9c4';
+
+  const rows = dayScans.map((s, i) => `<tr style="background:${i % 2 === 1 ? '#faf7f0' : '#ffffff'};">
+    <td style="padding:8px 10px;border-bottom:1px solid ${BORDER};">${esc(String(s.driverName || '—').replace(' (נהג)', ''))}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid ${BORDER};color:${GOLD};font-weight:700;">${s.departureLocation === '770' ? '770' : 'אוהל'}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid ${BORDER};text-align:center;">${esc(s.passengersCount ?? '—')}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid ${BORDER};">${esc(String(s.dispatcherName || '—').replace(' (סדרן)', ''))}</td>
   </tr>`).join('');
 
-  const html = `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#111;">
-    <h2>📊 סיכום נסיעות יומי</h2>
-    <p><b>תאריך לועזי:</b> ${target}<br><b>תאריך עברי:</b> ${hebrewDate}</p>
-    <ul>
-      <li>🚗 סה"כ נסיעות: <b>${totalRides}</b></li>
-      <li>👥 סה"כ אנשים שנסעו: <b>${totalPassengers}</b></li>
-      <li>👨‍✈️ נהגים פעילים: <b>${drivers.size}</b> (${esc(formatWithOrigins(drivers))})</li>
-      <li>👤 סדרנים פעילים: <b>${dispatchers.size}</b> (${esc(formatWithOrigins(dispatchers))})</li>
-    </ul>
-    ${totalRides ? `<table style="border-collapse:collapse;width:100%;font-size:14px;">
-      <thead><tr style="background:#f3f3f3;">
-        <th style="padding:6px 10px;border:1px solid #ddd;">נהג</th>
-        <th style="padding:6px 10px;border:1px solid #ddd;">מוצא</th>
-        <th style="padding:6px 10px;border:1px solid #ddd;">אנשים</th>
-        <th style="padding:6px 10px;border:1px solid #ddd;">סדרן</th>
-      </tr></thead><tbody>${rows}</tbody></table>` : '<p>לא היו נסיעות ביום זה.</p>'}
-    <p style="color:#888;font-size:12px;margin-top:16px;">נשלח אוטומטית ממערכת אוהל בוס.</p>
+  const statCard = (value, label) => `<td style="background:${GOLD_BG};border:1px solid ${BORDER};border-radius:10px;padding:14px 18px;" width="50%">
+    <div style="font-size:24px;font-weight:800;color:${INK};line-height:1.2;">${value}</div>
+    <div style="font-size:12px;color:${MUTED};margin-top:4px;">${label}</div>
+  </td>`;
+
+  const html = `<div dir="rtl" style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;max-width:640px;margin:auto;color:${INK};background:#ffffff;padding:32px;">
+    <table role="presentation" width="100%" style="border-collapse:collapse;border-bottom:3px solid ${GOLD};padding-bottom:16px;margin-bottom:20px;">
+      <tr>
+        <td style="padding-bottom:16px;" width="60">
+          <img src="https://ohel-bus.vercel.app/logo-dark.png" alt="Ohel Smart" width="44" height="44" style="display:block;height:44px;width:auto;">
+        </td>
+        <td style="padding-bottom:16px;padding-inline-start:16px;">
+          <div style="font-size:20px;font-weight:700;color:${INK};">📊 סיכום נסיעות יומי</div>
+          <div style="font-size:15px;font-weight:700;color:${GOLD};margin-top:2px;">${target}${hebrewDate ? ' · ' + hebrewDate : ''}</div>
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" width="100%" style="border-collapse:separate;border-spacing:12px 0;margin-bottom:12px;">
+      <tr>${statCard(totalRides, '🚗 סה"כ נסיעות')}${statCard(totalPassengers, '👥 סה"כ אנשים שנסעו')}</tr>
+    </table>
+    <table role="presentation" width="100%" style="border-collapse:separate;border-spacing:12px 0;margin-bottom:22px;">
+      <tr>${statCard(drivers.size, '👨‍✈️ נהגים פעילים')}${statCard(dispatchers.size, '👤 סדרנים פעילים')}</tr>
+    </table>
+
+    <table role="presentation" width="100%" style="border-collapse:collapse;font-size:13px;margin-bottom:8px;">
+      <tr><td style="color:${MUTED};padding:2px 0;"><b style="color:${INK};">נהגים:</b> ${esc(formatWithOrigins(drivers))}</td></tr>
+      <tr><td style="color:${MUTED};padding:2px 0;"><b style="color:${INK};">סדרנים:</b> ${esc(formatWithOrigins(dispatchers))}</td></tr>
+    </table>
+
+    ${totalRides ? `<table role="presentation" style="border-collapse:collapse;width:100%;font-size:12.5px;margin-top:14px;">
+      <thead><tr style="background:${INK};color:#ffffff;">
+        <th style="padding:9px 10px;font-weight:600;text-align:right;">נהג</th>
+        <th style="padding:9px 10px;font-weight:600;text-align:right;">מוצא</th>
+        <th style="padding:9px 10px;font-weight:600;text-align:center;">אנשים</th>
+        <th style="padding:9px 10px;font-weight:600;text-align:right;">סדרן</th>
+      </tr></thead><tbody>${rows}</tbody></table>` : `<p style="text-align:center;color:${MUTED};padding:20px;">לא היו נסיעות ביום זה.</p>`}
+
+    <p style="color:${MUTED};font-size:11px;text-align:center;margin-top:24px;">הופק אוטומטית ממערכת אוהל בוס</p>
   </div>`;
 
   try {
