@@ -4,16 +4,17 @@
 // Reads the current ride data from Firestore (same source the app uses).
 
 import { HDate } from '@hebcal/core';
-import admin from 'firebase-admin';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
 function getDb() {
-  if (!admin.apps.length) {
+  if (!getApps().length) {
     if (!process.env.FIREBASE_KEY) return null;
-    admin.initializeApp({
-      credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
+    initializeApp({
+      credential: cert(JSON.parse(process.env.FIREBASE_KEY))
     });
   }
-  return admin.firestore();
+  return getFirestore();
 }
 
 // Hebrew date (niqqud stripped) via @hebcal/core — reliable regardless of the
