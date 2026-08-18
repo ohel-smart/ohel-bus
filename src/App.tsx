@@ -83,6 +83,10 @@ const TRANSLATIONS = {
     managerScansSub: 'רשימת כלל הסריקות, עריכת רשומות, ונוכחות סדרנים',
     searchPlaceholder: 'חיפוש חופשי (נהג, סדרן, מוצא)...',
     clearDate: 'נקה תאריך',
+    monthFilterLabel: 'סינון לפי חודש',
+    clearMonth: 'נקה חודש',
+    parshaFilterLabel: 'כל הפרשות',
+    clearParsha: 'נקה פרשה',
     actions: 'פעולות',
     editScanTitle: 'עריכת פרטי נסיעה',
     save: 'שמור',
@@ -322,6 +326,10 @@ const TRANSLATIONS = {
     managerScansSub: 'List of all scans, entry edits, and dispatcher logs',
     searchPlaceholder: 'Search (driver, dispatcher, origin)...',
     clearDate: 'Clear Date',
+    monthFilterLabel: 'Filter by Month',
+    clearMonth: 'Clear Month',
+    parshaFilterLabel: 'All Parshas',
+    clearParsha: 'Clear Parsha',
     actions: 'Actions',
     editScanTitle: 'Edit Trip Details',
     save: 'Save',
@@ -731,6 +739,8 @@ export default function App() {
   // Search & Filter state for Manager Dashboard
   const [searchText, setSearchText] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState(''); // format: YYYY-MM
+  const [parshaFilter, setParshaFilter] = useState(''); // weekly parsha name
   const [selectedScanForEdit, setSelectedScanForEdit] = useState<Scan | null>(null);
   const [editPassengersCount, setEditPassengersCount] = useState<number>(0);
   const [editDepartureLocation, setEditDepartureLocation] = useState<DepartureLocation>('770');
@@ -1100,20 +1110,52 @@ export default function App() {
   }, [scans, situationTimeframe, situationStartDate, situationEndDate, logicalToday, currentLiveTime]);
 
   // --- Scans Filters for Dashboard ---
+  // Plain object of logicalDate -> parsha name, built once per distinct set of dates present in
+  // `scans` (getWeeklyParsha itself is memoized per-week internally, so this is just avoiding
+  // recomputing the whole distinct-date scan on every render). NOTE: a lucide icon named `Map`
+  // is imported at module scope and shadows the built-in Map constructor, so use a plain object.
+  const logicalDateToParsha = useMemo(() => {
+    const dict: Record<string, string> = {};
+    for (const s of scans) {
+      if (!(s.logicalDate in dict)) {
+        dict[s.logicalDate] = getWeeklyParsha(new Date(s.logicalDate + 'T12:00:00'));
+      }
+    }
+    return dict;
+  }, [scans]);
+
+  // Distinct parsha names occurring in `scans`, ordered by chronological first-occurrence
+  // (not alphabetical - Hebrew alphabetical order isn't meaningful for parsha order).
+  const availableParshas = useMemo(() => {
+    const datesSorted = Object.keys(logicalDateToParsha).sort(); // YYYY-MM-DD sorts chronologically
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const d of datesSorted) {
+      const p = logicalDateToParsha[d];
+      if (p && !seen.has(p)) {
+        seen.add(p);
+        result.push(p);
+      }
+    }
+    return result;
+  }, [logicalDateToParsha]);
+
   const filteredScans = useMemo(() => {
     return scans
       .filter(s => {
-        const matchesSearch = 
-          s.driverName.toLowerCase().includes(searchText.toLowerCase()) || 
-          s.dispatcherName.toLowerCase().includes(searchText.toLowerCase()) || 
+        const matchesSearch =
+          s.driverName.toLowerCase().includes(searchText.toLowerCase()) ||
+          s.dispatcherName.toLowerCase().includes(searchText.toLowerCase()) ||
           s.departureLocation.toLowerCase().includes(searchText.toLowerCase());
-        
+
         const matchesDate = dateFilter ? s.logicalDate === dateFilter : true;
-        
-        return matchesSearch && matchesDate;
+        const matchesMonth = monthFilter ? s.logicalDate.startsWith(monthFilter) : true;
+        const matchesParsha = parshaFilter ? logicalDateToParsha[s.logicalDate] === parshaFilter : true;
+
+        return matchesSearch && matchesDate && matchesMonth && matchesParsha;
       })
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
-  }, [scans, searchText, dateFilter]);
+  }, [scans, searchText, dateFilter, monthFilter, parshaFilter, logicalDateToParsha]);
 
   // --- Central Summary (master table): one row per ride, grouped by day. ---
   // --- Outbound (הלוך) and return (חזור) are separate rows, each tagged ---
@@ -4085,19 +4127,56 @@ export default function App() {
                           />
                         </div>
 
-                        <input 
-                          type="date" 
-                          className="form-input" 
+                        <input
+                          type="date"
+                          className="form-input"
                           style={{ width: '150px', height: '38px', fontSize: '13px' }}
                           value={dateFilter}
                           onChange={(e) => setDateFilter(e.target.value)}
                         />
                         {dateFilter && (
-                          <button 
+                          <button
                             onClick={() => setDateFilter('')}
                             style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
                           >
                             {t('clearDate')}
+                          </button>
+                        )}
+
+                        <input
+                          type="month"
+                          className="form-input"
+                          style={{ width: '150px', height: '38px', fontSize: '13px' }}
+                          value={monthFilter}
+                          onChange={(e) => setMonthFilter(e.target.value)}
+                          title={t('monthFilterLabel')}
+                        />
+                        {monthFilter && (
+                          <button
+                            onClick={() => setMonthFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearMonth')}
+                          </button>
+                        )}
+
+                        <select
+                          className="form-input"
+                          style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                          value={parshaFilter}
+                          onChange={(e) => setParshaFilter(e.target.value)}
+                        >
+                          <option value="">{t('parshaFilterLabel')}</option>
+                          {availableParshas.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                        {parshaFilter && (
+                          <button
+                            onClick={() => setParshaFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearParsha')}
                           </button>
                         )}
                       </div>
