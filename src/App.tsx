@@ -3609,6 +3609,7 @@ export default function App() {
                                   <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
                                   <th style={thCentral}>{lang === 'he' ? 'אוטובוס גדול' : 'Big Bus'}</th>
+                                  <th style={thCentral}></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -3623,6 +3624,16 @@ export default function App() {
                                     <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
                                     <td style={tdCentral}>{r.passengers}</td>
                                     <td style={tdCentral}>{r.bigBus ? (lang === 'he' ? 'כן' : 'Yes') : (lang === 'he' ? 'לא' : 'No')}</td>
+                                    <td style={tdCentral}>
+                                      <button
+                                        onClick={() => handleDeleteScan(r.id)}
+                                        className="btn btn-danger"
+                                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                                        title={lang === 'he' ? 'מחק שורה' : 'Delete row'}
+                                      >
+                                        <Trash size={12} />
+                                      </button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
