@@ -4041,15 +4041,25 @@ export default function App() {
                 {/* TAB 2: GLOBAL ACTIVITY LOG */}
                 {activeTab === 'history' && (
                   <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Same header-box style as the central table's day headers. */}
+                    <div style={{ padding: '12px 16px', margin: '-24px -24px 0', background: 'rgba(226,176,78,0.08)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <strong style={{ color: '#fff', fontSize: '14px' }}>{getHebrewDate(new Date())}</strong>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        {new Date().toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </span>
+                      {getWeeklyParsha(new Date()) && (
+                        <span style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>
+                          · {lang === 'he' ? 'פרשת' : 'Parashat'} {getWeeklyParsha(new Date())}
+                        </span>
+                      )}
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>· {getDayOfWeekHe(new Date())}</span>
+                      <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום' : 'Today'}</span>
+                    </div>
+
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                       <div>
                         <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff' }}>{t('managerScansTitle')}</h2>
                         <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t('managerScansSub')}</p>
-                        <p style={{ fontSize: '11px', color: 'var(--accent)', marginTop: '4px' }}>
-                          {lang === 'he'
-                            ? `פרשת שבוע: ${getWeeklyParsha(new Date())} · תאריך עברי: ${getHebrewDate(new Date())} · ${getDayOfWeekHe(new Date())}`
-                            : `Weekly Parsha: ${getWeeklyParsha(new Date())} · Hebrew Date: ${getHebrewDate(new Date())} · ${getDayOfWeekHe(new Date())}`}
-                        </p>
                       </div>
 
                       {/* Filters */}
