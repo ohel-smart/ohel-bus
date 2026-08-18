@@ -571,12 +571,21 @@ class DBService {
             return Math.max(1, Math.round(seconds / 60));
           }
         }
+        // The call succeeded at the network level but returned no usable route -
+        // e.g. a referrer-restriction rejection, an invalid key, or a quota error
+        // all come back as a normal HTTP response with an `error` body, not a
+        // thrown exception. Without logging this, a silent fallback to the much
+        // less accurate distance-estimate below is completely invisible.
+        console.warn('Routes API returned no duration - falling back to distance estimate. Response:', JSON.stringify(data).slice(0, 500));
       } catch (e) {
-        console.error('Routes API ETA error:', e);
+        console.error('Routes API ETA error - falling back to distance estimate:', e);
       }
     }
 
     // 2. Fallback: Haversine distance * NYC winding coefficient / typical speed.
+    // Meaningfully less accurate than live traffic data - only reached when the
+    // Routes API call above didn't return a usable result (see the warning logged
+    // just above for why).
     const distanceKm = this.calculateHaversineDistance(lat, lng, destination.latitude, destination.longitude);
     const roadDistanceKm = distanceKm * 1.28;
     const averageSpeedKmh = 38; // ~24 mph
@@ -587,6 +596,7 @@ class DBService {
     } else {
       eta = Math.max(1, eta);
     }
+    console.warn(`ETA fallback used: ${eta} min (distance estimate, not live traffic)`);
     return eta;
   }
 }

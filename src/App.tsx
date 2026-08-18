@@ -50,6 +50,14 @@ const TRANSLATIONS = {
     yourQr: 'קוד ה-QR האישי שלך',
     scanGuidance: 'הצג קוד QR זה לסדרן בשטח בעת ההעמסה.',
     scanGuidance2: 'הסריקה תרשום את היציאה, כמות הנוסעים ומיקומך ב-GPS.',
+    noPhoneToggle: 'אין לסדרן טלפון? הוצא הסעה מכאן',
+    noPhoneCodePrompt: 'סדרן: הזן את הקוד האישי שלך',
+    noPhoneCodePlaceholder: 'קוד אישי',
+    noPhoneVerifyBtn: 'אמת קוד',
+    noPhoneInvalidCode: 'קוד לא תקין - יש להזין קוד של סדרן או מנהל',
+    noPhoneWelcome: 'שלום {name}, כמה נוסעים עולים?',
+    noPhoneSendBtn: 'שלח הסעה',
+    noPhoneCancel: 'ביטול',
     updateStatus: 'עדכן סטטוס פעילות נוכחי:',
     myTripsTodayTitle: 'הנסיעות שלי היום (סיכום אישי)',
     totalTrips: 'סה"כ נסיעות',
@@ -281,6 +289,14 @@ const TRANSLATIONS = {
     yourQr: 'Your Personal QR Code',
     scanGuidance: 'Show this QR code to the dispatcher at boarding.',
     scanGuidance2: 'The scan registers your departure, passenger count, and GPS location.',
+    noPhoneToggle: "Dispatcher doesn't have a phone? Issue a ride from here",
+    noPhoneCodePrompt: 'Dispatcher: enter your personal code',
+    noPhoneCodePlaceholder: 'Personal code',
+    noPhoneVerifyBtn: 'Verify Code',
+    noPhoneInvalidCode: 'Invalid code - must be a dispatcher or admin code',
+    noPhoneWelcome: 'Hi {name}, how many passengers?',
+    noPhoneSendBtn: 'Send Ride',
+    noPhoneCancel: 'Cancel',
     updateStatus: 'Update Current Activity Status:',
     myTripsTodayTitle: 'My Trips Today (Personal Summary)',
     totalTrips: 'Total Trips',
@@ -755,7 +771,14 @@ export default function App() {
   const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
   const [scannerModalDriver, setScannerModalDriver] = useState<User | null>(null);
   const [scannerModalPassengers, setScannerModalPassengers] = useState<number>(0);
-  
+
+  // "No phone" flow: a dispatcher without their own device can issue a ride
+  // using the driver's phone, from below the driver's own QR code screen.
+  const [noPhoneShowForm, setNoPhoneShowForm] = useState<boolean>(false);
+  const [noPhoneCode, setNoPhoneCode] = useState<string>('');
+  const [noPhoneDispatcher, setNoPhoneDispatcher] = useState<User | null>(null);
+  const [noPhonePassengers, setNoPhonePassengers] = useState<number>(0);
+
   const toggleDayExpanded = (date: string) => {
     setExpandedDays(prev => ({ ...prev, [date]: !prev[date] }));
   };
@@ -2949,6 +2972,146 @@ export default function App() {
                         {t('scanGuidance')}
                         <br/>{t('scanGuidance2')}
                       </p>
+
+                      {/* No-phone flow: a dispatcher without their own device can
+                          issue a ride using the driver's phone, right here. */}
+                      {!noPhoneShowForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setNoPhoneShowForm(true)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '11.5px', textDecoration: 'underline', cursor: 'pointer', padding: '4px' }}
+                        >
+                          {t('noPhoneToggle')}
+                        </button>
+                      ) : (
+                        <div style={{ maxWidth: '300px', margin: '0 auto', textAlign: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px' }}>
+                          {!noPhoneDispatcher ? (
+                            <>
+                              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                                {t('noPhoneCodePrompt')}
+                              </p>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                className="form-input"
+                                value={noPhoneCode}
+                                onChange={(e) => setNoPhoneCode(e.target.value)}
+                                placeholder={t('noPhoneCodePlaceholder')}
+                                style={{ textAlign: 'center', marginBottom: '10px' }}
+                              />
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ flex: 1, fontSize: '12px' }}
+                                  onClick={() => { setNoPhoneShowForm(false); setNoPhoneCode(''); }}
+                                >
+                                  {t('noPhoneCancel')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ flex: 1, fontSize: '12px' }}
+                                  onClick={() => {
+                                    const disp = dbService.loginWithCode(noPhoneCode.trim());
+                                    if (disp && (disp.role === 'dispatcher' || disp.role === 'admin')) {
+                                      setNoPhoneDispatcher(disp);
+                                      setNoPhoneCode('');
+                                    } else {
+                                      triggerToast(t('noPhoneInvalidCode'), 'danger');
+                                    }
+                                  }}
+                                >
+                                  {t('noPhoneVerifyBtn')}
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p style={{ fontSize: '12.5px', color: '#fff', fontWeight: 'bold', marginBottom: '12px' }}>
+                                {t('noPhoneWelcome', { name: noPhoneDispatcher.name.replace(' (סדרן)', '') })}
+                              </p>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                                {[5, 10, 15, 20, 25, 30].map(val => (
+                                  <button
+                                    key={val}
+                                    type="button"
+                                    onClick={() => setNoPhonePassengers(val)}
+                                    className={`btn ${noPhonePassengers === val ? 'btn-primary' : 'btn-secondary'}`}
+                                    style={{
+                                      fontSize: '13px',
+                                      padding: '10px 4px',
+                                      background: noPhonePassengers === val ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+                                      color: noPhonePassengers === val ? '#000' : '#fff',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    {val}
+                                  </button>
+                                ))}
+                              </div>
+                              <input
+                                type="number"
+                                className="form-input"
+                                value={noPhonePassengers === 0 ? '' : noPhonePassengers}
+                                onChange={(e) => setNoPhonePassengers(Math.max(0, parseInt(e.target.value) || 0))}
+                                placeholder="0"
+                                style={{ textAlign: 'center', marginBottom: '12px' }}
+                              />
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ flex: 1, fontSize: '12px' }}
+                                  onClick={() => { setNoPhoneShowForm(false); setNoPhoneDispatcher(null); setNoPhonePassengers(0); }}
+                                >
+                                  {t('noPhoneCancel')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ flex: 1, fontSize: '12px' }}
+                                  onClick={async () => {
+                                    if (noPhonePassengers <= 0) {
+                                      triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+                                      return;
+                                    }
+                                    const disp = noPhoneDispatcher;
+                                    const passengers = noPhonePassengers;
+                                    setNoPhoneShowForm(false);
+                                    setNoPhoneDispatcher(null);
+                                    setNoPhonePassengers(0);
+                                    try {
+                                      await dbService.addScan({
+                                        dispatcherId: disp.id,
+                                        dispatcherName: disp.name,
+                                        driverId: currentUser.id,
+                                        driverName: currentUser.name,
+                                        passengersCount: passengers,
+                                        scannedAt: new Date().toISOString(),
+                                        location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
+                                        departureLocation: currentDepartureLocation
+                                      });
+                                      confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
+                                      triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
+                                    } catch (err) {
+                                      console.error('Failed to save no-phone scan:', err);
+                                      triggerToast(
+                                        lang === 'he'
+                                          ? 'הסריקה לא נשמרה בשרת (בעיית רשת?) - נסה שוב'
+                                          : 'Scan failed to save to server (network issue?) - try again',
+                                        'danger'
+                                      );
+                                    }
+                                  }}
+                                >
+                                  {t('noPhoneSendBtn')}
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
 
                       {/* SOS Emergency button removed */}
                     </div>
