@@ -4892,36 +4892,51 @@ export default function App() {
 
                 {/* Action Buttons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <button 
-                    onClick={() => {
+                  <button
+                    onClick={async () => {
                       if (scannerModalPassengers <= 0) {
                         triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
                         return;
                       }
-                      
-                      // Create the scan directly!
-                      dbService.addScan({
-                        dispatcherId: currentUser.id,
-                        dispatcherName: currentUser.name,
-                        driverId: scannerModalDriver.id,
-                        driverName: scannerModalDriver.name,
-                        passengersCount: scannerModalPassengers,
-                        scannedAt: new Date().toISOString(),
-                        location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
-                        departureLocation: currentDepartureLocation
-                      });
 
-                      confetti({
-                        particleCount: 100,
-                        spread: 70,
-                        origin: { y: 0.8 }
-                      });
+                      const driverForScan = scannerModalDriver;
+                      const passengersForScan = scannerModalPassengers;
 
-                      triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${scannerModalDriver.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${scannerModalDriver.name}`, 'success');
-
-                      // Reset state
+                      // Reset the modal immediately (the scan is already visible in
+                      // this dispatcher's own local view) - but the success/error
+                      // toast below reflects what actually happened on the server,
+                      // not just the optimistic local write.
                       setScannerModalDriver(null);
                       setScannerModalPassengers(0);
+
+                      try {
+                        await dbService.addScan({
+                          dispatcherId: currentUser.id,
+                          dispatcherName: currentUser.name,
+                          driverId: driverForScan.id,
+                          driverName: driverForScan.name,
+                          passengersCount: passengersForScan,
+                          scannedAt: new Date().toISOString(),
+                          location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
+                          departureLocation: currentDepartureLocation
+                        });
+
+                        confetti({
+                          particleCount: 100,
+                          spread: 70,
+                          origin: { y: 0.8 }
+                        });
+
+                        triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${driverForScan.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${driverForScan.name}`, 'success');
+                      } catch (err) {
+                        console.error('Failed to save scan:', err);
+                        triggerToast(
+                          lang === 'he'
+                            ? `הסריקה לא נשמרה בשרת (בעיית רשת?) - נסה שוב או בדוק חיבור`
+                            : `Scan failed to save to server (network issue?) - try again or check connection`,
+                          'danger'
+                        );
+                      }
                     }}
                     className="btn btn-primary"
                     style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: 'bold', color: '#000' }}

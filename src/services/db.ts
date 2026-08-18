@@ -308,9 +308,13 @@ class DBService {
     } else {
       this.scansCache = [...this.scansCache, newScan];
       localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
-      // Fire-and-forget: Firestore's own SDK queues this automatically if the
-      // network happens to be down, and syncs once connectivity returns.
-      this.writeScan(newScan).catch(e => console.error('Failed to write scan to Firestore:', e));
+      this.notify();
+      // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
+      // fails (e.g. a dropped connection right at scan time) rather than seeing a
+      // false "success" while the ride silently never reaches Firestore or the
+      // WhatsApp group. The local cache write above already happened, so the scan
+      // still shows in this dispatcher's own view even if the sync below fails.
+      await this.writeScan(newScan);
     }
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
