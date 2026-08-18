@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
-import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr } from './services/hebrewDate';
+import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
@@ -1818,7 +1818,12 @@ export default function App() {
       scan.driverCapacity
     ]);
 
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const now = new Date();
+    const infoLines = lang === 'he'
+      ? [`\u05E4\u05E8\u05E9\u05EA \u05E9\u05D1\u05D5\u05E2: ${getWeeklyParsha(now)}`, `\u05EA\u05D0\u05E8\u05D9\u05DA \u05E2\u05D1\u05E8\u05D9: ${getHebrewDate(now)}`, `\u05D9\u05D5\u05DD: ${getDayOfWeekHe(now)}`, '']
+      : [`Weekly Parsha: ${getWeeklyParsha(now)}`, `Hebrew Date: ${getHebrewDate(now)}`, `Day: ${getDayOfWeekHe(now)}`, ''];
+
+    const csvContent = "\uFEFF" + [...infoLines, headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -4040,8 +4045,13 @@ export default function App() {
                       <div>
                         <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff' }}>{t('managerScansTitle')}</h2>
                         <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t('managerScansSub')}</p>
+                        <p style={{ fontSize: '11px', color: 'var(--accent)', marginTop: '4px' }}>
+                          {lang === 'he'
+                            ? `פרשת שבוע: ${getWeeklyParsha(new Date())} · תאריך עברי: ${getHebrewDate(new Date())} · ${getDayOfWeekHe(new Date())}`
+                            : `Weekly Parsha: ${getWeeklyParsha(new Date())} · Hebrew Date: ${getHebrewDate(new Date())} · ${getDayOfWeekHe(new Date())}`}
+                        </p>
                       </div>
-                      
+
                       {/* Filters */}
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button 

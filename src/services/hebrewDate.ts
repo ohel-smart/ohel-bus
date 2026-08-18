@@ -67,6 +67,11 @@ export function roundToHalfHourStr(date: Date, timeZone = 'America/New_York'): s
   return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`;
 }
 
+/** Hebrew day-of-week name, e.g. "יום ראשון". */
+export function getDayOfWeekHe(date: Date): string {
+  return new Intl.DateTimeFormat('he-IL', { weekday: 'long' }).format(date);
+}
+
 /** Exact "HH:MM" (24h) in the given timezone. */
 export function exactTimeStr(date: Date, timeZone = 'America/New_York'): string {
   return new Intl.DateTimeFormat('en-GB', {
