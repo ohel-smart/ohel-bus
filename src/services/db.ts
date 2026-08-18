@@ -86,7 +86,7 @@ const DEFAULT_USERS: User[] = [
   { id: 'disp_1000', name: 'סדרן 1000 (סדרן)', phone: '050-100-1000', role: 'dispatcher', code: '1000', createdAt: new Date().toISOString() }
 ];
 
-const SETTINGS_DOC = 'global';
+const SETTINGS_DOC = 'global_config';
 
 class DBService {
   private listeners: Set<() => void> = new Set();

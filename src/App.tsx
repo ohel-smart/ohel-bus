@@ -818,52 +818,6 @@ export default function App() {
     };
   }, []);
 
-  // Pusher Real-Time WebSocket Listener
-  useEffect(() => {
-    if (!currentUser) return;
-    
-    // Load Pusher client dynamically
-    import('pusher-js').then(({ default: Pusher }) => {
-      const pusher = new Pusher('2d25f01f84c2b80ad42a', {
-        cluster: 'us2',
-        forceTLS: true
-      });
-
-      const channel = pusher.subscribe('transit-updates');
-      
-      channel.bind('scanned', (data: any) => {
-        console.log('[Pusher] Received scanned event:', data);
-        if (data && data.id) {
-          dbService.addLocalScan(data);
-          
-          if (data.driverId === currentUser.id && currentUser.role === 'driver') {
-            triggerToast(
-              lang === 'he' 
-                ? `הנסיעה שלך אושרה! זמן הגעה משוער: ${data.expectedArrivalTime || ''}`
-                : `Trip confirmed! ETA: ${data.expectedArrivalTime || ''}`, 
-              'success'
-            );
-          } else if (currentUser.role === 'dispatcher' || currentUser.role === 'admin') {
-            triggerToast(
-              lang === 'he'
-                ? `סריקה נקלטה בהצלחה לנהג: ${data.driverName}`
-                : `Scan processed for driver: ${data.driverName}`,
-              'success'
-            );
-          }
-        }
-      });
-
-      return () => {
-        channel.unbind_all();
-        pusher.unsubscribe('transit-updates');
-        pusher.disconnect();
-      };
-    }).catch(err => {
-      console.error('[Pusher] Failed to load pusher-js:', err);
-    });
-  }, [currentUser, lang]);
-
   // Deep linking simulator URL query scanner
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'dispatcher' || users.length === 0) return;
