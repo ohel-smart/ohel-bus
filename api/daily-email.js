@@ -1,12 +1,20 @@
 // Vercel Cron function — emails the manager the previous day's rides summary
 // via Resend. Scheduled daily in vercel.json. Runs on the site's cloud (Vercel),
 // which — unlike the free Render bot — never spins down, so the email is reliable.
-// Reads the current ride data from the Apps Script endpoint (same source the app uses).
+// Reads the current ride data from Firestore (same source the app uses).
 
 import { HDate } from '@hebcal/core';
+import admin from 'firebase-admin';
 
-const SHEETS_URL = process.env.SHEETS_URL ||
-  "https://script.google.com/macros/s/AKfycbygfgRFNFwPqcX0XK3P9GNbYKWW89oSh1rCQ6k8WY6dEskVPYW0qkm8xuKXdwhpNLel/exec";
+function getDb() {
+  if (!admin.apps.length) {
+    if (!process.env.FIREBASE_KEY) return null;
+    admin.initializeApp({
+      credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY))
+    });
+  }
+  return admin.firestore();
+}
 
 // Hebrew date (niqqud stripped) via @hebcal/core — reliable regardless of the
 // serverless runtime's ICU build, unlike Intl's 'he-IL-u-ca-hebrew'.
@@ -43,19 +51,19 @@ export default async function handler(req, res) {
   const to = process.env.MANAGER_EMAIL;
   if (!apiKey || !to) return res.status(500).json({ error: 'email not configured (RESEND_API_KEY / MANAGER_EMAIL)' });
 
+  const db = getDb();
+  if (!db) return res.status(500).json({ error: 'FIREBASE_KEY not configured' });
+
   // The day that just ended, in New York time.
   const target = nyDateStr(new Date(Date.now() - 6 * 3600 * 1000));
 
-  let scans = [];
+  let dayScans = [];
   try {
-    const r = await fetch(SHEETS_URL + '?_t=' + Date.now());
-    const data = await r.json();
-    scans = Array.isArray(data.scans) ? data.scans : [];
+    const snap = await db.collection('scans').where('logicalDate', '==', target).get();
+    dayScans = snap.docs.map(d => d.data());
   } catch (e) {
     return res.status(502).json({ error: 'failed to fetch data: ' + e.message });
   }
-
-  const dayScans = scans.filter(s => String(s.logicalDate || '').slice(0, 10) === target);
   let totalPassengers = 0;
   // Map name -> set of origins they departed from, so the summary shows WHERE each one left from.
   const drivers = new Map(), dispatchers = new Map();

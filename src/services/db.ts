@@ -1,3 +1,8 @@
+import {
+  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs,
+} from 'firebase/firestore';
+import { db as firestore, authReady } from './firebase';
+
 // Types Definitions
 export type UserRole = 'admin' | 'driver' | 'dispatcher';
 export type DriverStatus = 'idle' | 'en_route' | 'break';
@@ -65,9 +70,6 @@ export const LOCATIONS = {
   'Ohel': { latitude: 40.686559, longitude: -73.737622, name: 'Ohel Chabad Lubavitch' }
 };
 
-// Fallback Default Web App URL
-const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbygfgRFNFwPqcX0XK3P9GNbYKWW89oSh1rCQ6k8WY6dEskVPYW0qkm8xuKXdwhpNLel/exec";
-
 // Public client-side Google Maps key (Routes API), used for the live traffic-aware ETA.
 // A client Maps key is ALWAYS visible in the shipped JS bundle, so exposure here is
 // unavoidable and expected. This key is locked down in Google Cloud to the site's
@@ -76,30 +78,7 @@ const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbygfgRFNFwPq
 // env var when present; this constant guarantees every device has a working key.
 const DEFAULT_GOOGLE_MAPS_API_KEY = "AIzaSyAw9YueiwU3xsjjpOPy4PsHq3uS0X5IW54";
 
-// Old/retired deployment URLs — if a user's cached local config still points at one of
-// these, fall back to DEFAULT_SHEETS_URL instead of silently talking to a dead deployment.
-const BLOCKED_SHEETS_URL_IDS = [
-  "AKfycbwBDFDOITw1G9TRo05flrcGGMB05SNQzkZLnLgKHSF6u6JohWdJvctnNyv8j-0AYa9S",
-  "AKfycbytfHnxo1rsPmmx7bjFTlgWc4h2MJrYce5E_r5MBV64ouNcrLppm90aCsW40GRlNWWT",
-  "AKfycbzgGtU1PUlLNqCfbol9b68tXDo5m6vIBZBdrIqsonDZml8dVCnTUHkTPqC_-y6O_Jl1",
-  "AKfycbwCIg6Npl01Hk8_Y2T9ZIBYRPlHXtJfO6G_a4DVouHieHovoOMqZxE01X8mgJKsRD1U",
-  "AKfycbzWBuis76UbkEziZmnA0jzspOLRtLfbunq5PtS9RtTpew-nkxCAmkX5hhz_fBliJTrU",
-  "AKfycbwaHPeJ20BKaveyGzKe4MEUAoiyP8q55m2S4J8oJyv3Fy1whWfbwnBEcZ1C5UMJRxUI",
-  "AKfycbwhc_Mjh_8nyu-wikew74nKe0DUJu9hLRo9eJCLwfoAApS9enUrSpTfS7f0idwyVAIY",
-  "AKfycbwVnb0iH84jwtf6q2yk7JmuRQPV5HtQgBXtz1MWmyXoxi5J45UREctNsO_yCAsZzgZB",
-  "AKfycbwoM6FealKKCYwzHEGzwoehmg84HvzAmLQWG_bIZuNuajUfZIIJrdiWXgs1gDlCFxHr",
-  "AKfycbwtiL5SmzO-JNFkmsPkg2vYIhxh--FUE-37EcxIxufdNg49y__5V2wlIo8NWHSzYU2Q",
-  "AKfycbz-3bwY36y1keWXwgk1t3MwwN4Y17YRofxm1yEGKdvOJcQz3TJPB79hWzZC_LkbtcI",
-  "AKfycbyO_yVwkOXIzwUeMcywag26yOUiAUTGWfUdXszpwEfO22PD6-0XKJI8VogoeXyocXpT",
-  "AKfycbx92x0urk2aCgtBuYCbVTkWNT9FHm_5dWOzVv8YXwE5qAh9PjUVKmEytHj0pdJ8_dhL",
-  "AKfycbywEcrqnRH-BTGN0voKeXxugcUtRMJw2B4TNg1ckmb0ajBi0zD12Ju6FzZ4XDfX5EFn",
-  "AKfycbwNpzAI4byP9Razq8FIr02Hc2YL8mdTnzFJ9PNAF5G35ufITP9ZdeQaxOJO2ZqaAFG0",
-  "AKfycbzszN_VYZdw7kqY2nuUVw_ssduQhfMelvPlSZa6LsDzhW_-gsBIx7SM9M-sPBW0MYOQ",
-  "AKfycbyc3BW65EOvMtOllITBJzEL0aU47jX-iAARz_TKlQMHz7h6zddh15tynhu_5Y_RmCQd",
-  "AKfycbzcsY8BuSyeK0vXobpOuU9MGpW9QV_ryWXmYTk1148I0WvElXcaU6l0gyd19jE9w0Da"
-];
-
-// Default Pre-Populated Users (Used as offline/local fallback)
+// Default Pre-Populated Users (Used as offline/local fallback before Firestore connects)
 const DEFAULT_USERS: User[] = [
   { id: 'usr_admin', name: 'הרב רוזנברג', phone: '050-770-7700', role: 'admin', code: '770', createdAt: new Date().toISOString() },
   { id: 'drv_777', name: 'נהג 777 (נהג)', phone: '050-777-7777', role: 'driver', code: '777', createdAt: new Date().toISOString() },
@@ -107,57 +86,59 @@ const DEFAULT_USERS: User[] = [
   { id: 'disp_1000', name: 'סדרן 1000 (סדרן)', phone: '050-100-1000', role: 'dispatcher', code: '1000', createdAt: new Date().toISOString() }
 ];
 
+const SETTINGS_DOC = 'global';
+
 class DBService {
   private listeners: Set<() => void> = new Set();
-  
-  // Local cache
+
+  // Local cache, kept in sync live by Firestore onSnapshot listeners.
   private usersCache: User[] = [];
   private scansCache: Scan[] = [];
-  private configCache: GlobalConfig = { reportEmail: 'manager@transit.pro', googleSheetsUrl: DEFAULT_SHEETS_URL };
+  private configCache: GlobalConfig = { reportEmail: 'manager@transit.pro' };
 
   constructor() {
-    this.initDatabase();
-    this.fetchDataFromSheets();
-    this.startSimulation();
-    
-    // Periodically poll Google Sheets for updates (every 3 seconds for instant driver syncing)
-    setInterval(() => {
-      this.fetchDataFromSheets();
-    }, 3000);
+    // Seed from localStorage instantly so the UI has something to render
+    // before Firestore's first snapshot arrives (avoids a blank-screen flash).
+    this.initLocalCache();
+    this.initFirestoreListeners();
   }
 
-  private initDatabase() {
-    // Load local storage cache initially
-    const rawUsersList = JSON.parse(localStorage.getItem('tp_users') || '[]');
-    const rawScansList = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-    const rawConfig = JSON.parse(localStorage.getItem('tp_config') || '{}');
-    
-    this.configCache = {
-      reportEmail: rawConfig.reportEmail || 'manager@transit.pro',
-      googleSheetsUrl: rawConfig.googleSheetsUrl && !BLOCKED_SHEETS_URL_IDS.some(id => rawConfig.googleSheetsUrl.includes(id))
-        ? rawConfig.googleSheetsUrl
-        : DEFAULT_SHEETS_URL,
-      googleMapsApiKey: rawConfig.googleMapsApiKey || '',
-      twilioAccountSid: rawConfig.twilioAccountSid || '',
-      twilioAuthToken: rawConfig.twilioAuthToken || '',
-      twilioFromNumber: rawConfig.twilioFromNumber || '',
-      twilioRecipientSms: rawConfig.twilioRecipientSms || ''
-    };
-
-    let deletedUsers: string[] = [];
-    let deletedScans: string[] = [];
+  private initLocalCache() {
     try {
-      deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-      deletedScans = JSON.parse(localStorage.getItem('tp_deleted_scans') || '[]');
-    } catch (e) {}
+      const rawUsersList = JSON.parse(localStorage.getItem('tp_users') || '[]');
+      const rawScansList = JSON.parse(localStorage.getItem('tp_scans') || '[]');
+      const rawConfig = JSON.parse(localStorage.getItem('tp_config') || '{}');
+      this.usersCache = rawUsersList.length > 0 ? rawUsersList : DEFAULT_USERS;
+      this.scansCache = rawScansList.map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
+      this.configCache = { reportEmail: 'manager@transit.pro', ...rawConfig };
+    } catch (e) {
+      this.usersCache = DEFAULT_USERS;
+    }
+  }
 
-    // Populate cache with default or local stored data
-    this.usersCache = rawUsersList.length > 0 
-      ? rawUsersList.filter((u: User) => !deletedUsers.includes(u.id))
-      : DEFAULT_USERS;
-    this.scansCache = rawScansList
-      .filter((s: Scan) => !deletedScans.includes(s.id))
-      .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
+  private async initFirestoreListeners() {
+    await authReady;
+
+    onSnapshot(collection(firestore, 'users'), (snap) => {
+      this.usersCache = snap.docs.map(d => d.data() as User);
+      localStorage.setItem('tp_users', JSON.stringify(this.usersCache));
+      this.notify();
+    }, (e) => console.error('Firestore users listener error:', e));
+
+    onSnapshot(collection(firestore, 'scans'), (snap) => {
+      this.scansCache = snap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
+      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      this.notify();
+    }, (e) => console.error('Firestore scans listener error:', e));
+
+    onSnapshot(doc(firestore, 'settings', SETTINGS_DOC), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as GlobalConfig;
+        this.configCache = { ...data, reportEmail: data.reportEmail || 'manager@transit.pro' };
+        localStorage.setItem('tp_config', JSON.stringify(this.configCache));
+        this.notify();
+      }
+    }, (e) => console.error('Firestore settings listener error:', e));
   }
 
   private cleanDate(dateStr: string): string {
@@ -174,52 +155,24 @@ class DBService {
     return trimmed;
   }
 
-
-
-  // --- Google Sheets Integration Fetching (GET) ---
+  // Kept for backwards compatibility — ReturnReport.tsx calls this once on mount to
+  // force a fresh read before code lookup. Firestore's onSnapshot listeners already
+  // keep the cache live, but on a very cold page load there can be a brief gap before
+  // the first snapshot arrives, so this does one direct one-shot fetch to close it.
   public async fetchDataFromSheets() {
-    const url = this.configCache.googleSheetsUrl;
-    if (!url) return;
-
+    await authReady;
     try {
-      const cacheBustUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-      const res = await fetch(cacheBustUrl);
-      const data = await res.json();
-      if (data && !data.error) {
-        let deletedUsers: string[] = [];
-        let deletedScans: string[] = [];
-        try {
-          deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-          deletedScans = JSON.parse(localStorage.getItem('tp_deleted_scans') || '[]');
-        } catch (e) {}
-
-        if (Array.isArray(data.users)) {
-          const filteredUsers = data.users.filter((u: User) => !deletedUsers.includes(u.id));
-          this.usersCache = filteredUsers;
-          localStorage.setItem('tp_users', JSON.stringify(filteredUsers));
-        }
-        if (Array.isArray(data.scans)) {
-          const remoteScans = data.scans
-            .filter((s: Scan) => !deletedScans.includes(s.id))
-            .map((s: Scan) => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) }));
-            
-          // Merge local recent scans that haven't appeared in the remote response yet to avoid race conditions
-          const nowMs = Date.now();
-          const pendingScans = this.scansCache.filter((localScan: Scan) => {
-            const isRecent = (nowMs - new Date(localScan.scannedAt).getTime()) < 25000; // 25 seconds window
-            const inRemote = remoteScans.some((rs: Scan) => rs.id === localScan.id);
-            return isRecent && !inRemote;
-          });
-
-          const mergedScans = [...remoteScans, ...pendingScans];
-          this.scansCache = mergedScans;
-          localStorage.setItem('tp_scans', JSON.stringify(mergedScans));
-        }
-        // Active locations are computed dynamically in getActiveLocations() from users and scans
-        this.notify();
-      }
+      const [usersSnap, scansSnap] = await Promise.all([
+        getDocs(collection(firestore, 'users')),
+        getDocs(collection(firestore, 'scans')),
+      ]);
+      this.usersCache = usersSnap.docs.map(d => d.data() as User);
+      this.scansCache = scansSnap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
+      localStorage.setItem('tp_users', JSON.stringify(this.usersCache));
+      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      this.notify();
     } catch (e) {
-      console.error("Failed to fetch data from Google Sheets:", e);
+      console.error('Failed to fetch data from Firestore:', e);
     }
   }
 
@@ -251,20 +204,11 @@ class DBService {
   private async syncOfflineScans() {
     const offlineScans: Scan[] = JSON.parse(localStorage.getItem('tp_offline_scans') || '[]');
     if (offlineScans.length > 0) {
-      const scans = this.getScans();
-      const newScans = [...scans, ...offlineScans];
-      localStorage.setItem('tp_scans', JSON.stringify(newScans));
-      this.scansCache = newScans;
-      
-      // Upload offline scans
       for (const scan of offlineScans) {
-        this.syncToGoogleSheets('syncScan', scan);
+        await this.writeScan(scan);
       }
-      
       localStorage.setItem('tp_offline_scans', JSON.stringify([]));
       this.notify();
-      
-      setTimeout(() => this.fetchDataFromSheets(), 1500);
     }
   }
 
@@ -279,85 +223,38 @@ class DBService {
 
   // --- Users CRUD ---
   public getUsers(): User[] {
-    let deletedUsers: string[] = [];
-    try {
-      deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-    } catch (e) {}
-    return this.usersCache.filter(u => !deletedUsers.includes(u.id));
+    return this.usersCache;
   }
 
   public async saveUser(user: User) {
-    // 1. Update local storage and cache immediately (Zero-Lag UI)
-    const users = JSON.parse(localStorage.getItem('tp_users') || '[]');
-    const index = users.findIndex((u: User) => u.id === user.id);
-    if (index >= 0) {
-      users[index] = user;
-    } else {
-      users.push(user);
-    }
-    localStorage.setItem('tp_users', JSON.stringify(users));
-    this.usersCache = users;
-
-
+    // 1. Update cache immediately (zero-lag UI)
+    const index = this.usersCache.findIndex(u => u.id === user.id);
+    if (index >= 0) this.usersCache[index] = user; else this.usersCache.push(user);
+    localStorage.setItem('tp_users', JSON.stringify(this.usersCache));
     this.notify();
 
-    // 2. Sync in background with Google Sheets
-    this.syncToGoogleSheets('syncUser', user);
-    
-    // Refresh cache from Sheets in 1.5 seconds to align spreadsheets formula columns
-    setTimeout(() => this.fetchDataFromSheets(), 1500);
+    // 2. Persist to Firestore
+    await authReady;
+    await setDoc(doc(firestore, 'users', user.id), user);
   }
 
   public async deleteUser(userId: string) {
-    // 1. Update local storage and cache immediately (Zero-Lag UI)
-    let users = JSON.parse(localStorage.getItem('tp_users') || '[]');
-    users = users.filter((u: User) => u.id !== userId);
-    localStorage.setItem('tp_users', JSON.stringify(users));
-    
-    // Add to deleted users cache to make it permanent client-side
-    try {
-      const deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-      if (!deletedUsers.includes(userId)) {
-        deletedUsers.push(userId);
-        localStorage.setItem('tp_deleted_users', JSON.stringify(deletedUsers));
-      }
-    } catch (e) {}
-
     this.usersCache = this.usersCache.filter(u => u.id !== userId);
-
-
-
-    // Track if a default user was explicitly deleted to prevent self-healing from re-creating it
-    if (DEFAULT_USERS.some(u => u.id === userId)) {
-      try {
-        const deletedDefaults = JSON.parse(localStorage.getItem('tp_deleted_defaults') || '[]');
-        if (!deletedDefaults.includes(userId)) {
-          deletedDefaults.push(userId);
-          localStorage.setItem('tp_deleted_defaults', JSON.stringify(deletedDefaults));
-        }
-      } catch (e) {}
-    }
-
+    localStorage.setItem('tp_users', JSON.stringify(this.usersCache));
     this.notify();
 
-    // 2. Sync in background
-    this.syncToGoogleSheets('deleteUser', { id: userId });
-    
-    setTimeout(() => this.fetchDataFromSheets(), 1500);
+    await authReady;
+    await deleteDoc(doc(firestore, 'users', userId));
   }
 
   // --- Scans CRUD ---
   public getScans(): Scan[] {
-    let deletedScans: string[] = [];
-    try {
-      deletedScans = JSON.parse(localStorage.getItem('tp_deleted_scans') || '[]');
-    } catch (e) {}
-    return this.scansCache.filter(s => !deletedScans.includes(s.id));
+    return this.scansCache;
   }
 
   public getLogicalDate(dateStr: string = new Date().toISOString()): string {
     const date = new Date(dateStr);
-    
+
     // Format to YYYY-MM-DD in New York timezone (transitions exactly at midnight NY time)
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
@@ -365,13 +262,18 @@ class DBService {
       month: '2-digit',
       day: '2-digit'
     });
-    
+
     const parts = formatter.formatToParts(date);
     const year = parts.find(p => p.type === 'year')?.value;
     const month = parts.find(p => p.type === 'month')?.value;
     const day = parts.find(p => p.type === 'day')?.value;
-    
+
     return `${year}-${month}-${day}`;
+  }
+
+  private async writeScan(scan: Scan) {
+    await authReady;
+    await setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true });
   }
 
   public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity'>) {
@@ -383,7 +285,7 @@ class DBService {
     const targetDirection: Direction = scanData.departureLocation === '770' ? 'to_ohel' : 'to_770';
     const startLoc = targetDirection === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
     const etaMinutes = await this.getRouteEtaMinutes(startLoc.latitude, startLoc.longitude, targetDirection);
-    
+
     // Calculate expected arrival time clock string
     const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
     const arrivalTime = new Date(startTime + (etaMinutes * 60000));
@@ -404,30 +306,24 @@ class DBService {
       offlineScans.push(newScan);
       localStorage.setItem('tp_offline_scans', JSON.stringify(offlineScans));
     } else {
-      const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-      scans.push(newScan);
-      localStorage.setItem('tp_scans', JSON.stringify(scans));
-      this.scansCache = scans;
+      this.scansCache = [...this.scansCache, newScan];
+      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      // Fire-and-forget: Firestore's own SDK queues this automatically if the
+      // network happens to be down, and syncs once connectivity returns.
+      this.writeScan(newScan).catch(e => console.error('Failed to write scan to Firestore:', e));
     }
-
-    // Sync to Google Sheets
-    this.syncToGoogleSheets('syncScan', newScan);
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection, etaMinutes);
 
     this.notify();
-    
-    setTimeout(() => this.fetchDataFromSheets(), 1500);
     return newScan;
   }
 
   public addLocalScan(scan: Scan) {
-    const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-    if (!scans.some((s: Scan) => s.id === scan.id)) {
-      scans.push(scan);
-      localStorage.setItem('tp_scans', JSON.stringify(scans));
-      this.scansCache = scans;
+    if (!this.scansCache.some(s => s.id === scan.id)) {
+      this.scansCache = [...this.scansCache, scan];
+      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
       this.notify();
     }
   }
@@ -438,53 +334,29 @@ class DBService {
       remainingSeats: Math.max(0, updatedScan.driverCapacity - updatedScan.passengersCount)
     };
 
-    const scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-    const index = scans.findIndex((s: Scan) => s.id === freshScan.id);
+    const index = this.scansCache.findIndex(s => s.id === freshScan.id);
     if (index >= 0) {
-      scans[index] = freshScan;
-      localStorage.setItem('tp_scans', JSON.stringify(scans));
-      this.scansCache = scans;
+      this.scansCache = [...this.scansCache];
+      this.scansCache[index] = freshScan;
+      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
       this.notify();
     }
-    
-    // Sync to Google Sheets
-    this.syncToGoogleSheets('syncScan', freshScan);
-    
-    setTimeout(() => this.fetchDataFromSheets(), 1500);
+
+    await this.writeScan(freshScan);
   }
 
   public async deleteScan(scanId: string) {
-    // 1. Update local storage and cache immediately (Zero-Lag UI)
-    let scans = JSON.parse(localStorage.getItem('tp_scans') || '[]');
-    scans = scans.filter((s: Scan) => s.id !== scanId);
-    localStorage.setItem('tp_scans', JSON.stringify(scans));
-    
-    // Add to deleted scans cache to make it permanent client-side
-    try {
-      const deletedScans = JSON.parse(localStorage.getItem('tp_deleted_scans') || '[]');
-      if (!deletedScans.includes(scanId)) {
-        deletedScans.push(scanId);
-        localStorage.setItem('tp_deleted_scans', JSON.stringify(deletedScans));
-      }
-    } catch (e) {}
-
-    this.scansCache = this.scansCache.filter((s: Scan) => s.id !== scanId);
+    this.scansCache = this.scansCache.filter(s => s.id !== scanId);
+    localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
     this.notify();
 
-    // 2. Sync in background
-    this.syncToGoogleSheets('deleteScan', { id: scanId });
-    
-    setTimeout(() => this.fetchDataFromSheets(), 1500);
+    await authReady;
+    await deleteDoc(doc(firestore, 'scans', scanId));
   }
 
   // --- Active Locations ---
   public getActiveLocations(): ActiveLocation[] {
-    let deletedUsers: string[] = [];
-    try {
-      deletedUsers = JSON.parse(localStorage.getItem('tp_deleted_users') || '[]');
-    } catch (e) {}
-
-    const drivers = this.getUsers().filter(u => u.role === 'driver' && !deletedUsers.includes(u.id));
+    const drivers = this.getUsers().filter(u => u.role === 'driver');
     const now = Date.now();
     const scans = this.getScans();
 
@@ -510,7 +382,6 @@ class DBService {
           direction = latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770';
           etaMinutes = Math.max(1, Math.round((endTime - now) / 60000));
           scannedAt = latestScan.scannedAt;
-          // The sheet no longer stores expected arrival - derive it from scan time + ETA.
           expectedArrivalTime = latestScan.expectedArrivalTime
             || new Date(endTime).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
         }
@@ -533,37 +404,39 @@ class DBService {
   }
 
   public async updateActiveLocation(_userId: string, _lat: number, _lng: number, _driverFields?: Partial<Pick<ActiveLocation, 'status' | 'direction' | 'etaMinutes' | 'speedWarning'>>) {
-    // No-op to disable writing active GPS/locations to Google Sheets
+    // No-op — live GPS location broadcasting isn't wired up; status/direction/ETA are
+    // derived dynamically from scans in getActiveLocations() instead.
   }
 
   public async updateDriverTripState(driverId: string, status: DriverStatus, _direction: Direction, _precomputedEta?: number) {
     if (status === 'idle' || status === 'break') {
-      const scans = this.getScans();
-      const activeScan = scans.find(s => s.driverId === driverId && !s.actualArrivalTime);
+      const activeScan = this.getScans().find(s => s.driverId === driverId && !s.actualArrivalTime);
       if (activeScan) {
-        activeScan.actualArrivalTime = new Date().toISOString();
-        localStorage.setItem('tp_scans', JSON.stringify(scans));
-        this.scansCache = scans;
-        this.notify();
-        
-        this.syncToGoogleSheets('syncScan', activeScan);
-        setTimeout(() => this.fetchDataFromSheets(), 1500);
+        const updated = { ...activeScan, actualArrivalTime: new Date().toISOString() };
+        const index = this.scansCache.findIndex(s => s.id === updated.id);
+        if (index >= 0) {
+          this.scansCache = [...this.scansCache];
+          this.scansCache[index] = updated;
+          localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+          this.notify();
+        }
+        await this.writeScan(updated);
       }
     }
   }
 
   public async updateDriverEta(_driverId: string, _etaMinutes: number) {
-    // No-op - active driver ETA is managed at scan time
+    // No-op - active driver ETA is managed at scan time (dead code path, kept for API compatibility)
   }
 
   public async resetTrips() {
+    await authReady;
+    const scansSnap = await getDocs(collection(firestore, 'scans'));
+    await Promise.all(scansSnap.docs.map(d => deleteDoc(d.ref)));
+
     localStorage.setItem('tp_scans', JSON.stringify([]));
-    localStorage.setItem('tp_deleted_scans', JSON.stringify([]));
     this.scansCache = [];
     this.notify();
-
-    this.syncToGoogleSheets('resetTrips', {});
-    setTimeout(() => this.fetchDataFromSheets(), 1500);
   }
 
   // --- Global Settings ---
@@ -575,85 +448,21 @@ class DBService {
     localStorage.setItem('tp_config', JSON.stringify(config));
     this.configCache = config;
     this.notify();
-    
-    // Reload local settings
-    this.initDatabase();
-    
-    // Sync settings to Sheets
-    this.syncToGoogleSheets('syncConfig', config);
+
+    await authReady;
+    await setDoc(doc(firestore, 'settings', SETTINGS_DOC), config, { merge: true });
   }
 
-  public async sendEmail(to: string, subject: string, html: string) {
-    // Send email using Google Apps Script webhook
-    this.syncToGoogleSheets('sendEmail', { to, subject, html });
+  public async sendEmail(_to: string, _subject: string, _html: string) {
+    // No-op — ad-hoc report emails from the UI aren't wired to a backend sender;
+    // the daily manager summary is sent separately via a Vercel Cron function.
   }
 
-  private startSimulation() {
-    // Disabled simulation as status is computed dynamically from scans
-  }
-
-  public async triggerSOS(driverId: string) {
-    const user = this.getUsers().find(u => u.id === driverId);
-    if (!user) return;
-
-    let sosAlerts: string[] = [];
-    try {
-      sosAlerts = JSON.parse(localStorage.getItem('tp_sos_alerts') || '[]');
-    } catch(e) {}
-
-    const isSOSNow = !sosAlerts.includes(driverId);
-    if (isSOSNow) {
-      sosAlerts.push(driverId);
-      const config = this.getConfig() as any;
-      const recipient = config.twilioRecipientSms || config.reportEmail;
-      if (recipient) {
-        const sosText = `🚨 התראת SOS במערכת אוהל בוס! 🚨\nהנהג ${user.name.replace(' (נהג)', '')} הפעיל קריאת חירום דחופה!`;
-        this.sendSMS(recipient, sosText);
-      }
-    } else {
-      sosAlerts = sosAlerts.filter(id => id !== driverId);
-    }
-
-    localStorage.setItem('tp_sos_alerts', JSON.stringify(sosAlerts));
-    this.notify();
-  }
-
-  public getSOSAlerts(): { id: string; name: string; latitude: number; longitude: number }[] {
-    let sosAlerts: string[] = [];
-    try {
-      sosAlerts = JSON.parse(localStorage.getItem('tp_sos_alerts') || '[]');
-    } catch(e) {}
-
-    return sosAlerts.map(id => {
-      const user = this.getUsers().find(u => u.id === id);
-      return {
-        id,
-        name: user?.name || 'Driver',
-        latitude: LOCATIONS['770'].latitude,
-        longitude: LOCATIONS['770'].longitude
-      };
-    });
-  }
-
-  public async clearSOSAlert(driverId: string) {
-    let sosAlerts: string[] = [];
-    try {
-      sosAlerts = JSON.parse(localStorage.getItem('tp_sos_alerts') || '[]');
-    } catch(e) {}
-
-    if (sosAlerts.includes(driverId)) {
-      sosAlerts = sosAlerts.filter(id => id !== driverId);
-      localStorage.setItem('tp_sos_alerts', JSON.stringify(sosAlerts));
-      
-      const user = this.getUsers().find(u => u.id === driverId);
-      const config = this.getConfig() as any;
-      const recipient = config.twilioRecipientSms || config.reportEmail;
-      if (recipient && user) {
-        this.sendSMS(recipient, `✅ קריאת החירום (SOS) עבור הנהג ${user.name.replace(' (נהג)', '')} בוטלה.`);
-      }
-      this.notify();
-    }
-  }
+  // --- SOS Alerts (dead code paths — no UI ever calls triggerSOS, kept only for API compatibility) ---
+  public async triggerSOS(_driverId: string) {}
+  public getSOSAlerts(): { id: string; name: string; latitude: number; longitude: number }[] { return []; }
+  public async clearSOSAlert(_driverId: string) {}
+  public async sendSMS(_to: string, _body: string) {}
 
   // --- Dispatcher Shift / Hours Logging ---
   public getDispatcherAttendance(): { [date: string]: { [dispatcherId: string]: { firstScan: string; lastScan: string; count: number } } } {
@@ -716,9 +525,9 @@ class DBService {
     const R = 6371; // Earth radius in km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
+    const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
@@ -763,22 +572,7 @@ class DBService {
       }
     }
 
-    // 2. Fallback: Google Apps Script server-side Directions (legacy, less accurate — kept as backup only).
-    const url = config.googleSheetsUrl;
-    if (url) {
-      try {
-        const queryUrl = `${url}${url.includes('?') ? '&' : '?'}action=getGoogleEta&origin=${lat},${lng}&destination=${destination.latitude},${destination.longitude}`;
-        const response = await fetch(queryUrl);
-        const data = await response.json();
-        if (data && typeof data.etaMinutes === 'number') {
-          return data.etaMinutes;
-        }
-      } catch (e) {
-        console.error('Failed to fetch Google Maps ETA from Apps Script:', e);
-      }
-    }
-
-    // 3. Final fallback: Haversine distance * NYC winding coefficient / typical speed.
+    // 2. Fallback: Haversine distance * NYC winding coefficient / typical speed.
     const distanceKm = this.calculateHaversineDistance(lat, lng, destination.latitude, destination.longitude);
     const roadDistanceKm = distanceKm * 1.28;
     const averageSpeedKmh = 38; // ~24 mph
@@ -790,57 +584,6 @@ class DBService {
       eta = Math.max(1, eta);
     }
     return eta;
-  }
-
-  // --- External APIs (Twilio SMS & Google Sheets POST Webhook) ---
-  public async sendSMS(to: string, body: string) {
-    const config = this.getConfig() as any;
-    const { twilioAccountSid, twilioAuthToken, twilioFromNumber } = config;
-    if (!twilioAccountSid || !twilioAuthToken || !twilioFromNumber) {
-      console.log("Twilio credentials not configured. SMS simulation: ", to, body);
-      return;
-    }
-
-    try {
-      const url = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
-      const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
-      
-      const params = new URLSearchParams();
-      params.append('To', to);
-      params.append('From', twilioFromNumber);
-      params.append('Body', body);
-
-      await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: params
-      });
-      console.log("Twilio SMS sent successfully.");
-    } catch (e) {
-      console.error("Failed to send Twilio SMS:", e);
-    }
-  }
-
-  public async syncToGoogleSheets(action: string, data: any) {
-    const config = this.getConfig() as any;
-    const url = config.googleSheetsUrl;
-    if (!url) return;
-
-    try {
-      fetch(url, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action, data })
-      }).catch(err => console.error("Google Sheets sync request error:", err));
-    } catch (e) {
-      console.error("Google Sheets sync error:", e);
-    }
   }
 }
 
