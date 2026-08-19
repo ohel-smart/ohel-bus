@@ -1394,6 +1394,17 @@ export default function App() {
     [centralSummary]
   );
 
+  // One flat, single-table row list for on-screen display - each row already carries
+  // its own parsha/Hebrew date/day/logical date, so no separate per-day header/table
+  // is needed. Days stay newest-first; within a day, newest scan first (reverse of
+  // the underlying oldest-first order still used by the CSV export).
+  const centralFlatRows = useMemo(() => {
+    return centralSummary.flatMap(day => {
+      const dayOfWeek = getDayOfWeekHe(new Date(day.dateStr + 'T12:00:00'));
+      return [...day.rows].reverse().map(r => ({ ...r, dateStr: day.dateStr, hebrewDate: day.hebrewDate, parsha: day.parsha, dayOfWeek }));
+    });
+  }, [centralSummary]);
+
   // --- Stats calculations ---
   const stats = useMemo(() => {
     const todayScans = scans.filter(s => s.logicalDate === logicalToday);
@@ -2124,18 +2135,17 @@ export default function App() {
       'פרשת שבוע', 'תאריך עברי', 'יום', 'שעת סריקה', 'תאריך עבודה',
       'נהג', 'סדרן', 'מוצא', 'נוסעים שעלו', 'מושבים פנויים', 'קיבולת נהג'
     ];
-    const lines: string[] = [];
+    // One flat table, no repeated per-day header/column blocks - every row
+    // already carries its own parsha/Hebrew date/day/logical date columns.
+    const lines: string[] = [colHeaders.map(q).join(',')];
     centralSummary.forEach(day => {
       const dayOfWeek = getDayOfWeekHe(new Date(day.dateStr + 'T12:00:00'));
-      lines.push(q(`יום: ${day.hebrewDate}  |  ${day.gregorian}${day.parsha ? `  |  פרשת ${day.parsha}` : ''}`));
-      lines.push(colHeaders.map(q).join(','));
       day.rows.forEach(r => {
         lines.push([
           q(day.parsha), q(day.hebrewDate), q(dayOfWeek), q(r.time), q(day.dateStr),
           q(r.driver), q(r.dispatcher), q(r.origin), q(r.passengers), q(r.remainingSeats), q(r.driverCapacity)
         ].join(','));
       });
-      lines.push('');
     });
 
     const csvContent = "﻿" + lines.join('\n');
@@ -4243,93 +4253,79 @@ export default function App() {
                       </div>
                     </div>
 
-                    {centralSummary.length === 0 ? (
+                    {centralFlatRows.length === 0 ? (
                       <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                         {lang === 'he' ? 'אין נתונים להצגה' : 'No data to display'}
                       </div>
                     ) : (
-                      centralSummary.map(day => {
-                        const dayOfWeek = getDayOfWeekHe(new Date(day.dateStr + 'T12:00:00'));
-                        return (
-                        <div key={day.dateStr} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                          <div style={{ padding: '12px 16px', background: 'rgba(226,176,78,0.08)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                            <strong style={{ color: '#fff', fontSize: '14px' }}>{day.hebrewDate}</strong>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{day.gregorian}</span>
-                            {day.parsha && <span style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>· {lang === 'he' ? 'פרשת' : 'Parashat'} {day.parsha}</span>}
-                            {day.isToday && <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום' : 'Today'}</span>}
-                          </div>
-                          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '520px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
-                              <thead>
-                                <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
-                                  {centralSelectMode && <th style={thCentral}></th>}
-                                  <th style={thCentral}>{t('parshaHeader')}</th>
-                                  <th style={thCentral}>{t('hebrewDateHeader')}</th>
-                                  <th style={thCentral}>{t('dayHeader')}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
-                                  <th style={thCentral}>{t('logicalDateHeader')}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
-                                  <th style={thCentral}>{t('scannerDispatcherHeader')}</th>
-                                  <th style={thCentral}>{t('originHeader')}</th>
-                                  <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
-                                  <th style={thCentral}>{t('emptySeatsHeader')}</th>
-                                  <th style={thCentral}>{t('driverCapacityHeader')}</th>
-                                  <th style={thCentral}></th>
+                      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
+                            <thead>
+                              <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                {centralSelectMode && <th style={thCentral}></th>}
+                                <th style={thCentral}>{t('parshaHeader')}</th>
+                                <th style={thCentral}>{t('hebrewDateHeader')}</th>
+                                <th style={thCentral}>{t('dayHeader')}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                                <th style={thCentral}>{t('logicalDateHeader')}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
+                                <th style={thCentral}>{t('scannerDispatcherHeader')}</th>
+                                <th style={thCentral}>{t('originHeader')}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
+                                <th style={thCentral}>{t('emptySeatsHeader')}</th>
+                                <th style={thCentral}>{t('driverCapacityHeader')}</th>
+                                <th style={thCentral}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {centralFlatRows.map(r => (
+                                <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                  {centralSelectMode && (
+                                    <td style={tdCentral}>
+                                      <input
+                                        type="checkbox"
+                                        checked={centralSelectedIds.has(r.id)}
+                                        onChange={() => setCentralSelectedIds(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(r.id)) next.delete(r.id); else next.add(r.id);
+                                          return next;
+                                        })}
+                                        style={{ width: '16px', height: '16px' }}
+                                      />
+                                    </td>
+                                  )}
+                                  <td style={tdCentral}>{r.parsha}</td>
+                                  <td style={tdCentral}>{r.hebrewDate}</td>
+                                  <td style={tdCentral}>{r.dayOfWeek}</td>
+                                  <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
+                                  <td style={tdCentral}>{r.dateStr}</td>
+                                  <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
+                                  <td style={tdCentral}>{r.dispatcher}</td>
+                                  <td style={tdCentral}>
+                                    <span style={{ color: r.direction === 'return' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
+                                      {r.origin}
+                                    </span>
+                                  </td>
+                                  <td style={tdCentral}>{r.passengers}</td>
+                                  <td style={tdCentral}>{r.remainingSeats}</td>
+                                  <td style={tdCentral}>{r.driverCapacity}</td>
+                                  <td style={tdCentral}>
+                                    <button
+                                      onClick={() => handleDeleteScan(r.id)}
+                                      className="btn btn-danger"
+                                      style={{ padding: '4px 8px', fontSize: '11px' }}
+                                      title={lang === 'he' ? 'מחק שורה' : 'Delete row'}
+                                    >
+                                      <Trash size={12} />
+                                    </button>
+                                  </td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {/* On-screen only: newest scan at top. The row data itself (and thus
-                                    the CSV export, which reads day.rows directly) stays oldest-first -
-                                    intentionally the opposite of what's shown here. */}
-                                {[...day.rows].reverse().map(r => (
-                                  <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                    {centralSelectMode && (
-                                      <td style={tdCentral}>
-                                        <input
-                                          type="checkbox"
-                                          checked={centralSelectedIds.has(r.id)}
-                                          onChange={() => setCentralSelectedIds(prev => {
-                                            const next = new Set(prev);
-                                            if (next.has(r.id)) next.delete(r.id); else next.add(r.id);
-                                            return next;
-                                          })}
-                                          style={{ width: '16px', height: '16px' }}
-                                        />
-                                      </td>
-                                    )}
-                                    <td style={tdCentral}>{day.parsha}</td>
-                                    <td style={tdCentral}>{day.hebrewDate}</td>
-                                    <td style={tdCentral}>{dayOfWeek}</td>
-                                    <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
-                                    <td style={tdCentral}>{day.dateStr}</td>
-                                    <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
-                                    <td style={tdCentral}>{r.dispatcher}</td>
-                                    <td style={tdCentral}>
-                                      <span style={{ color: r.direction === 'return' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
-                                        {r.origin}
-                                      </span>
-                                    </td>
-                                    <td style={tdCentral}>{r.passengers}</td>
-                                    <td style={tdCentral}>{r.remainingSeats}</td>
-                                    <td style={tdCentral}>{r.driverCapacity}</td>
-                                    <td style={tdCentral}>
-                                      <button
-                                        onClick={() => handleDeleteScan(r.id)}
-                                        className="btn btn-danger"
-                                        style={{ padding: '4px 8px', fontSize: '11px' }}
-                                        title={lang === 'he' ? 'מחק שורה' : 'Delete row'}
-                                      >
-                                        <Trash size={12} />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                        );
-                      })
+                      </div>
                     )}
                   </div>
                 )}
