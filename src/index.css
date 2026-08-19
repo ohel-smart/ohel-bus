@@ -376,33 +376,106 @@ body {
   z-index: 2000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   pointer-events: none;
   width: 90%;
   max-width: 400px;
 }
 
 .toast {
-  background: #10b981;
-  color: #000;
-  font-weight: 700;
-  padding: 14px 18px;
-  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 14px 16px;
+  border-radius: 14px;
   box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   display: flex;
   align-items: center;
   gap: 12px;
-  animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   pointer-events: auto;
   font-size: 14px;
+  border-inline-start: 3px solid var(--success);
+}
+
+.toast.toast-closing {
+  animation: toast-out 0.25s ease forwards;
+}
+
+.toast .toast-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.toast .toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  border-radius: 50%;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.toast .toast-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.toast .toast-progress {
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 0;
+  height: 3px;
+  background: var(--success);
+  opacity: 0.5;
+  animation: toast-progress 4s linear forwards;
 }
 
 .toast-danger {
-  background: #ef4444;
-  color: #fff;
+  border-inline-start-color: var(--danger);
 }
 
-@keyframes slide-in {
+.toast-danger .toast-icon {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.toast-danger .toast-progress {
+  background: var(--danger);
+}
+
+@keyframes toast-progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+@keyframes toast-out {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-12px) scale(0.96);
+    opacity: 0;
+  }
+}
+
+@keyframes toast-in {
   from {
     transform: translateY(-20px);
     opacity: 0;

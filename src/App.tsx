@@ -5,7 +5,7 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, X
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
@@ -867,7 +867,7 @@ export default function App() {
   const [expandedSituationMonths, setExpandedSituationMonths] = useState<Set<string>>(new Set());
 
   // Toast notifications
-  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'danger' }[]>([]);
+  const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'danger'; closing?: boolean }[]>([]);
 
   // Simulation GPS overrides for dispatcher
   const [gpsSource, setGpsSource] = useState<'real' | '770' | 'ohel'>('770');
@@ -958,12 +958,17 @@ export default function App() {
   };
 
   // Toast trigger helper
+  const dismissToast = (id: string) => {
+    setToasts(prev => prev.map(t => (t.id === id ? { ...t, closing: true } : t)));
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 250);
+  };
+
   const triggerToast = (message: string, type: 'success' | 'danger' = 'success') => {
     const id = Math.random().toString();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    setTimeout(() => dismissToast(id), 4000);
   };
 
   // Sync state from dbService updates
@@ -2689,9 +2694,18 @@ export default function App() {
       {/* Toast Messages Layer */}
       <div className="toast-container">
         {toasts.map(toast => (
-          <div key={toast.id} className={`toast ${toast.type === 'danger' ? 'toast-danger' : ''}`}>
-            {toast.type === 'success' ? <CheckCircle size={18} /> : <AlertOctagon size={18} />}
-            <span>{toast.message}</span>
+          <div
+            key={toast.id}
+            className={`toast ${toast.type === 'danger' ? 'toast-danger' : ''} ${toast.closing ? 'toast-closing' : ''}`}
+          >
+            <span className="toast-icon">
+              {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertOctagon size={16} />}
+            </span>
+            <span style={{ flex: 1 }}>{toast.message}</span>
+            <button className="toast-close" onClick={() => dismissToast(toast.id)} aria-label={lang === 'he' ? 'סגור' : 'Close'}>
+              <X size={14} />
+            </button>
+            <span className="toast-progress" />
           </div>
         ))}
       </div>
