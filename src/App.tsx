@@ -87,6 +87,8 @@ const TRANSLATIONS = {
     clearMonth: 'נקה חודש',
     parshaFilterLabel: 'כל הפרשות',
     clearParsha: 'נקה פרשה',
+    originFilterLabel: 'כל נקודות המוצא',
+    clearOrigin: 'נקה מוצא',
     actions: 'פעולות',
     editScanTitle: 'עריכת פרטי נסיעה',
     save: 'שמור',
@@ -339,6 +341,8 @@ const TRANSLATIONS = {
     clearMonth: 'Clear Month',
     parshaFilterLabel: 'All Parshas',
     clearParsha: 'Clear Parsha',
+    originFilterLabel: 'All Origins',
+    clearOrigin: 'Clear Origin',
     actions: 'Actions',
     editScanTitle: 'Edit Trip Details',
     save: 'Save',
@@ -1270,6 +1274,9 @@ export default function App() {
   const [centralBigBusOnly, setCentralBigBusOnly] = useState(false);
   const [centralDateFrom, setCentralDateFrom] = useState('');
   const [centralDateTo, setCentralDateTo] = useState('');
+  const [centralMonthFilter, setCentralMonthFilter] = useState(''); // format: YYYY-MM
+  const [centralParshaFilter, setCentralParshaFilter] = useState('');
+  const [centralOriginFilter, setCentralOriginFilter] = useState<'' | DepartureLocation>('');
 
   const centralSummary = useMemo(() => {
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
@@ -1279,6 +1286,9 @@ export default function App() {
       if (!s.logicalDate) continue;
       if (centralDateFrom && s.logicalDate < centralDateFrom) continue;
       if (centralDateTo && s.logicalDate > centralDateTo) continue;
+      if (centralMonthFilter && !s.logicalDate.startsWith(centralMonthFilter)) continue;
+      if (centralParshaFilter && logicalDateToParsha[s.logicalDate] !== centralParshaFilter) continue;
+      if (centralOriginFilter && s.departureLocation !== centralOriginFilter) continue;
       (byDay[s.logicalDate] ||= []).push(s);
     }
     const days = Object.keys(byDay).sort((a, b) => (a < b ? 1 : -1)); // newest first
@@ -1321,7 +1331,7 @@ export default function App() {
         rows,
       };
     }).filter(day => day.rows.length > 0);
-  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, lang]);
+  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralParshaFilter, centralOriginFilter, logicalDateToParsha, lang]);
 
   // --- Stats calculations ---
   const stats = useMemo(() => {
@@ -4008,6 +4018,63 @@ export default function App() {
                         {(centralDateFrom || centralDateTo) && (
                           <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
                             {lang === 'he' ? 'נקה' : 'Clear'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
+                        <input
+                          type="month"
+                          value={centralMonthFilter}
+                          onChange={e => setCentralMonthFilter(e.target.value)}
+                          title={t('monthFilterLabel')}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        />
+                        {centralMonthFilter && (
+                          <button
+                            onClick={() => setCentralMonthFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearMonth')}
+                          </button>
+                        )}
+
+                        <select
+                          className="form-input"
+                          value={centralParshaFilter}
+                          onChange={e => setCentralParshaFilter(e.target.value)}
+                          style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                        >
+                          <option value="">{t('parshaFilterLabel')}</option>
+                          {availableParshas.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                        {centralParshaFilter && (
+                          <button
+                            onClick={() => setCentralParshaFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearParsha')}
+                          </button>
+                        )}
+
+                        <select
+                          className="form-input"
+                          value={centralOriginFilter}
+                          onChange={e => setCentralOriginFilter(e.target.value as '' | DepartureLocation)}
+                          style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                        >
+                          <option value="">{t('originFilterLabel')}</option>
+                          <option value="770">{lang === 'he' ? '770 (קראון הייטס)' : '770 (Crown Heights)'}</option>
+                          <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel'}</option>
+                        </select>
+                        {centralOriginFilter && (
+                          <button
+                            onClick={() => setCentralOriginFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearOrigin')}
                           </button>
                         )}
                       </div>
