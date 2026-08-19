@@ -1497,6 +1497,9 @@ export default function App() {
   const [centralOriginFilter, setCentralOriginFilter] = useState<'' | DepartureLocation>('');
   const [centralSelectMode, setCentralSelectMode] = useState(false);
   const [centralSelectedIds, setCentralSelectedIds] = useState<Set<string>>(new Set());
+  // Also used to filter the central table itself, not just the PDF exports.
+  const [selectedDriverForPdf, setSelectedDriverForPdf] = useState('');
+  const [selectedDispatcherForPdf, setSelectedDispatcherForPdf] = useState('');
 
   const centralSummary = useMemo(() => {
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
@@ -1511,6 +1514,8 @@ export default function App() {
       if (centralYearFilter && String(ym?.year) !== centralYearFilter) continue;
       if (centralParshaFilter && logicalDateToParsha[s.logicalDate] !== centralParshaFilter) continue;
       if (centralOriginFilter && s.departureLocation !== centralOriginFilter) continue;
+      if (selectedDriverForPdf && (s.driverName || '').replace(' (נהג)', '') !== selectedDriverForPdf) continue;
+      if (selectedDispatcherForPdf && (s.dispatcherName || '').replace(' (סדרן)', '') !== selectedDispatcherForPdf) continue;
       (byDay[s.logicalDate] ||= []).push(s);
     }
     const days = Object.keys(byDay).sort((a, b) => (a < b ? 1 : -1)); // newest first
@@ -1555,7 +1560,7 @@ export default function App() {
         rows,
       };
     }).filter(day => day.rows.length > 0);
-  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, logicalDateToParsha, logicalDateToHebrewYM, lang]);
+  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, selectedDriverForPdf, selectedDispatcherForPdf, logicalDateToParsha, logicalDateToHebrewYM, lang]);
 
   // Flattened row ids across all day-groups currently shown, for "select all".
   const centralAllRowIds = useMemo(
@@ -2390,8 +2395,6 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const [selectedDriverForPdf, setSelectedDriverForPdf] = useState('');
-
   const handleExportDriverPdf = () => {
     if (!selectedDriverForPdf) return;
     const driverScans = applyCentralFilters(
@@ -2534,8 +2537,6 @@ export default function App() {
     scans.forEach(s => { if (s.dispatcherName) names.add(s.dispatcherName.replace(' (סדרן)', '')); });
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
-
-  const [selectedDispatcherForPdf, setSelectedDispatcherForPdf] = useState('');
 
   const handleExportDispatcherPdf = () => {
     if (!selectedDispatcherForPdf) return;
