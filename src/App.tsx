@@ -869,8 +869,6 @@ export default function App() {
   // Search & Filter state for Manager Dashboard
   const [searchText, setSearchText] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [historySelectMode, setHistorySelectMode] = useState(false);
-  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
   const [monthFilter, setMonthFilter] = useState(''); // Hebrew month key, e.g. "Elul"
   const [yearFilter, setYearFilter] = useState(''); // Hebrew year, e.g. "5786"
   const [parshaFilter, setParshaFilter] = useState(''); // weekly parsha name
@@ -1712,14 +1710,6 @@ export default function App() {
       dbService.deleteScan(scanId);
       triggerToast(t('scanDeleted'), 'success');
     }
-  };
-
-  const toggleScanSelected = (scanId: string) => {
-    setSelectedScanIds(prev => {
-      const next = new Set(prev);
-      if (next.has(scanId)) next.delete(scanId); else next.add(scanId);
-      return next;
-    });
   };
 
   const handleBulkDeleteScans = async (ids: Set<string>, clearSelection: () => void) => {
@@ -4639,42 +4629,6 @@ export default function App() {
                           {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
                         </button>
 
-                        <button
-                          onClick={() => {
-                            if (historySelectMode) setSelectedScanIds(new Set());
-                            setHistorySelectMode(!historySelectMode);
-                          }}
-                          className="btn btn-secondary"
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '38px', fontSize: '13px' }}
-                        >
-                          {historySelectMode ? t('exitSelectMode') : t('selectMode')}
-                        </button>
-
-                        {historySelectMode && (
-                          <>
-                            <button
-                              onClick={() => setSelectedScanIds(
-                                selectedScanIds.size === filteredScans.length
-                                  ? new Set()
-                                  : new Set(filteredScans.map(s => s.id))
-                              )}
-                              className="btn btn-secondary"
-                              style={{ height: '38px', fontSize: '13px' }}
-                            >
-                              {selectedScanIds.size === filteredScans.length ? t('deselectAll') : t('selectAll')}
-                            </button>
-                            {selectedScanIds.size > 0 && (
-                              <button
-                                onClick={() => handleBulkDeleteScans(selectedScanIds, () => setSelectedScanIds(new Set()))}
-                                className="btn btn-danger"
-                                style={{ height: '38px', fontSize: '13px' }}
-                              >
-                                {t('deleteSelected', { count: selectedScanIds.size })}
-                              </button>
-                            )}
-                          </>
-                        )}
-
                         <div style={{ position: 'relative' }}>
                           <Search size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                           <input 
@@ -4772,7 +4726,6 @@ export default function App() {
                         <table className="tp-table">
                           <thead>
                             <tr>
-                              {historySelectMode && <th style={{ textAlign: 'center' }}></th>}
                               <th>{t('parshaHeader')}</th>
                               <th>{t('hebrewDateHeader')}</th>
                               <th>{t('dayHeader')}</th>
@@ -4790,7 +4743,7 @@ export default function App() {
                           <tbody>
                             {filteredScans.length === 0 ? (
                               <tr>
-                                <td colSpan={historySelectMode ? 13 : 12} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                <td colSpan={12} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                   {t('noMatchingScans')}
                                 </td>
                               </tr>
@@ -4799,16 +4752,6 @@ export default function App() {
                                 const scanDate = new Date(scan.logicalDate + 'T12:00:00');
                                 return (
                                 <tr key={scan.id}>
-                                  {historySelectMode && (
-                                    <td style={{ textAlign: 'center' }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedScanIds.has(scan.id)}
-                                        onChange={() => toggleScanSelected(scan.id)}
-                                        style={{ width: '16px', height: '16px' }}
-                                      />
-                                    </td>
-                                  )}
                                   <td>{getWeeklyParsha(scanDate)}</td>
                                   <td>{getHebrewDate(scanDate)}</td>
                                   <td>{getDayOfWeekHe(scanDate)}</td>
@@ -4858,14 +4801,6 @@ export default function App() {
                           <div key={scan.id} className="card user-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '10px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {historySelectMode && (
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedScanIds.has(scan.id)}
-                                    onChange={() => toggleScanSelected(scan.id)}
-                                    style={{ width: '16px', height: '16px' }}
-                                  />
-                                )}
                                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                                   {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                 </span>
