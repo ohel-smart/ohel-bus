@@ -15,6 +15,7 @@ export interface User {
   phone: string;
   role: UserRole;
   capacity?: number; // Only for drivers
+  isBigBus?: boolean; // Only for drivers - explicit tag, not derived from capacity
   code: string;
   createdAt: string;
 }
@@ -27,6 +28,7 @@ export interface Scan {
   driverName: string;
   passengersCount: number;
   driverCapacity: number;
+  isBigBus: boolean; // captured from the driver's profile at scan time
   remainingSeats: number;
   scannedAt: string;
   logicalDate: string; // YYYY-MM-DD based on 01:00 AM rule
@@ -276,10 +278,11 @@ class DBService {
     await setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true });
   }
 
-  public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity'>) {
+  public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity' | 'isBigBus'>) {
     const usersList = this.getUsers();
     const driver = usersList.find(u => u.id === scanData.driverId);
     const capacity = driver?.capacity || 15;
+    const isBigBus = driver?.isBigBus ?? false;
     const remainingSeats = Math.max(0, capacity - scanData.passengersCount);
 
     const targetDirection: Direction = scanData.departureLocation === '770' ? 'to_ohel' : 'to_770';
@@ -295,6 +298,7 @@ class DBService {
       ...scanData,
       id: 'scn_' + Math.random().toString(36).substr(2, 9),
       driverCapacity: capacity,
+      isBigBus,
       remainingSeats,
       logicalDate: this.getLogicalDate(scanData.scannedAt),
       etaMinutes,

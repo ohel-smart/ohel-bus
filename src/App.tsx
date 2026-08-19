@@ -113,6 +113,7 @@ const TRANSLATIONS = {
     screenLocationLabel: 'מיקום המסך (לזיהוי)',
     screenLocationPlaceholder: 'לדוגמה: 770 / אוהל / כניסה ראשית',
     capacityLabel: 'קיבולת רכב (מספר מושבים)',
+    bigBusLabel: 'אוטובוס גדול',
     createUser: 'צור משתמש חדש',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
@@ -367,6 +368,7 @@ const TRANSLATIONS = {
     screenLocationLabel: 'Screen Location (for reference)',
     screenLocationPlaceholder: 'e.g. 770 / Ohel / Main Entrance',
     capacityLabel: 'Vehicle Capacity (Number of Seats)',
+    bigBusLabel: 'Big Bus',
     createUser: 'Create New User',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
@@ -868,6 +870,7 @@ export default function App() {
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
   const [newUserCapacity, setNewUserCapacity] = useState<number>(15);
+  const [newUserIsBigBus, setNewUserIsBigBus] = useState(false);
   const [loginCode, setLoginCode] = useState('');
   const [newUserCode, setNewUserCode] = useState('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
@@ -876,6 +879,7 @@ export default function App() {
   const [editUserCode, setEditUserCode] = useState('');
   const [editUserRole, setEditUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
   const [editUserCapacity, setEditUserCapacity] = useState<number>(15);
+  const [editUserIsBigBus, setEditUserIsBigBus] = useState(false);
   // Email Reports Simulator state
   const [emailPreviewType, setEmailPreviewType] = useState<'daily' | 'monthly' | null>(null);
   const [emailPreviewHtml, setEmailPreviewHtml] = useState<string>('');
@@ -1301,7 +1305,9 @@ export default function App() {
         .sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
         .map(s => {
           const when = new Date(s.scannedAt);
-          const bigBus = (s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY;
+          // Prefer the driver's explicit "big bus" tag (set at scan time); fall back
+          // to the capacity threshold for older scans written before that field existed.
+          const bigBus = s.isBigBus ?? ((s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY);
           const isReturn = s.departureLocation === 'Ohel';
           return {
             id: s.id,
@@ -1680,15 +1686,17 @@ export default function App() {
       role: newUserRole,
       code: cleanCode,
       capacity: newUserRole === 'driver' ? newUserCapacity : undefined,
+      isBigBus: newUserRole === 'driver' ? newUserIsBigBus : undefined,
       createdAt: new Date().toISOString()
     });
 
     triggerToast(t('userCreatedText', { name: newUserName }), 'success');
-    
+
     // Reset Form
     setNewUserName('');
     setNewUserPhone('');
     setNewUserCode('');
+    setNewUserIsBigBus(false);
     setNewUserCapacity(15);
   };
 
@@ -1715,6 +1723,7 @@ export default function App() {
     setEditUserCode(user.code);
     setEditUserRole(user.role);
     setEditUserCapacity(user.capacity || 15);
+    setEditUserIsBigBus(user.isBigBus || false);
   };
 
   const handleSaveEditUser = (e: React.FormEvent) => {
@@ -1743,7 +1752,8 @@ export default function App() {
       phone: editUserPhone,
       role: editUserRole,
       code: cleanCode,
-      capacity: editUserRole === 'driver' ? editUserCapacity : undefined
+      capacity: editUserRole === 'driver' ? editUserCapacity : undefined,
+      isBigBus: editUserRole === 'driver' ? editUserIsBigBus : undefined
     };
 
     dbService.saveUser(updatedUser);
@@ -4845,12 +4855,26 @@ export default function App() {
                           {newUserRole === 'driver' && (
                             <div className="form-group">
                               <label className="form-label">{t('capacityLabel')}</label>
-                              <input 
-                                type="number" 
-                                className="form-input" 
+                              <input
+                                type="number"
+                                className="form-input"
                                 value={newUserCapacity}
                                 onChange={(e) => setNewUserCapacity(Math.max(1, parseInt(e.target.value) || 15))}
                               />
+                            </div>
+                          )}
+
+                          {newUserRole === 'driver' && (
+                            <div className="form-group">
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={newUserIsBigBus}
+                                  onChange={(e) => setNewUserIsBigBus(e.target.checked)}
+                                  style={{ width: '16px', height: '16px' }}
+                                />
+                                {t('bigBusLabel')}
+                              </label>
                             </div>
                           )}
 
@@ -4995,7 +5019,12 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                  {u.role === 'driver' ? t('seatsCountText', { count: u.capacity }) : '-'}
+                                  {u.role === 'driver' ? (
+                                    <>
+                                      {t('seatsCountText', { count: u.capacity })}
+                                      {u.isBigBus && <span title={t('bigBusLabel')} style={{ marginInlineStart: '6px' }}>🚌</span>}
+                                    </>
+                                  ) : '-'}
                                 </td>
                                 <td style={{ textAlign: 'center' }}>
                                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
@@ -5046,13 +5075,16 @@ export default function App() {
                                 </span>
                               </div>
                               {u.role === 'driver' && (
-                                <div><strong>{lang === 'he' ? 'קיבולת:' : 'Capacity:'}</strong> {t('seatsCountText', { count: u.capacity })}</div>
+                                <div>
+                                  <strong>{lang === 'he' ? 'קיבולת:' : 'Capacity:'}</strong> {t('seatsCountText', { count: u.capacity })}
+                                  {u.isBigBus && <span title={t('bigBusLabel')} style={{ marginInlineStart: '6px' }}>🚌</span>}
+                                </div>
                               )}
                             </div>
-                            
+
                             <div style={{ display: 'flex', gap: '10px', marginTop: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
-                              <button 
-                                onClick={() => handleEditUserClick(u)} 
+                              <button
+                                onClick={() => handleEditUserClick(u)}
                                 className="btn btn-secondary" 
                                 style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }} 
                               >
@@ -5448,13 +5480,26 @@ export default function App() {
                         {editUserRole === 'driver' && (
                           <div className="form-group">
                             <label className="form-label">{t('capacityLabel')}</label>
-                            <input 
-                              type="number" 
-                              className="form-input" 
+                            <input
+                              type="number"
+                              className="form-input"
                               value={editUserCapacity}
-                              onChange={e => setEditUserCapacity(Math.max(1, parseInt(e.target.value) || 15))} 
-                              required 
+                              onChange={e => setEditUserCapacity(Math.max(1, parseInt(e.target.value) || 15))}
+                              required
                             />
+                          </div>
+                        )}
+                        {editUserRole === 'driver' && (
+                          <div className="form-group">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={editUserIsBigBus}
+                                onChange={e => setEditUserIsBigBus(e.target.checked)}
+                                style={{ width: '16px', height: '16px' }}
+                              />
+                              {t('bigBusLabel')}
+                            </label>
                           </div>
                         )}
                         <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
