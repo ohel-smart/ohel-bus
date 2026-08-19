@@ -2360,15 +2360,15 @@ export default function App() {
     ];
     // One flat table, no repeated per-day header/column blocks - every row
     // already carries its own parsha/Hebrew date/day/logical date columns.
+    // centralFlatRows is ordered newest-first overall (matching the on-screen
+    // table) - reverse it here so the download is the opposite: oldest ride at
+    // the top, newest at the bottom, all the way through (not just within a day).
     const lines: string[] = [colHeaders.map(q).join(',')];
-    centralSummary.forEach(day => {
-      const dayOfWeek = getDayOfWeekHe(new Date(day.dateStr + 'T12:00:00'));
-      day.rows.forEach(r => {
-        lines.push([
-          q(day.parsha), q(day.hebrewDate), q(dayOfWeek), q(r.time), q(day.dateStr),
-          q(r.driver), q(r.dispatcher), q(r.origin), q(r.passengers), q(r.remainingSeats), q(r.driverCapacity)
-        ].join(','));
-      });
+    [...centralFlatRows].reverse().forEach(r => {
+      lines.push([
+        q(r.parsha), q(r.hebrewDate), q(r.dayOfWeek), q(r.time), q(r.dateStr),
+        q(r.driver), q(r.dispatcher), q(r.origin), q(r.passengers), q(r.remainingSeats), q(r.driverCapacity)
+      ].join(','));
     });
 
     const csvContent = "﻿" + lines.join('\n');
