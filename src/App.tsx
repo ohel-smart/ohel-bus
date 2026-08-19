@@ -239,10 +239,14 @@ const TRANSLATIONS = {
     closeButton: 'סגור',
     timeHeader: 'שעת יציאה',
     logicalDateHeader: 'תאריך לוגי',
+    parshaHeader: 'פרשת שבוע',
+    hebrewDateHeader: 'תאריך עברי',
+    dayHeader: 'יום',
     scannerDispatcherHeader: 'סדרן סורק',
     originHeader: 'נקודת מוצא',
     passengersBoardedHeader: 'נוסעים שהועלו',
     emptySeatsHeader: 'מקומות פנויים',
+    driverCapacityHeader: 'קיבולת נהג',
     actionsHeader: 'פעולות',
     noMatchingScans: 'לא נמצאו סריקות תואמות לפילטרים.',
     toOhelDirection: '← לאוהל',
@@ -482,10 +486,14 @@ const TRANSLATIONS = {
     closeButton: 'Close',
     timeHeader: 'Departure Time',
     logicalDateHeader: 'Logical Date',
+    parshaHeader: 'Weekly Parsha',
+    hebrewDateHeader: 'Hebrew Date',
+    dayHeader: 'Day',
     scannerDispatcherHeader: 'Scanning Dispatcher',
     originHeader: 'Origin Point',
     passengersBoardedHeader: 'Boarded Passengers',
     emptySeatsHeader: 'Empty Seats',
+    driverCapacityHeader: 'Driver Capacity',
     actionsHeader: 'Actions',
     noMatchingScans: 'No scans matching the filters were found.',
     toOhelDirection: '← to Ohel',
@@ -1839,6 +1847,9 @@ export default function App() {
 
   const handleExportScansToCsv = () => {
     const headers = [
+      lang === 'he' ? 'פרשת שבוע' : 'Weekly Parsha',
+      lang === 'he' ? 'תאריך עברי' : 'Hebrew Date',
+      lang === 'he' ? 'יום' : 'Day',
       lang === 'he' ? 'שעת סריקה' : 'Scan Time',
       lang === 'he' ? 'תאריך עבודה' : 'Logical Date',
       lang === 'he' ? 'נהג' : 'Driver',
@@ -1849,23 +1860,24 @@ export default function App() {
       lang === 'he' ? 'קיבולת נהג' : 'Capacity'
     ];
     
-    const rows = filteredScans.map(scan => [
-      new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      scan.logicalDate,
-      scan.driverName.replace(' (נהג)', ''),
-      scan.dispatcherName.replace(' (סדרן)', ''),
-      scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel'),
-      scan.passengersCount,
-      scan.remainingSeats,
-      scan.driverCapacity
-    ]);
+    const rows = filteredScans.map(scan => {
+      const scanDate = new Date(scan.logicalDate + 'T12:00:00');
+      return [
+        getWeeklyParsha(scanDate),
+        getHebrewDate(scanDate),
+        getDayOfWeekHe(scanDate),
+        new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        scan.logicalDate,
+        scan.driverName.replace(' (נהג)', ''),
+        scan.dispatcherName.replace(' (סדרן)', ''),
+        scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel'),
+        scan.passengersCount,
+        scan.remainingSeats,
+        scan.driverCapacity
+      ];
+    });
 
-    const now = new Date();
-    const infoLines = lang === 'he'
-      ? [`\u05E4\u05E8\u05E9\u05EA \u05E9\u05D1\u05D5\u05E2: ${getWeeklyParsha(now)}`, `\u05EA\u05D0\u05E8\u05D9\u05DA \u05E2\u05D1\u05E8\u05D9: ${getHebrewDate(now)}`, `\u05D9\u05D5\u05DD: ${getDayOfWeekHe(now)}`, '']
-      : [`Weekly Parsha: ${getWeeklyParsha(now)}`, `Hebrew Date: ${getHebrewDate(now)}`, `Day: ${getDayOfWeekHe(now)}`, ''];
-
-    const csvContent = "\uFEFF" + [...infoLines, headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -4187,6 +4199,9 @@ export default function App() {
                         <table className="tp-table">
                           <thead>
                             <tr>
+                              <th>{t('parshaHeader')}</th>
+                              <th>{t('hebrewDateHeader')}</th>
+                              <th>{t('dayHeader')}</th>
                               <th>{t('timeHeader')}</th>
                               <th>{t('logicalDateHeader')}</th>
                               <th>{t('driver')}</th>
@@ -4194,19 +4209,25 @@ export default function App() {
                               <th>{t('originHeader')}</th>
                               <th style={{ textAlign: 'center' }}>{t('passengersBoardedHeader')}</th>
                               <th style={{ textAlign: 'center' }}>{t('emptySeatsHeader')}</th>
+                              <th style={{ textAlign: 'center' }}>{t('driverCapacityHeader')}</th>
                               <th style={{ textAlign: 'center' }}>{t('actionsHeader')}</th>
                             </tr>
                           </thead>
                           <tbody>
                             {filteredScans.length === 0 ? (
                               <tr>
-                                <td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                <td colSpan={12} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                   {t('noMatchingScans')}
                                 </td>
                               </tr>
                             ) : (
-                              filteredScans.map(scan => (
+                              filteredScans.map(scan => {
+                                const scanDate = new Date(scan.logicalDate + 'T12:00:00');
+                                return (
                                 <tr key={scan.id}>
+                                  <td>{getWeeklyParsha(scanDate)}</td>
+                                  <td>{getHebrewDate(scanDate)}</td>
+                                  <td>{getDayOfWeekHe(scanDate)}</td>
                                   <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                                   <td>{lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}</td>
                                   <td><strong>{scan.driverName}</strong></td>
@@ -4217,9 +4238,8 @@ export default function App() {
                                     </span>
                                   </td>
                                   <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--success)' }}>{scan.passengersCount}</td>
-                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                    {scan.remainingSeats} / {scan.driverCapacity}
-                                  </td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{scan.remainingSeats}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{scan.driverCapacity}</td>
                                   <td style={{ textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                       <button onClick={() => handleEditScanClick(scan)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }}>
@@ -4233,7 +4253,8 @@ export default function App() {
                                     </div>
                                   </td>
                                 </tr>
-                              ))
+                                );
+                              })
                             )}
                           </tbody>
                         </table>
@@ -4247,7 +4268,9 @@ export default function App() {
                           {t('noMatchingScans')}
                         </div>
                       ) : (
-                        filteredScans.map(scan => (
+                        filteredScans.map(scan => {
+                          const scanDate = new Date(scan.logicalDate + 'T12:00:00');
+                          return (
                           <div key={scan.id} className="card user-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '10px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -4257,8 +4280,20 @@ export default function App() {
                                 {scan.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel')}
                               </span>
                             </div>
-                            
+
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('parshaHeader')}</span>
+                                <span style={{ color: '#fff' }}>{getWeeklyParsha(scanDate) || '—'}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('hebrewDateHeader')}</span>
+                                <span style={{ color: '#fff' }}>{getHebrewDate(scanDate)}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('dayHeader')}</span>
+                                <span style={{ color: '#fff' }}>{getDayOfWeekHe(scanDate)}</span>
+                              </div>
                               <div>
                                 <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('driver')}</span>
                                 <strong style={{ color: '#fff' }}>{scan.driverName}</strong>
@@ -4273,14 +4308,18 @@ export default function App() {
                               </div>
                               <div>
                                 <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('emptySeatsHeader')}</span>
-                                <span style={{ color: 'var(--text-secondary)' }}>{scan.remainingSeats} / {scan.driverCapacity}</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>{scan.remainingSeats}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('driverCapacityHeader')}</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>{scan.driverCapacity}</span>
                               </div>
                             </div>
-                            
+
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
                               {lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}
                             </div>
-                            
+
                             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                               <button onClick={() => handleEditScanClick(scan)} className="btn btn-secondary" style={{ flex: 1, padding: '8px 12px', fontSize: '12px', justifyContent: 'center' }}>
                                 <Edit size={12} />
@@ -4292,7 +4331,8 @@ export default function App() {
                               </button>
                             </div>
                           </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 
