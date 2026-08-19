@@ -18,6 +18,7 @@ const TXT = {
     continue: 'המשך',
     codeNotFound: 'קוד לא נמצא. נסה שוב בעוד רגע.',
     codeNotDriver: 'הקוד הזה אינו של נהג.',
+    codeNotApproved: 'אינך מורשה לדווח נסיעות באופן עצמאי. פנה למנהל.',
     driverLabel: 'נהג',
     originLabel: 'מאיפה יצאת',
     originOhel: 'אוהל (חזור)',
@@ -42,6 +43,7 @@ const TXT = {
     continue: 'Continue',
     codeNotFound: 'Code not found. Try again in a moment.',
     codeNotDriver: 'This code does not belong to a driver.',
+    codeNotApproved: 'You are not authorized to self-report trips. Please contact the manager.',
     driverLabel: 'Driver',
     originLabel: 'Where did you leave from',
     originOhel: 'Ohel (return)',
@@ -98,6 +100,9 @@ export default function ReturnReport() {
     const u = dbService.loginWithCode(code.trim());
     if (!u) { setError(tx.codeNotFound); return; }
     if (u.role !== 'driver' && u.role !== 'admin') { setError(tx.codeNotDriver); return; }
+    // Admins always have access; a driver needs explicit manager approval to
+    // self-report (default is NOT approved until the manager turns it on).
+    if (u.role === 'driver' && !u.canSelfReport) { setError(tx.codeNotApproved); return; }
     setError('');
     setDriver(u);
   };
@@ -176,15 +181,8 @@ export default function ReturnReport() {
 
             <div>
               <label style={labelStyle}>{tx.originLabel}</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {([['Ohel', tx.originOhel], ['770', tx.origin770]] as [DepartureLocation, string][]).map(([val, lbl]) => (
-                  <button
-                    key={val}
-                    onClick={() => setOrigin(val)}
-                    className={`btn ${origin === val ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ ...btnStyle, flex: 1, color: origin === val ? '#000' : '#fff' }}
-                  >{lbl}</button>
-                ))}
+              <div style={{ ...inputStyle, display: 'flex', alignItems: 'center', color: 'var(--accent)', fontWeight: 700 }}>
+                {tx.originOhel}
               </div>
             </div>
 

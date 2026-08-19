@@ -16,6 +16,7 @@ export interface User {
   role: UserRole;
   capacity?: number; // Only for drivers
   isBigBus?: boolean; // Only for drivers - explicit tag, not derived from capacity
+  canSelfReport?: boolean; // Only for drivers - admin approval to use the self-report link (default: not approved)
   code: string;
   createdAt: string;
 }

@@ -116,6 +116,7 @@ const TRANSLATIONS = {
     screenLocationPlaceholder: 'לדוגמה: 770 / אוהל / כניסה ראשית',
     capacityLabel: 'קיבולת רכב (מספר מושבים)',
     bigBusLabel: 'אוטובוס גדול',
+    canSelfReportLabel: 'מורשה לדיווח נסיעת חזרה עצמאי (קישור לנהג)',
     createUser: 'צור משתמש חדש',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
@@ -380,6 +381,7 @@ const TRANSLATIONS = {
     screenLocationPlaceholder: 'e.g. 770 / Ohel / Main Entrance',
     capacityLabel: 'Vehicle Capacity (Number of Seats)',
     bigBusLabel: 'Big Bus',
+    canSelfReportLabel: 'Authorized for self-service return report (driver link)',
     createUser: 'Create New User',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
@@ -890,6 +892,7 @@ export default function App() {
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
   const [newUserCapacity, setNewUserCapacity] = useState<number>(15);
   const [newUserIsBigBus, setNewUserIsBigBus] = useState(false);
+  const [newUserCanSelfReport, setNewUserCanSelfReport] = useState(false);
   const [loginCode, setLoginCode] = useState('');
   const [newUserCode, setNewUserCode] = useState('');
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
@@ -899,6 +902,7 @@ export default function App() {
   const [editUserRole, setEditUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
   const [editUserCapacity, setEditUserCapacity] = useState<number>(15);
   const [editUserIsBigBus, setEditUserIsBigBus] = useState(false);
+  const [editUserCanSelfReport, setEditUserCanSelfReport] = useState(false);
   // Email Reports Simulator state
   const [emailPreviewType, setEmailPreviewType] = useState<'daily' | 'monthly' | null>(null);
   const [emailPreviewHtml, setEmailPreviewHtml] = useState<string>('');
@@ -1746,6 +1750,7 @@ export default function App() {
       code: cleanCode,
       capacity: newUserRole === 'driver' ? newUserCapacity : undefined,
       isBigBus: newUserRole === 'driver' ? newUserIsBigBus : undefined,
+      canSelfReport: newUserRole === 'driver' ? newUserCanSelfReport : undefined,
       createdAt: new Date().toISOString()
     });
 
@@ -1756,6 +1761,7 @@ export default function App() {
     setNewUserPhone('');
     setNewUserCode('');
     setNewUserIsBigBus(false);
+    setNewUserCanSelfReport(false);
     setNewUserCapacity(15);
   };
 
@@ -1783,6 +1789,7 @@ export default function App() {
     setEditUserRole(user.role);
     setEditUserCapacity(user.capacity || 15);
     setEditUserIsBigBus(user.isBigBus || false);
+    setEditUserCanSelfReport(user.canSelfReport || false);
   };
 
   const handleSaveEditUser = (e: React.FormEvent) => {
@@ -1812,7 +1819,8 @@ export default function App() {
       role: editUserRole,
       code: cleanCode,
       capacity: editUserRole === 'driver' ? editUserCapacity : undefined,
-      isBigBus: editUserRole === 'driver' ? editUserIsBigBus : undefined
+      isBigBus: editUserRole === 'driver' ? editUserIsBigBus : undefined,
+      canSelfReport: editUserRole === 'driver' ? editUserCanSelfReport : undefined
     };
 
     dbService.saveUser(updatedUser);
@@ -5037,6 +5045,20 @@ export default function App() {
                             </div>
                           )}
 
+                          {newUserRole === 'driver' && (
+                            <div className="form-group">
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={newUserCanSelfReport}
+                                  onChange={(e) => setNewUserCanSelfReport(e.target.checked)}
+                                  style={{ width: '16px', height: '16px' }}
+                                />
+                                {t('canSelfReportLabel')}
+                              </label>
+                            </div>
+                          )}
+
                           <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
                             <Plus size={14} />
                             {t('createUser')}
@@ -5658,6 +5680,19 @@ export default function App() {
                                 style={{ width: '16px', height: '16px' }}
                               />
                               {t('bigBusLabel')}
+                            </label>
+                          </div>
+                        )}
+                        {editUserRole === 'driver' && (
+                          <div className="form-group">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={editUserCanSelfReport}
+                                onChange={e => setEditUserCanSelfReport(e.target.checked)}
+                                style={{ width: '16px', height: '16px' }}
+                              />
+                              {t('canSelfReportLabel')}
                             </label>
                           </div>
                         )}
