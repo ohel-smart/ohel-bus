@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import confetti from 'canvas-confetti';
 import { 
-  MapPin, Users, Calendar, WifiOff, QrCode, LogOut, 
-  Plus, Trash, Edit, Search, Clock, Send, CheckCircle, 
+  MapPin, Users, Calendar, WifiOff, QrCode, LogOut,
+  Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
-  Mail, Download, Copy, MessageSquare, Navigation, Map, Table
+  Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
@@ -856,6 +857,14 @@ export default function App() {
   const [situationEndDate, setSituationEndDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+  // Situation tab: which logicalDates currently have their individual-ride list
+  // expanded open (used by both the Daily Breakdown card and the day-level
+  // drill-in inside the Monthly Summary card - date strings are globally unique
+  // so one shared set works for both).
+  const [expandedSituationDates, setExpandedSituationDates] = useState<Set<string>>(new Set());
+  // Situation tab: which Hebrew "{year}-{monthKey}" keys are expanded in the
+  // Monthly Summary card, showing that month's day-by-day breakdown.
+  const [expandedSituationMonths, setExpandedSituationMonths] = useState<Set<string>>(new Set());
 
   // Toast notifications
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'danger' }[]>([]);
@@ -1295,6 +1304,161 @@ export default function App() {
     Object.values(logicalDateToHebrewYM).forEach(v => { if (v.year) years.add(v.year); });
     return Array.from(years).sort((a, b) => b - a);
   }, [logicalDateToHebrewYM]);
+
+  // Monthly Summary (Situation tab) - totals by HEBREW month, across ALL scans in
+  // the system. Deliberately NOT scoped by situationTimeframe/situationStartDate/
+  // situationEndDate: those control the "current window" cards above (today/week/
+  // month/custom), while a monthly summary reads more usefully as its own full
+  // history at a glance. Sorted newest month first.
+  const monthlySummaryData = useMemo(() => {
+    // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
+    // built-in Map constructor here, so group with a plain object instead.
+    const monthMap: Record<string, { year: number; monthKey: string; trips: number; passengers: number; maxDate: string }> = {};
+    scans.forEach(scan => {
+      const ym = logicalDateToHebrewYM[scan.logicalDate];
+      if (!ym || !ym.monthKey) return;
+      const key = `${ym.year}-${ym.monthKey}`;
+      if (!monthMap[key]) {
+        monthMap[key] = { year: ym.year, monthKey: ym.monthKey, trips: 0, passengers: 0, maxDate: scan.logicalDate };
+      }
+      monthMap[key].trips += 1;
+      monthMap[key].passengers += (scan.passengersCount || 0);
+      if (scan.logicalDate > monthMap[key].maxDate) monthMap[key].maxDate = scan.logicalDate;
+    });
+    // Sort by the latest logicalDate actually seen in each month (sidesteps having
+    // to reason about Hebrew leap-year month ordering for the sort itself).
+    return Object.values(monthMap).sort((a, b) => b.maxDate.localeCompare(a.maxDate));
+  }, [scans, logicalDateToHebrewYM]);
+
+  // Day-by-day breakdown for one Hebrew "{year}-{monthKey}" key, computed on demand
+  // for whichever month row is currently expanded in the Monthly Summary card.
+  const situationMonthDays = useMemo(() => {
+    if (expandedSituationMonths.size === 0) return {} as Record<string, { date: string; trips: number; passengers: number }[]>;
+    // NOTE: plain object, not `new Map()` - see the `Map` shadowing note above.
+    const byMonth: Record<string, Record<string, { date: string; trips: number; passengers: number }>> = {};
+    scans.forEach(scan => {
+      const ym = logicalDateToHebrewYM[scan.logicalDate];
+      if (!ym || !ym.monthKey) return;
+      const monthKeyFull = `${ym.year}-${ym.monthKey}`;
+      if (!expandedSituationMonths.has(monthKeyFull)) return;
+      const days = (byMonth[monthKeyFull] ||= {});
+      const d = (days[scan.logicalDate] ||= { date: scan.logicalDate, trips: 0, passengers: 0 });
+      d.trips += 1;
+      d.passengers += (scan.passengersCount || 0);
+    });
+    const result: Record<string, { date: string; trips: number; passengers: number }[]> = {};
+    Object.entries(byMonth).forEach(([monthKeyFull, days]) => {
+      result[monthKeyFull] = Object.values(days).sort((a, b) => b.date.localeCompare(a.date));
+    });
+    return result;
+  }, [scans, logicalDateToHebrewYM, expandedSituationMonths]);
+
+  // Renders one clickable/expandable day row for the Situation tab (used by both
+  // the Daily Breakdown card and the day drill-in inside an expanded month in the
+  // Monthly Summary card). Clicking toggles an inline list of that day's individual
+  // rides - driver, exact scan time, origin, passengers - sorted earliest-first.
+  const renderSituationDayRow = (day: { date: string; trips: number; passengers: number }) => {
+    const isExpanded = expandedSituationDates.has(day.date);
+    const dayScans = isExpanded
+      ? scans
+          .filter(s => s.logicalDate === day.date)
+          .slice()
+          .sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
+      : [];
+
+    const toggle = () => setExpandedSituationDates(prev => {
+      const next = new Set(prev);
+      if (next.has(day.date)) next.delete(day.date); else next.add(day.date);
+      return next;
+    });
+
+    return (
+      <div
+        key={day.date}
+        style={{
+          borderRadius: '8px',
+          border: '1px solid var(--border-color)',
+          background: 'rgba(255,255,255,0.01)',
+          overflow: 'hidden'
+        }}
+      >
+        <div
+          onClick={toggle}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+          style={{
+            padding: '12px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
+            <div>
+              <strong style={{ fontSize: '13px', color: '#fff' }}>
+                {lang === 'he' ? formatHebrewAndGregorianDate(day.date) : day.date}
+              </strong>
+              <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                {lang === 'he' ? `${day.trips} נסיעות` : `${day.trips} Trips`}
+              </span>
+            </div>
+          </div>
+          <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+            <span style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--accent)' }}>
+              {day.passengers}
+            </span>
+            <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-secondary)' }}>
+              {lang === 'he' ? 'נוסעים' : 'Passengers'}
+            </span>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div style={{ borderTop: '1px solid var(--border-color)', padding: '4px 14px 10px' }}>
+            {dayScans.length === 0 ? (
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '10px 0' }}>
+                {lang === 'he' ? 'אין נסיעות מתועדות ביום זה' : 'No rides recorded for this day'}
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                      <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
+                      <th style={thCentral}>{lang === 'he' ? 'מוצא' : 'Origin'}</th>
+                      <th style={thCentral}>{lang === 'he' ? 'נוסעים' : 'Passengers'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dayScans.map(s => (
+                      <tr key={s.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                        <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>
+                          {exactTimeStr(new Date(s.scannedAt))}
+                        </td>
+                        <td style={{ ...tdCentral, color: '#fff' }}>
+                          {(s.driverName || '').replace(' (נהג)', '')}
+                        </td>
+                        <td style={tdCentral}>
+                          <span style={{ color: s.departureLocation === 'Ohel' ? '#06b6d4' : 'var(--accent)', fontWeight: 700 }}>
+                            {s.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
+                          </span>
+                        </td>
+                        <td style={tdCentral}>{s.passengersCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const filteredScans = useMemo(() => {
     return scans
@@ -4454,43 +4618,100 @@ export default function App() {
                           {lang === 'he' ? 'פירוט יומי' : 'Daily Breakdown'}
                         </h3>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
                           {situationData.dailyList.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                               {lang === 'he' ? 'אין פעילות מתועדת' : 'No recorded activity'}
                             </div>
                           ) : (
-                            situationData.dailyList.map((day, idx) => (
-                              <div 
-                                key={idx}
-                                style={{ 
-                                  padding: '12px 14px', 
-                                  borderRadius: '8px', 
-                                  border: '1px solid var(--border-color)', 
-                                  background: 'rgba(255,255,255,0.01)',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <div>
-                                  <strong style={{ fontSize: '13px', color: '#fff' }}>
-                                    {lang === 'he' ? formatHebrewAndGregorianDate(day.date) : day.date}
-                                  </strong>
-                                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                    {lang === 'he' ? `${day.trips} נסיעות` : `${day.trips} Trips`}
-                                  </span>
+                            situationData.dailyList.map(day => renderSituationDayRow(day))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Monthly Summary Card (Hebrew calendar) - full history, not scoped
+                          to the timeframe toggle above; see monthlySummaryData comment. */}
+                      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                          <Calendar size={18} color="var(--accent)" />
+                          {lang === 'he' ? 'סיכום חודשי (עברי)' : 'Monthly Summary (Hebrew)'}
+                        </h3>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+                          {monthlySummaryData.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                              {lang === 'he' ? 'אין פעילות מתועדת' : 'No recorded activity'}
+                            </div>
+                          ) : (
+                            monthlySummaryData.map(month => {
+                              const monthKeyFull = `${month.year}-${month.monthKey}`;
+                              const isExpanded = expandedSituationMonths.has(monthKeyFull);
+                              const monthLabel = HEBREW_MONTH_OPTIONS.find(m => m.key === month.monthKey)?.label || month.monthKey;
+                              const toggleMonth = () => setExpandedSituationMonths(prev => {
+                                const next = new Set(prev);
+                                if (next.has(monthKeyFull)) next.delete(monthKeyFull); else next.add(monthKeyFull);
+                                return next;
+                              });
+                              const monthDays = situationMonthDays[monthKeyFull] || [];
+
+                              return (
+                                <div
+                                  key={monthKeyFull}
+                                  style={{
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'rgba(255,255,255,0.01)',
+                                    overflow: 'hidden'
+                                  }}
+                                >
+                                  <div
+                                    onClick={toggleMonth}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMonth(); } }}
+                                    style={{
+                                      padding: '12px 14px',
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      {isExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
+                                      <div>
+                                        <strong style={{ fontSize: '13px', color: '#fff' }}>
+                                          {monthLabel} {renderHebrewYear(month.year)}
+                                        </strong>
+                                        <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                          {lang === 'he' ? `${month.trips} נסיעות` : `${month.trips} Trips`}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--accent)' }}>
+                                        {month.passengers}
+                                      </span>
+                                      <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-secondary)' }}>
+                                        {lang === 'he' ? 'נוסעים' : 'Passengers'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div style={{ borderTop: '1px solid var(--border-color)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      {monthDays.length === 0 ? (
+                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '6px 0' }}>
+                                          {lang === 'he' ? 'טוען...' : 'Loading...'}
+                                        </div>
+                                      ) : (
+                                        monthDays.map(day => renderSituationDayRow(day))
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
-                                <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
-                                  <span style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--accent)' }}>
-                                    {day.passengers}
-                                  </span>
-                                  <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-secondary)' }}>
-                                    {lang === 'he' ? 'נוסעים' : 'Passengers'}
-                                  </span>
-                                </div>
-                              </div>
-                            ))
+                              );
+                            })
                           )}
                         </div>
                       </div>
