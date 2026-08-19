@@ -868,6 +868,10 @@ export default function App() {
 
   // Toast notifications
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'danger'; closing?: boolean }[]>([]);
+  // Shows a full-screen spinner from the moment a scan is submitted until the
+  // save actually resolves, so the wait is visible instead of the screen going
+  // silent between tap and the success/error toast.
+  const [isSavingScan, setIsSavingScan] = useState(false);
 
   // Simulation GPS overrides for dispatcher
   const [gpsSource, setGpsSource] = useState<'real' | '770' | 'ohel'>('770');
@@ -2768,6 +2772,13 @@ export default function App() {
         ))}
       </div>
 
+      {/* Scan-saving overlay: visible feedback from tap until the save resolves */}
+      {isSavingScan && (
+        <div className="saving-overlay">
+          <div className="saving-spinner" />
+        </div>
+      )}
+
       {/* NO USER SIGNED IN -> SHOW LOGIN SCREEN */}
       {!currentUser ? (
         <div 
@@ -3738,6 +3749,7 @@ export default function App() {
                                     setNoPhoneShowForm(false);
                                     setNoPhoneDispatcher(null);
                                     setNoPhonePassengers(0);
+                                    setIsSavingScan(true);
                                     try {
                                       await dbService.addScan({
                                         dispatcherId: disp.id,
@@ -3759,6 +3771,8 @@ export default function App() {
                                           : 'Scan failed to save to server (network issue?) - try again',
                                         'danger'
                                       );
+                                    } finally {
+                                      setIsSavingScan(false);
                                     }
                                   }}
                                 >
@@ -6121,6 +6135,7 @@ export default function App() {
                       setScannerModalDriver(null);
                       setScannerModalPassengers(0);
 
+                      setIsSavingScan(true);
                       try {
                         await dbService.addScan({
                           dispatcherId: currentUser.id,
@@ -6148,6 +6163,8 @@ export default function App() {
                             : `Scan failed to save to server (network issue?) - try again or check connection`,
                           'danger'
                         );
+                      } finally {
+                        setIsSavingScan(false);
                       }
                     }}
                     className="btn btn-primary"
