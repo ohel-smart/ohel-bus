@@ -611,61 +611,149 @@ const formatHebrewAndGregorianDate = (dateInput: Date | string): string => {
   }
 };
 
-const formatActiveHours = (scannedAtTimes: string[], lang: string) => {
-  if (scannedAtTimes.length === 0) return lang === 'he' ? 'אין פעילות' : 'No activity';
-  
-  // Sort times chronologically
-  const sortedTimes = [...scannedAtTimes].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-  
-  // Extract clean HH:mm strings in NY timezone
-  const timeStrings = sortedTimes.map(t => {
-    return new Date(t).toLocaleTimeString('he-IL', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'America/New_York'
-    });
+// --- Hourly activity breakdown (drives both the "situation" tab hour summary and the
+// PDF reports' hourly-breakdown section) -----------------------------------------------
+//
+// This feeds payroll ("how much do we owe this driver") so the grouping rule needs to be
+// explainable, not just observed. Two things it must get right:
+//
+// 1. Day-awareness: scans are bucketed by (calendar day in America/New_York, clock hour).
+//    "11:00 on Monday" and "11:00 on Tuesday" are NEVER merged into one "11:00" bucket or
+//    treated as adjacent/continuous with each other - a multi-day query produces one
+//    section per day, each with its own itemize/collapse decision. Silently summing
+//    hour-of-day counts across different days would misrepresent hours actually worked.
+//
+// 2. Itemize vs. collapse, per day: within a single day, find maximal runs of consecutive
+//    active clock hours (e.g. 11,12,13 back-to-back). A run collapses into one
+//    "from X to Y - N rides" line ONLY if it is both (a) at least RUN_MIN_HOURS hours long
+//    AND (b) averages at least RUN_MIN_AVG_PER_HOUR rides/hour across the run - i.e. a
+//    genuinely busy stretch. Everything else - a single active hour, two isolated
+//    back-to-back light hours (e.g. "11:00 - 2, 12:00 - 1"), or a long but low-volume
+//    stretch - stays itemized one line per hour. This directly matches what was asked for:
+//    light/back-to-back hours must stay as separate itemized lines, while a real busy
+//    stretch collapses into one range+total line. The two constants below are a judgment
+//    call (not a fixed business rule) - adjust them here if the owner wants the line drawn
+//    elsewhere; both are documented so a future reader can find and reason about them.
+const RUN_MIN_HOURS = 3;
+const RUN_MIN_AVG_PER_HOUR = 3;
+
+interface DayHourBreakdown {
+  dateKey: string; // YYYY-MM-DD in America/New_York
+  segments: string[]; // pre-formatted, localized text segments for that day, chronological
+}
+
+// Buckets scan timestamps into (NY calendar day, clock hour), then within each day emits
+// either itemized "HH:00 - N" segments or collapsed "from HH:00 to HH:00 - N rides"
+// segments per the rule documented above. Returns one entry per distinct day, sorted
+// chronologically.
+//
+// NOTE: a lucide icon named `Map` is imported at module scope elsewhere in this file and
+// shadows the built-in Map constructor (see the identical note near `logicalDateToParsha`
+// around line 1219), so this uses plain nested objects/records instead of Map/Set.
+const computeHourlyBreakdown = (scannedAtTimes: string[], locale: string): DayHourBreakdown[] => {
+  if (scannedAtTimes.length === 0) return [];
+
+  // dateKey -> hour(0-23) -> count
+  const buckets: Record<string, Record<number, number>> = {};
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+    timeZone: 'America/New_York'
   });
 
-  // If there's only 1 scan
-  if (sortedTimes.length === 1) {
-    return timeStrings[0];
+  for (const t of scannedAtTimes) {
+    const d = new Date(t);
+    if (isNaN(d.getTime())) continue;
+    const parts = fmt.formatToParts(d);
+    const get = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+    const dateKey = `${get('year')}-${get('month')}-${get('day')}`;
+    const hour = parseInt(get('hour'), 10) % 24;
+    if (!buckets[dateKey]) buckets[dateKey] = {};
+    buckets[dateKey][hour] = (buckets[dateKey][hour] || 0) + 1;
   }
 
-  // Calculate gaps between consecutive scans (in minutes)
-  let isContinuous = true;
-  let maxGap = 0;
-  for (let i = 1; i < sortedTimes.length; i++) {
-    const prev = new Date(sortedTimes[i - 1]).getTime();
-    const curr = new Date(sortedTimes[i]).getTime();
-    const gapMins = (curr - prev) / 60000;
-    if (gapMins > maxGap) maxGap = gapMins;
-    if (gapMins > 45) { // If there is any gap larger than 45 minutes, it's not continuous
-      isContinuous = false;
+  const dateKeys = Object.keys(buckets).sort();
+  const result: DayHourBreakdown[] = [];
+
+  for (const dateKey of dateKeys) {
+    const hourCounts = buckets[dateKey];
+    const activeHours = Object.keys(hourCounts).map(h => parseInt(h, 10)).sort((a, b) => a - b);
+    const segments: string[] = [];
+
+    let i = 0;
+    while (i < activeHours.length) {
+      // Extend to the maximal run of consecutive clock hours starting at i.
+      let j = i;
+      while (j + 1 < activeHours.length && activeHours[j + 1] === activeHours[j] + 1) {
+        j++;
+      }
+      const runHours = activeHours.slice(i, j + 1);
+      const runTotal = runHours.reduce((sum, h) => sum + (hourCounts[h] || 0), 0);
+      const avgPerHour = runTotal / runHours.length;
+
+      if (runHours.length >= RUN_MIN_HOURS && avgPerHour >= RUN_MIN_AVG_PER_HOUR) {
+        const startLabel = `${String(runHours[0]).padStart(2, '0')}:00`;
+        const endLabel = `${String((runHours[runHours.length - 1] + 1) % 24).padStart(2, '0')}:00`;
+        segments.push(
+          locale === 'he'
+            ? `מהשעה ${startLabel} עד השעה ${endLabel} - הוצאו ${runTotal} אוטובוסים`
+            : `from ${startLabel} to ${endLabel} - ${runTotal} rides dispatched`
+        );
+      } else {
+        for (const h of runHours) {
+          segments.push(`${String(h).padStart(2, '0')}:00 - ${hourCounts[h]}`);
+        }
+      }
+      i = j + 1;
     }
+
+    result.push({ dateKey, segments });
   }
 
-  // Also, we need at least 3 scans to call it "continuous" range
-  if (isContinuous && sortedTimes.length >= 3) {
-    const firstTime = timeStrings[0];
-    const lastTime = timeStrings[timeStrings.length - 1];
-    return lang === 'he' 
-      ? `מ-${firstTime} עד ${lastTime}` 
-      : `from ${firstTime} to ${lastTime}`;
-  } else {
-    // Sparse list: merge duplicate HH:mm strings
-    const uniqueTimes = Array.from(new Set(timeStrings));
-    if (uniqueTimes.length === 2) {
-      return lang === 'he' 
-        ? `${uniqueTimes[0]} ו-${uniqueTimes[1]}` 
-        : `${uniqueTimes[0]} and ${uniqueTimes[1]}`;
-    }
-    // If more, join with commas, and use "and"/"ו-" for the last element
-    const last = uniqueTimes.pop();
-    return lang === 'he'
-      ? `${uniqueTimes.join(', ')} ו-${last}`
-      : `${uniqueTimes.join(', ')} and ${last}`;
+  return result;
+};
+
+// Plain-string rendering of computeHourlyBreakdown for the "situation" tab driver/dispatcher
+// cards (next to the "שעות:"/"Hours:" label). Single-day results are one comma-joined line;
+// multi-day results (week/month/custom timeframe) get one dated line per day, newline-
+// separated, so hours from different days are never visually run together.
+const formatActiveHours = (scannedAtTimes: string[], lang: string) => {
+  const breakdown = computeHourlyBreakdown(scannedAtTimes, lang);
+  if (breakdown.length === 0) return lang === 'he' ? 'אין פעילות' : 'No activity';
+
+  if (breakdown.length === 1) {
+    return breakdown[0].segments.join(lang === 'he' ? ' | ' : ' | ');
   }
+
+  return breakdown.map(day => {
+    const dateLabel = new Date(`${day.dateKey}T12:00:00`).toLocaleDateString(
+      lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit' }
+    );
+    return `${dateLabel}: ${day.segments.join(' | ')}`;
+  }).join('\n');
+};
+
+// HTML rendering of computeHourlyBreakdown for the driver/dispatcher PDF reports
+// (handleExportDriverPdf / handleExportDispatcherPdf). These reports can span a driver's
+// or dispatcher's entire history, so the per-day grouping from computeHourlyBreakdown is
+// exercised for real here (not just the usually-single-day "situation" tab case): one
+// dated block per day, each showing that day's itemized-hours/collapsed-range segments as
+// chips. This is an ADDITIONAL section alongside the existing full per-ride table, not a
+// replacement for it - payroll review still needs the row-level detail.
+const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en'): string => {
+  const breakdown = computeHourlyBreakdown(scannedAtTimes, locale);
+  if (breakdown.length === 0) {
+    return `<div class="empty">${locale === 'he' ? 'אין נתוני שעות' : 'No hourly data'}</div>`;
+  }
+  return breakdown.map(day => {
+    const dayDate = new Date(`${day.dateKey}T12:00:00`);
+    const greg = dayDate.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const label = locale === 'he' ? `${getHebrewDate(dayDate)} (${greg})` : greg;
+    const chips = day.segments.map(seg => `<span class="hours-chip">${seg}</span>`).join('');
+    return `<div class="hours-day">
+      <div class="hours-day-title">${label}</div>
+      <div class="hours-list">${chips}</div>
+    </div>`;
+  }).join('');
 };
 
 export default function App() {
@@ -2025,11 +2113,11 @@ export default function App() {
       const t = locale === 'he' ? {
         title: 'דו"ח נסיעות מפורט', driver: 'נהג', generated: 'הופק בתאריך', rides: 'סה"כ נסיעות', pax: 'סה"כ נוסעים שהסיע',
         hDate: 'תאריך עברי', gDate: 'תאריך לועזי', route: 'מסלול', time: 'שעה', people: 'אנשים', bigBus: 'אוטובוס גדול',
-        footer: 'הופק אוטומטית ממערכת אוהל בוס'
+        hoursTitle: 'פירוט לפי שעות', footer: 'הופק אוטומטית ממערכת אוהל בוס'
       } : {
         title: 'Detailed Driver Report', driver: 'Driver', generated: 'Generated on', rides: 'Total Rides', pax: 'Total Passengers Driven',
         hDate: 'Hebrew Date', gDate: 'Gregorian Date', route: 'Route', time: 'Time', people: 'People', bigBus: 'Big Bus',
-        footer: 'Automatically generated by the Ohel Bus system'
+        hoursTitle: 'Hourly Breakdown', footer: 'Automatically generated by the Ohel Bus system'
       };
       const dir = locale === 'he' ? 'rtl' : 'ltr';
       return `<div class="lang-section" data-lang="${locale}" dir="${dir}">
@@ -2044,6 +2132,10 @@ export default function App() {
         <div class="stats-row">
           <div class="stat-card"><span class="stat-value">${totalRides}</span><span class="stat-label">🚗 ${t.rides}</span></div>
           <div class="stat-card"><span class="stat-value">${totalPassengers}</span><span class="stat-label">👥 ${t.pax}</span></div>
+        </div>
+        <div class="hours-section">
+          <h2 class="section-title">${t.hoursTitle}</h2>
+          ${buildHourlyBreakdownHtml(driverScans.map(s => s.scannedAt), locale)}
         </div>
         <table>
           <thead><tr><th>${t.hDate}</th><th>${t.gDate}</th><th>${t.route}</th><th>${t.time}</th><th>${t.people}</th><th>${t.bigBus}</th></tr></thead>
@@ -2073,6 +2165,12 @@ export default function App() {
         .stat-card { flex: 1; background: var(--gold-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
         .stat-value { font-size: 24px; font-weight: 800; color: var(--ink); }
         .stat-label { font-size: 12px; color: var(--muted); }
+        .section-title { font-size: 14px; font-weight: 700; color: var(--ink); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+        .hours-section { margin-bottom: 22px; }
+        .hours-day { margin-bottom: 10px; }
+        .hours-day-title { font-size: 12px; font-weight: 700; color: var(--gold); margin-bottom: 5px; }
+        .hours-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .hours-chip { background: var(--gold-bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-family: 'Courier New', monospace; color: var(--ink); }
         table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
         th { background: var(--ink); color: #fff; padding: 9px 10px; font-weight: 600; }
         td { border-bottom: 1px solid var(--border); padding: 8px 10px; }
@@ -2154,11 +2252,11 @@ export default function App() {
       const t = locale === 'he' ? {
         title: 'דו"ח סריקות מפורט', dispatcher: 'סדרן', generated: 'הופק בתאריך', rides: 'סה"כ נסיעות', pax: 'סה"כ נוסעים',
         buses: 'סה"כ אוטובוסים שונים', hDate: 'תאריך עברי', gDate: 'תאריך לועזי', route: 'מסלול', time: 'שעה', driver: 'נהג', people: 'אנשים',
-        footer: 'הופק אוטומטית ממערכת אוהל בוס'
+        hoursTitle: 'פירוט לפי שעות', footer: 'הופק אוטומטית ממערכת אוהל בוס'
       } : {
         title: 'Detailed Dispatcher Report', dispatcher: 'Dispatcher', generated: 'Generated on', rides: 'Total Rides', pax: 'Total Passengers',
         buses: 'Distinct Buses', hDate: 'Hebrew Date', gDate: 'Gregorian Date', route: 'Route', time: 'Time', driver: 'Driver', people: 'People',
-        footer: 'Automatically generated by the Ohel Bus system'
+        hoursTitle: 'Hourly Breakdown', footer: 'Automatically generated by the Ohel Bus system'
       };
       const dir = locale === 'he' ? 'rtl' : 'ltr';
       return `<div class="lang-section" data-lang="${locale}" dir="${dir}">
@@ -2174,6 +2272,10 @@ export default function App() {
           <div class="stat-card"><span class="stat-value">${totalRides}</span><span class="stat-label">🚗 ${t.rides}</span></div>
           <div class="stat-card"><span class="stat-value">${distinctBuses}</span><span class="stat-label">🚌 ${t.buses}</span></div>
           <div class="stat-card"><span class="stat-value">${totalPassengers}</span><span class="stat-label">👥 ${t.pax}</span></div>
+        </div>
+        <div class="hours-section">
+          <h2 class="section-title">${t.hoursTitle}</h2>
+          ${buildHourlyBreakdownHtml(dispatcherScans.map(s => s.scannedAt), locale)}
         </div>
         <table>
           <thead><tr><th>${t.hDate}</th><th>${t.gDate}</th><th>${t.route}</th><th>${t.time}</th><th>${t.driver}</th><th>${t.people}</th></tr></thead>
@@ -2203,6 +2305,12 @@ export default function App() {
         .stat-card { flex: 1; background: var(--gold-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
         .stat-value { font-size: 24px; font-weight: 800; color: var(--ink); }
         .stat-label { font-size: 12px; color: var(--muted); }
+        .section-title { font-size: 14px; font-weight: 700; color: var(--ink); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+        .hours-section { margin-bottom: 22px; }
+        .hours-day { margin-bottom: 10px; }
+        .hours-day-title { font-size: 12px; font-weight: 700; color: var(--gold); margin-bottom: 5px; }
+        .hours-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .hours-chip { background: var(--gold-bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-family: 'Courier New', monospace; color: var(--ink); }
         table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
         th { background: var(--ink); color: #fff; padding: 9px 10px; font-weight: 600; }
         td { border-bottom: 1px solid var(--border); padding: 8px 10px; }
@@ -4211,7 +4319,7 @@ export default function App() {
                                   </span>
                                   <span>
                                     {lang === 'he' ? `שעות:` : `Hours:`}{' '}
-                                    <strong style={{ color: '#fff', fontFamily: 'monospace' }}>
+                                    <strong style={{ color: '#fff', fontFamily: 'monospace', whiteSpace: 'pre-line' }}>
                                       {formatActiveHours(drv.times, lang)}
                                     </strong>
                                   </span>
@@ -4262,7 +4370,7 @@ export default function App() {
                                   </span>
                                   <span>
                                     {lang === 'he' ? `שעות:` : `Hours:`}{' '}
-                                    <strong style={{ color: '#fff', fontFamily: 'monospace' }}>
+                                    <strong style={{ color: '#fff', fontFamily: 'monospace', whiteSpace: 'pre-line' }}>
                                       {formatActiveHours(disp.times, lang)}
                                     </strong>
                                   </span>
