@@ -4278,7 +4278,10 @@ export default function App() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {day.rows.map(r => (
+                                {/* On-screen only: newest scan at top. The row data itself (and thus
+                                    the CSV export, which reads day.rows directly) stays oldest-first -
+                                    intentionally the opposite of what's shown here. */}
+                                {[...day.rows].reverse().map(r => (
                                   <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
                                     {centralSelectMode && (
                                       <td style={tdCentral}>
