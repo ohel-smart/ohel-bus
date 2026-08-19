@@ -409,6 +409,8 @@ body {
 /* Tables (Sleek Linear Style) */
 .table-container {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 65vh;
   border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);

@@ -4056,7 +4056,7 @@ export default function App() {
                             {day.parsha && <span style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>· {lang === 'he' ? 'פרשת' : 'Parashat'} {day.parsha}</span>}
                             {day.isToday && <span style={{ marginInlineStart: 'auto', fontSize: '10px', color: 'var(--success)', fontWeight: 700 }}>{lang === 'he' ? 'היום' : 'Today'}</span>}
                           </div>
-                          <div style={{ overflowX: 'auto' }}>
+                          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '520px' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
                               <thead>
                                 <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
