@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
-import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe } from './services/hebrewDate';
+import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
@@ -85,6 +85,8 @@ const TRANSLATIONS = {
     clearDate: 'נקה תאריך',
     monthFilterLabel: 'סינון לפי חודש',
     clearMonth: 'נקה חודש',
+    yearFilterLabel: 'סינון לפי שנה עברית',
+    clearYear: 'נקה שנה',
     parshaFilterLabel: 'כל הפרשות',
     clearParsha: 'נקה פרשה',
     originFilterLabel: 'כל נקודות המוצא',
@@ -340,6 +342,8 @@ const TRANSLATIONS = {
     clearDate: 'Clear Date',
     monthFilterLabel: 'Filter by Month',
     clearMonth: 'Clear Month',
+    yearFilterLabel: 'Filter by Hebrew Year',
+    clearYear: 'Clear Year',
     parshaFilterLabel: 'All Parshas',
     clearParsha: 'Clear Parsha',
     originFilterLabel: 'All Origins',
@@ -851,7 +855,8 @@ export default function App() {
   // Search & Filter state for Manager Dashboard
   const [searchText, setSearchText] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState(''); // format: YYYY-MM
+  const [monthFilter, setMonthFilter] = useState(''); // Hebrew month key, e.g. "Elul"
+  const [yearFilter, setYearFilter] = useState(''); // Hebrew year, e.g. "5786"
   const [parshaFilter, setParshaFilter] = useState(''); // weekly parsha name
   const [selectedScanForEdit, setSelectedScanForEdit] = useState<Scan | null>(null);
   const [editPassengersCount, setEditPassengersCount] = useState<number>(0);
@@ -1254,6 +1259,25 @@ export default function App() {
     return result;
   }, [logicalDateToParsha]);
 
+  // logicalDate -> { year, monthKey } in the HEBREW calendar - "month" filtering
+  // in this app means Hebrew months, not Gregorian ones.
+  const logicalDateToHebrewYM = useMemo(() => {
+    const dict: Record<string, { year: number; monthKey: string }> = {};
+    for (const s of scans) {
+      if (!(s.logicalDate in dict)) {
+        dict[s.logicalDate] = getHebrewYearMonth(new Date(s.logicalDate + 'T12:00:00'));
+      }
+    }
+    return dict;
+  }, [scans]);
+
+  // Distinct Hebrew years actually present in `scans`, newest first.
+  const availableHebrewYears = useMemo(() => {
+    const years = new Set<number>();
+    Object.values(logicalDateToHebrewYM).forEach(v => { if (v.year) years.add(v.year); });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [logicalDateToHebrewYM]);
+
   const filteredScans = useMemo(() => {
     return scans
       .filter(s => {
@@ -1263,13 +1287,15 @@ export default function App() {
           s.departureLocation.toLowerCase().includes(searchText.toLowerCase());
 
         const matchesDate = dateFilter ? s.logicalDate === dateFilter : true;
-        const matchesMonth = monthFilter ? s.logicalDate.startsWith(monthFilter) : true;
+        const ym = logicalDateToHebrewYM[s.logicalDate];
+        const matchesMonth = monthFilter ? ym?.monthKey === monthFilter : true;
+        const matchesYear = yearFilter ? String(ym?.year) === yearFilter : true;
         const matchesParsha = parshaFilter ? logicalDateToParsha[s.logicalDate] === parshaFilter : true;
 
-        return matchesSearch && matchesDate && matchesMonth && matchesParsha;
+        return matchesSearch && matchesDate && matchesMonth && matchesYear && matchesParsha;
       })
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
-  }, [scans, searchText, dateFilter, monthFilter, parshaFilter, logicalDateToParsha]);
+  }, [scans, searchText, dateFilter, monthFilter, yearFilter, parshaFilter, logicalDateToParsha, logicalDateToHebrewYM]);
 
   // --- Central Summary (master table): one row per ride, grouped by day. ---
   // --- Outbound (הלוך) and return (חזור) are separate rows, each tagged ---
@@ -1278,7 +1304,8 @@ export default function App() {
   const [centralBigBusOnly, setCentralBigBusOnly] = useState(false);
   const [centralDateFrom, setCentralDateFrom] = useState('');
   const [centralDateTo, setCentralDateTo] = useState('');
-  const [centralMonthFilter, setCentralMonthFilter] = useState(''); // format: YYYY-MM
+  const [centralMonthFilter, setCentralMonthFilter] = useState(''); // Hebrew month key, e.g. "Elul"
+  const [centralYearFilter, setCentralYearFilter] = useState(''); // Hebrew year, e.g. "5786"
   const [centralParshaFilter, setCentralParshaFilter] = useState('');
   const [centralOriginFilter, setCentralOriginFilter] = useState<'' | DepartureLocation>('');
 
@@ -1290,7 +1317,9 @@ export default function App() {
       if (!s.logicalDate) continue;
       if (centralDateFrom && s.logicalDate < centralDateFrom) continue;
       if (centralDateTo && s.logicalDate > centralDateTo) continue;
-      if (centralMonthFilter && !s.logicalDate.startsWith(centralMonthFilter)) continue;
+      const ym = logicalDateToHebrewYM[s.logicalDate];
+      if (centralMonthFilter && ym?.monthKey !== centralMonthFilter) continue;
+      if (centralYearFilter && String(ym?.year) !== centralYearFilter) continue;
       if (centralParshaFilter && logicalDateToParsha[s.logicalDate] !== centralParshaFilter) continue;
       if (centralOriginFilter && s.departureLocation !== centralOriginFilter) continue;
       (byDay[s.logicalDate] ||= []).push(s);
@@ -1337,7 +1366,7 @@ export default function App() {
         rows,
       };
     }).filter(day => day.rows.length > 0);
-  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralParshaFilter, centralOriginFilter, logicalDateToParsha, lang]);
+  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, logicalDateToParsha, logicalDateToHebrewYM, lang]);
 
   // --- Stats calculations ---
   const stats = useMemo(() => {
@@ -4033,19 +4062,43 @@ export default function App() {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
-                        <input
-                          type="month"
+                        <select
                           value={centralMonthFilter}
                           onChange={e => setCentralMonthFilter(e.target.value)}
                           title={t('monthFilterLabel')}
                           style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
-                        />
+                        >
+                          <option value="">{t('monthFilterLabel')}</option>
+                          {HEBREW_MONTH_OPTIONS.map(m => (
+                            <option key={m.key} value={m.key}>{m.label}</option>
+                          ))}
+                        </select>
                         {centralMonthFilter && (
                           <button
                             onClick={() => setCentralMonthFilter('')}
                             style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
                           >
                             {t('clearMonth')}
+                          </button>
+                        )}
+
+                        <select
+                          value={centralYearFilter}
+                          onChange={e => setCentralYearFilter(e.target.value)}
+                          title={t('yearFilterLabel')}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        >
+                          <option value="">{t('yearFilterLabel')}</option>
+                          {availableHebrewYears.map(y => (
+                            <option key={y} value={y}>{renderHebrewYear(y)}</option>
+                          ))}
+                        </select>
+                        {centralYearFilter && (
+                          <button
+                            onClick={() => setCentralYearFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearYear')}
                           </button>
                         )}
 
@@ -4525,20 +4578,45 @@ export default function App() {
                           </button>
                         )}
 
-                        <input
-                          type="month"
+                        <select
                           className="form-input"
                           style={{ width: '150px', height: '38px', fontSize: '13px' }}
                           value={monthFilter}
                           onChange={(e) => setMonthFilter(e.target.value)}
                           title={t('monthFilterLabel')}
-                        />
+                        >
+                          <option value="">{t('monthFilterLabel')}</option>
+                          {HEBREW_MONTH_OPTIONS.map(m => (
+                            <option key={m.key} value={m.key}>{m.label}</option>
+                          ))}
+                        </select>
                         {monthFilter && (
                           <button
                             onClick={() => setMonthFilter('')}
                             style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
                           >
                             {t('clearMonth')}
+                          </button>
+                        )}
+
+                        <select
+                          className="form-input"
+                          style={{ width: '130px', height: '38px', fontSize: '13px' }}
+                          value={yearFilter}
+                          onChange={(e) => setYearFilter(e.target.value)}
+                          title={t('yearFilterLabel')}
+                        >
+                          <option value="">{t('yearFilterLabel')}</option>
+                          {availableHebrewYears.map(y => (
+                            <option key={y} value={y}>{renderHebrewYear(y)}</option>
+                          ))}
+                        </select>
+                        {yearFilter && (
+                          <button
+                            onClick={() => setYearFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearYear')}
                           </button>
                         )}
 

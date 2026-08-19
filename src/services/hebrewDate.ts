@@ -72,6 +72,51 @@ export function getDayOfWeekHe(date: Date): string {
   return new Intl.DateTimeFormat('he-IL', { weekday: 'long' }).format(date);
 }
 
+/**
+ * Fixed list of Hebrew month keys (as returned by HDate#getMonthName()) with their
+ * Hebrew display labels. "Adar" only exists in non-leap years; "Adar I"/"Adar II"
+ * only exist in leap years - both are always offered as filter options since the
+ * matching year determines which one is actually present in the data.
+ */
+export const HEBREW_MONTH_OPTIONS: { key: string; label: string }[] = [
+  { key: 'Nisan', label: 'ניסן' },
+  { key: 'Iyyar', label: 'אייר' },
+  { key: 'Sivan', label: 'סיון' },
+  { key: 'Tamuz', label: 'תמוז' },
+  { key: 'Av', label: 'אב' },
+  { key: 'Elul', label: 'אלול' },
+  { key: 'Tishrei', label: 'תשרי' },
+  { key: 'Cheshvan', label: 'חשון' },
+  { key: 'Kislev', label: 'כסלו' },
+  { key: 'Tevet', label: 'טבת' },
+  { key: "Sh'vat", label: 'שבט' },
+  { key: 'Adar', label: 'אדר' },
+  { key: 'Adar I', label: 'אדר א׳' },
+  { key: 'Adar II', label: 'אדר ב׳' },
+];
+
+const hebrewYearMonthCache = new Map<string, { year: number; monthKey: string }>();
+
+/** Hebrew (year, month-key) for `date`, memoized per calendar day. */
+export function getHebrewYearMonth(date: Date): { year: number; monthKey: string } {
+  const key = date.toISOString().slice(0, 10);
+  const cached = hebrewYearMonthCache.get(key);
+  if (cached) return cached;
+  let result = { year: 0, monthKey: '' };
+  try {
+    const hd = new HDate(date);
+    result = { year: hd.getFullYear(), monthKey: hd.getMonthName() };
+  } catch { /* leave zeroed on any calendar error */ }
+  hebrewYearMonthCache.set(key, result);
+  return result;
+}
+
+/** Hebrew year in Gematriya, e.g. 5786 -> "תשפ״ו". */
+export function renderHebrewYear(year: number): string {
+  try { return stripNiqqud(new HDate(1, 1, year).renderGematriya()).split(' ').pop() || String(year); }
+  catch { return String(year); }
+}
+
 /** Exact "HH:MM" (24h) in the given timezone. */
 export function exactTimeStr(date: Date, timeZone = 'America/New_York'): string {
   return new Intl.DateTimeFormat('en-GB', {
