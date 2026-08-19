@@ -83,7 +83,7 @@ export default function BoardView() {
   const verifyCode = () => {
     const u = dbService.loginWithCode(code.trim());
     if (!u) { setError(tx.codeNotFound); return; }
-    if (u.role !== 'admin' && u.role !== 'dispatcher') { setError(tx.codeNotAllowed); return; }
+    if (u.role !== 'admin' && u.role !== 'dispatcher' && u.role !== 'screen') { setError(tx.codeNotAllowed); return; }
     setError('');
     setViewer(u);
   };

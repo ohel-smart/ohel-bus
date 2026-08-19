@@ -107,6 +107,9 @@ const TRANSLATIONS = {
     roleDriver: 'נהג (הסעות)',
     roleDispatcher: 'סדרן (שטח)',
     roleAdmin: 'מנהל (פיקוח)',
+    roleScreen: 'קוד מסך (לוח תצוגה)',
+    screenLocationLabel: 'מיקום המסך (לזיהוי)',
+    screenLocationPlaceholder: 'לדוגמה: 770 / אוהל / כניסה ראשית',
     capacityLabel: 'קיבולת רכב (מספר מושבים)',
     createUser: 'צור משתמש חדש',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
@@ -130,6 +133,7 @@ const TRANSLATIONS = {
     // New Keys
     welcomeUser: 'ברוך הבא, {name}!',
     loginError: 'קוד כניסה שגוי. אנא נסה שנית.',
+    screenCodeLoginRejected: 'קוד זה מיועד למסך תצוגה בלבד ואינו מקנה גישה למערכת הניהול.',
     enterPasscode: 'נא להזין קוד כניסה',
     logoutSuccess: 'התנתקת מהמערכת בהצלחה',
     offlineNotice: 'המכשיר עבר למצב אופליין (ללא קליטה). סריקות יישמרו מקומית.',
@@ -219,6 +223,7 @@ const TRANSLATIONS = {
     adminRole: 'מנהל',
     dispatcherRole: 'סדרן',
     driverRole: 'נהג',
+    screenRole: 'מסך',
     seatsCountText: '{count} מושבים',
     updateEmailButton: 'עדכן מייל',
     emailReportSimulatorTitle: 'סימולטור שליחת דוחות במייל:',
@@ -354,6 +359,9 @@ const TRANSLATIONS = {
     roleDriver: 'Driver (Shuttle)',
     roleDispatcher: 'Dispatcher (Field)',
     roleAdmin: 'Manager (Admin)',
+    roleScreen: 'Screen Code (Display Board)',
+    screenLocationLabel: 'Screen Location (for reference)',
+    screenLocationPlaceholder: 'e.g. 770 / Ohel / Main Entrance',
     capacityLabel: 'Vehicle Capacity (Number of Seats)',
     createUser: 'Create New User',
     usersListTitle: 'Staff & Drivers in the System',
@@ -377,6 +385,7 @@ const TRANSLATIONS = {
     // New Keys
     welcomeUser: 'Welcome, {name}!',
     loginError: 'Invalid login code. Please try again.',
+    screenCodeLoginRejected: 'This code is for the display board only and does not grant access to the management system.',
     enterPasscode: 'Please enter login code',
     logoutSuccess: 'Logged out successfully',
     offlineNotice: 'Device is offline (no signal). Scans will be saved locally.',
@@ -466,6 +475,7 @@ const TRANSLATIONS = {
     adminRole: 'Manager',
     dispatcherRole: 'Dispatcher',
     driverRole: 'Driver',
+    screenRole: 'Screen',
     seatsCountText: '{count} seats',
     updateEmailButton: 'Update Email',
     emailReportSimulatorTitle: 'Email Reports Simulator:',
@@ -761,10 +771,10 @@ export default function App() {
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioFromNumber, setTwilioFromNumber] = useState('');
   const [twilioRecipientSms, setTwilioRecipientSms] = useState('');
-  const [staffFilter, setStaffFilter] = useState<'driver' | 'dispatcher'>('driver');
+  const [staffFilter, setStaffFilter] = useState<'driver' | 'dispatcher' | 'screen'>('driver');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
-  const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
+  const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
   const [newUserCapacity, setNewUserCapacity] = useState<number>(15);
   const [loginCode, setLoginCode] = useState('');
   const [newUserCode, setNewUserCode] = useState('');
@@ -772,7 +782,7 @@ export default function App() {
   const [editUserName, setEditUserName] = useState('');
   const [editUserPhone, setEditUserPhone] = useState('');
   const [editUserCode, setEditUserCode] = useState('');
-  const [editUserRole, setEditUserRole] = useState<'driver' | 'dispatcher' | 'admin'>('driver');
+  const [editUserRole, setEditUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
   const [editUserCapacity, setEditUserCapacity] = useState<number>(15);
   // Email Reports Simulator state
   const [emailPreviewType, setEmailPreviewType] = useState<'daily' | 'monthly' | null>(null);
@@ -1416,6 +1426,13 @@ export default function App() {
       return;
     }
     const user = dbService.loginWithCode(loginCode.trim());
+    if (user && user.role === 'screen') {
+      // Screen codes only ever unlock the public /board display — never the
+      // dispatcher app itself, so reject explicitly rather than letting it
+      // silently fall through and behave like some other role.
+      triggerToast(t('screenCodeLoginRejected'), 'danger');
+      return;
+    }
     if (user) {
       localStorage.setItem('tp_current_user', JSON.stringify(user));
       setCurrentUser(user);
@@ -1542,7 +1559,9 @@ export default function App() {
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName || !newUserPhone || !newUserCode) {
+    // A screen isn't a real staff member, so the "phone" field (repurposed as a
+    // free-text screen location note) isn't required for that role.
+    if (!newUserName || !newUserCode || (newUserRole !== 'screen' && !newUserPhone)) {
       triggerToast(t('fillAllFields'), 'danger');
       return;
     }
@@ -1552,10 +1571,10 @@ export default function App() {
       triggerToast(t('codeDuplicate'), 'danger');
       return;
     }
-    
+
     const id = 'usr_' + Math.random().toString(36).substr(2, 9);
-    const roleSuffix = newUserRole === 'driver' ? ' (נהג)' : newUserRole === 'dispatcher' ? ' (סדרן)' : ' (מנהל)';
-    
+    const roleSuffix = newUserRole === 'driver' ? ' (נהג)' : newUserRole === 'dispatcher' ? ' (סדרן)' : newUserRole === 'screen' ? ' (מסך)' : ' (מנהל)';
+
     dbService.saveUser({
       id,
       name: newUserName + roleSuffix,
@@ -1591,7 +1610,8 @@ export default function App() {
     const cleanName = user.name
       .replace(' (נהג)', '')
       .replace(' (סדרן)', '')
-      .replace(' (מנהל)', '');
+      .replace(' (מנהל)', '')
+      .replace(' (מסך)', '');
     setEditUserName(cleanName);
     setEditUserPhone(user.phone);
     setEditUserCode(user.code);
@@ -1602,7 +1622,7 @@ export default function App() {
   const handleSaveEditUser = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserForEdit) return;
-    if (!editUserName || !editUserPhone || !editUserCode) {
+    if (!editUserName || !editUserCode || (editUserRole !== 'screen' && !editUserPhone)) {
       triggerToast(t('fillAllFields'), 'danger');
       return;
     }
@@ -1616,6 +1636,7 @@ export default function App() {
     let roleSuffix = '';
     if (editUserRole === 'driver') roleSuffix = ' (נהג)';
     else if (editUserRole === 'dispatcher') roleSuffix = ' (סדרן)';
+    else if (editUserRole === 'screen') roleSuffix = ' (מסך)';
     else if (editUserRole === 'admin') roleSuffix = ' (מנהל)';
 
     const updatedUser: User = {
@@ -1905,7 +1926,7 @@ export default function App() {
     const rows = users.map(u => [
       u.name,
       u.phone,
-      u.role === 'admin' ? (lang === 'he' ? 'מנהל' : 'Admin') : u.role === 'dispatcher' ? (lang === 'he' ? 'סדרן' : 'Dispatcher') : (lang === 'he' ? 'נהג' : 'Driver'),
+      u.role === 'admin' ? (lang === 'he' ? 'מנהל' : 'Admin') : u.role === 'dispatcher' ? (lang === 'he' ? 'סדרן' : 'Dispatcher') : u.role === 'screen' ? (lang === 'he' ? 'מסך' : 'Screen') : (lang === 'he' ? 'נהג' : 'Driver'),
       u.code,
       u.capacity || ''
     ]);
@@ -4611,21 +4632,21 @@ export default function App() {
                           </div>
 
                           <div className="form-group">
-                            <label className="form-label">{t('phoneLabel')}</label>
-                            <input 
-                              type="tel" 
-                              className="form-input" 
+                            <label className="form-label">{newUserRole === 'screen' ? t('screenLocationLabel') : t('phoneLabel')}</label>
+                            <input
+                              type={newUserRole === 'screen' ? 'text' : 'tel'}
+                              className="form-input"
                               value={newUserPhone}
                               onChange={(e) => setNewUserPhone(e.target.value)}
-                              placeholder={t('phonePlaceholder')}
+                              placeholder={newUserRole === 'screen' ? t('screenLocationPlaceholder') : t('phonePlaceholder')}
                             />
                           </div>
 
                           <div className="form-group">
                             <label className="form-label">{t('passcodeLabel')}</label>
-                            <input 
-                              type="text" 
-                              className="form-input" 
+                            <input
+                              type="text"
+                              className="form-input"
                               value={newUserCode}
                               onChange={(e) => setNewUserCode(e.target.value)}
                               placeholder={t('enterPasscode')}
@@ -4634,7 +4655,7 @@ export default function App() {
 
                           <div className="form-group">
                             <label className="form-label">{t('userRole')}</label>
-                            <select 
+                            <select
                               className="form-input form-select"
                               value={newUserRole}
                               onChange={(e) => setNewUserRole(e.target.value as any)}
@@ -4642,6 +4663,7 @@ export default function App() {
                               <option value="driver">{t('roleDriver')}</option>
                               <option value="dispatcher">{t('roleDispatcher')}</option>
                               <option value="admin">{t('roleAdmin')}</option>
+                              <option value="screen">{t('roleScreen')}</option>
                             </select>
                           </div>
 
@@ -4747,6 +4769,23 @@ export default function App() {
                           >
                             {lang === 'he' ? `סדרנים (${users.filter(u => u.role === 'dispatcher').length})` : `Dispatchers (${users.filter(u => u.role === 'dispatcher').length})`}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setStaffFilter('screen')}
+                            style={{
+                              background: staffFilter === 'screen' ? 'var(--accent)' : 'transparent',
+                              color: staffFilter === 'screen' ? '#000' : 'var(--text-secondary)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '6px 16px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {lang === 'he' ? `קודי מסך (${users.filter(u => u.role === 'screen').length})` : `Screens (${users.filter(u => u.role === 'screen').length})`}
+                          </button>
                         </div>
                       </div>
 
@@ -4756,7 +4795,7 @@ export default function App() {
                           <thead>
                             <tr>
                               <th>{t('userName')}</th>
-                              <th>{t('phoneLabel')}</th>
+                              <th>{staffFilter === 'screen' ? t('screenLocationLabel') : t('phoneLabel')}</th>
                               <th>{t('userRole')}</th>
                               <th style={{ textAlign: 'center' }}>{t('passcodeLabel')}</th>
                               <th style={{ textAlign: 'center' }}>{t('capacityLabel')}</th>
@@ -4770,9 +4809,9 @@ export default function App() {
                                 <td>{u.phone}</td>
                                 <td>
                                   <span className={`badge ${
-                                    u.role === 'admin' ? 'badge-danger' : u.role === 'dispatcher' ? 'badge-success' : 'badge-warning'
+                                    u.role === 'admin' ? 'badge-danger' : u.role === 'dispatcher' ? 'badge-success' : u.role === 'screen' ? 'badge-info' : 'badge-warning'
                                   }`}>
-                                    {u.role === 'admin' ? t('adminRole') : u.role === 'dispatcher' ? t('dispatcherRole') : t('driverRole')}
+                                    {u.role === 'admin' ? t('adminRole') : u.role === 'dispatcher' ? t('dispatcherRole') : u.role === 'screen' ? t('screenRole') : t('driverRole')}
                                   </span>
                                 </td>
                                 <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
@@ -4817,14 +4856,14 @@ export default function App() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <strong style={{ fontSize: '15px', color: '#fff' }}>{u.name}</strong>
                               <span className={`badge ${
-                                u.role === 'admin' ? 'badge-danger' : u.role === 'dispatcher' ? 'badge-success' : 'badge-warning'
+                                u.role === 'admin' ? 'badge-danger' : u.role === 'dispatcher' ? 'badge-success' : u.role === 'screen' ? 'badge-info' : 'badge-warning'
                               }`}>
-                                {u.role === 'admin' ? t('adminRole') : u.role === 'dispatcher' ? t('dispatcherRole') : t('driverRole')}
+                                {u.role === 'admin' ? t('adminRole') : u.role === 'dispatcher' ? t('dispatcherRole') : u.role === 'screen' ? t('screenRole') : t('driverRole')}
                               </span>
                             </div>
-                            
+
                             <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <div><strong>{lang === 'he' ? 'טלפון:' : 'Phone:'}</strong> {u.phone}</div>
+                              <div><strong>{(u.role === 'screen' ? t('screenLocationLabel') : (lang === 'he' ? 'טלפון:' : 'Phone:'))}</strong> {u.phone}</div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <strong>{lang === 'he' ? 'קוד כניסה:' : 'Passcode:'}</strong>
                                 <span style={{ background: '#0f172a', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
@@ -5199,35 +5238,36 @@ export default function App() {
                           />
                         </div>
                         <div className="form-group">
-                          <label className="form-label">{t('phoneLabel')}</label>
-                          <input 
-                            type="text" 
-                            className="form-input" 
-                            value={editUserPhone} 
-                            onChange={e => setEditUserPhone(e.target.value)} 
-                            required 
+                          <label className="form-label">{editUserRole === 'screen' ? t('screenLocationLabel') : t('phoneLabel')}</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={editUserPhone}
+                            onChange={e => setEditUserPhone(e.target.value)}
+                            required={editUserRole !== 'screen'}
                           />
                         </div>
                         <div className="form-group">
                           <label className="form-label">{t('passcodeLabel')}</label>
-                          <input 
-                            type="text" 
-                            className="form-input" 
-                            value={editUserCode} 
-                            onChange={e => setEditUserCode(e.target.value)} 
-                            required 
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={editUserCode}
+                            onChange={e => setEditUserCode(e.target.value)}
+                            required
                           />
                         </div>
                         <div className="form-group">
                           <label className="form-label">{t('userRole')}</label>
-                          <select 
-                            className="form-input form-select" 
-                            value={editUserRole} 
+                          <select
+                            className="form-input form-select"
+                            value={editUserRole}
                             onChange={e => setEditUserRole(e.target.value as any)}
                           >
                             <option value="driver">{t('roleDriver')}</option>
                             <option value="dispatcher">{t('roleDispatcher')}</option>
                             <option value="admin">{t('roleAdmin')}</option>
+                            <option value="screen">{t('roleScreen')}</option>
                           </select>
                         </div>
                         {editUserRole === 'driver' && (

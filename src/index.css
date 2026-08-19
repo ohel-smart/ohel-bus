@@ -501,6 +501,11 @@ body {
   color: #fde68a;
 }
 
+.badge-info {
+  background: rgba(96, 165, 250, 0.12);
+  color: #93c5fd;
+}
+
 /* Settings Grid & Users Grid responsive styling */
 .settings-grid {
   display: grid;

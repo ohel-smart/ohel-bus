@@ -4,7 +4,7 @@ import {
 import { db as firestore, authReady } from './firebase';
 
 // Types Definitions
-export type UserRole = 'admin' | 'driver' | 'dispatcher';
+export type UserRole = 'admin' | 'driver' | 'dispatcher' | 'screen';
 export type DriverStatus = 'idle' | 'en_route' | 'break';
 export type Direction = 'to_770' | 'to_ohel' | null;
 export type DepartureLocation = '770' | 'Ohel';
