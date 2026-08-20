@@ -552,6 +552,24 @@ const TRANSLATIONS = {
   }
 };
 
+// HTML-escapes a value before it's interpolated into the driver/dispatcher PDF
+// report templates (built as raw HTML strings and rendered via document.write).
+// Without this, an admin-entered name containing markup would execute as real
+// HTML/script in that same-origin print window - matches the escaping already
+// used in api/daily-email.js.
+const escHtml = (v: unknown): string =>
+  String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
+// Quotes a CSV cell and escapes embedded quotes. A leading '=', '+', '-' or '@'
+// is neutralized with a leading apostrophe first - Excel/Sheets would otherwise
+// treat a cell starting with one of those as a formula (a driver/dispatcher
+// name or phone number is admin-entered free text, not something to trust).
+const csvCell = (v: unknown): string => {
+  let s = String(v ?? '');
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+};
+
 // Haversine Distance Helper
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371; // km
@@ -2333,7 +2351,7 @@ export default function App() {
       ];
     });
 
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(csvCell).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -2362,7 +2380,7 @@ export default function App() {
       u.capacity || ''
     ]);
 
-    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(csvCell).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -2375,7 +2393,7 @@ export default function App() {
   };
 
   const handleExportCentralToCsv = () => {
-    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const q = csvCell;
     const colHeaders = [
       'פרשת שבוע', 'תאריך עברי', 'יום', 'שעת סריקה', 'תאריך עבודה',
       'נהג', 'סדרן', 'מוצא', 'נוסעים שעלו', 'מושבים פנויים', 'קיבולת נהג'
@@ -2465,7 +2483,7 @@ export default function App() {
           <img src="${logoDark}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
-            <div class="driver-name">${t.driver}: ${selectedDriverForPdf}</div>
+            <div class="driver-name">${t.driver}: ${escHtml(selectedDriverForPdf)}</div>
             <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>
           </div>
           <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale)}</div>
@@ -2488,7 +2506,7 @@ export default function App() {
     };
 
     const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8">
-      <title>${lang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${selectedDriverForPdf}</title>
+      <title>${lang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${escHtml(selectedDriverForPdf)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
@@ -2583,7 +2601,7 @@ export default function App() {
         <td>${greg}</td>
         <td class="route ${isReturn ? 'return' : 'out'}">${route}</td>
         <td class="mono">${exactTimeStr(when)}</td>
-        <td>${(s.driverName || '').replace(' (נהג)', '')}</td>
+        <td>${escHtml((s.driverName || '').replace(' (נהג)', ''))}</td>
         <td>${s.passengersCount ?? ''}</td>
       </tr>`;
     }).join('');
@@ -2607,7 +2625,7 @@ export default function App() {
           <img src="${logoDark}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
-            <div class="driver-name">${t.dispatcher}: ${selectedDispatcherForPdf}</div>
+            <div class="driver-name">${t.dispatcher}: ${escHtml(selectedDispatcherForPdf)}</div>
             <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>
           </div>
           <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale)}</div>
@@ -2630,7 +2648,7 @@ export default function App() {
     };
 
     const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8">
-      <title>${lang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${selectedDispatcherForPdf}</title>
+      <title>${lang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${escHtml(selectedDispatcherForPdf)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
