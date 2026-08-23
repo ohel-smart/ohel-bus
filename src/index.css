@@ -74,7 +74,10 @@ body {
   min-height: 100vh;
   background-color: var(--bg-primary);
   font-family: var(--font-sans);
-  direction: rtl; /* Hebrew default layout */
+  /* Follows <html dir>, which index.html defaults to rtl and App.tsx toggles per
+     `lang`. Do NOT hardcode this here — a fixed value on body overrides the
+     inherited <html dir> and forces RTL bidi reordering (e.g. "16 min" rendering
+     as "min 16") even after the app switches to English. */
   overflow-x: hidden;
 }
 

@@ -1794,7 +1794,8 @@ export default function App() {
     if (autoClosedScanIdsRef.current.has(latestScan.id)) return;
 
     autoClosedScanIdsRef.current.add(latestScan.id);
-    dbService.updateDriverTripState(currentUser.id, 'idle', loc.direction ?? null);
+    const latestScanDirection: Direction = latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770';
+    dbService.updateDriverTripState(currentUser.id, 'idle', latestScanDirection);
     triggerToast(
       lang === 'he' ? 'הנסיעה נסגרה אוטומטית - התקרבת ליעד' : 'Trip auto-closed - approaching destination',
       'success'
@@ -3490,25 +3491,34 @@ export default function App() {
                 {activeTab === 'qr' && (() => {
                   const loc = activeLocations.find(l => l.id === currentUser.id);
                   const isDriverEnRoute = loc?.status === 'en_route';
-                  const currentDriverDirection = loc?.direction;
-                  
+
+                  // Direction and the arrival-time numbers below must both be derived from
+                  // the exact same latest scan, in the same render, so they can never
+                  // contradict each other (previously direction came from `loc.direction`,
+                  // a separately-sourced field, while the time numbers were recomputed
+                  // fresh from `scans` here — those two could transiently disagree).
+                  const driverScans = scans.filter(s => s.driverId === currentUser.id);
+                  driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
+                  const latestScan = driverScans[0];
+
+                  const currentDriverDirection: Direction = latestScan
+                    ? (latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770')
+                    : (loc?.direction ?? null);
+
                   let expectedTimeStr = '--:--';
                   let remainingMinutes: number | null = null;
-                  if (isDriverEnRoute) {
-                    const driverScans = scans.filter(s => s.driverId === currentUser.id);
-                    if (driverScans.length > 0) {
-                      driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
-                      const latestScan = driverScans[0];
-                      if (latestScan && latestScan.scannedAt) {
-                        const startTime = dbService.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate);
-                        const duration = latestScan.etaMinutes || 28;
-                        const arrivalTimeMs = startTime.getTime() + duration * 60000;
-                        const arrivalTime = new Date(arrivalTimeMs);
-                        expectedTimeStr = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-                        remainingMinutes = Math.max(0, Math.round((arrivalTimeMs - currentLiveTime.getTime()) / 60000));
-                      }
-                    }
+                  if (isDriverEnRoute && latestScan && latestScan.scannedAt) {
+                    const startTime = dbService.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate);
+                    const duration = latestScan.etaMinutes || 28;
+                    const arrivalTimeMs = startTime.getTime() + duration * 60000;
+                    const arrivalTime = new Date(arrivalTimeMs);
+                    expectedTimeStr = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                    remainingMinutes = Math.max(0, Math.round((arrivalTimeMs - currentLiveTime.getTime()) / 60000));
                   }
+
+                  // Same-source correction applied to the loc object passed down to the
+                  // End Trip GPS check, so it compares against the correct destination.
+                  const correctedLoc = loc ? { ...loc, direction: currentDriverDirection } : loc;
 
                   const routeColor = currentDriverDirection === 'to_ohel' ? 'var(--accent-route-ohel)' : 'var(--accent)';
                   const routeColorRgb = currentDriverDirection === 'to_ohel' ? '6, 182, 212' : '226, 176, 78';
@@ -3531,17 +3541,29 @@ export default function App() {
                         {lang === 'he' ? 'הנהג בנסיעה' : 'Driver in Trip'}
                       </h3>
 
-                      {/* Route breadcrumb */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '22px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: currentDriverDirection === 'to_ohel' ? 'var(--accent)' : routeColor }}>
-                          {currentDriverDirection === 'to_ohel' ? '770' : (lang === 'he' ? 'אוהל חב"ד' : 'Ohel')}
-                        </span>
-                        <div style={{ flex: '0 0 44px', height: '2px', background: `linear-gradient(90deg, rgba(${routeColorRgb},0.15), rgba(${routeColorRgb},0.7))`, position: 'relative' }}>
+                      {/* Route breadcrumb — explicit From/To micro-labels so the origin vs.
+                          destination reads unambiguously regardless of the arrow direction
+                          (the icon alone wasn't clear enough in English per the owner). */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '10px', marginBottom: '22px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            {lang === 'he' ? 'מוצא' : 'From'}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: currentDriverDirection === 'to_ohel' ? 'var(--accent)' : routeColor }}>
+                            {currentDriverDirection === 'to_ohel' ? '770' : (lang === 'he' ? 'אוהל חב"ד' : 'Ohel')}
+                          </span>
+                        </div>
+                        <div style={{ flex: '0 0 44px', height: '2px', background: `linear-gradient(90deg, rgba(${routeColorRgb},0.15), rgba(${routeColorRgb},0.7))`, position: 'relative', marginTop: '15px' }}>
                           <Navigation size={12} color={routeColor} style={{ position: 'absolute', top: '-5px', right: lang === 'he' ? 'auto' : '-4px', left: lang === 'he' ? '-4px' : 'auto', transform: lang === 'he' ? 'rotate(-90deg)' : 'rotate(90deg)' }} />
                         </div>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: currentDriverDirection === 'to_ohel' ? routeColor : 'var(--accent)' }}>
-                          {currentDriverDirection === 'to_ohel' ? (lang === 'he' ? 'אוהל חב"ד' : 'Ohel') : '770'}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            {lang === 'he' ? 'יעד' : 'To'}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: currentDriverDirection === 'to_ohel' ? routeColor : 'var(--accent)' }}>
+                            {currentDriverDirection === 'to_ohel' ? (lang === 'he' ? 'אוהל חב"ד' : 'Ohel') : '770'}
+                          </span>
+                        </div>
                       </div>
 
                       {/* ETA stat row */}
@@ -3627,7 +3649,7 @@ export default function App() {
 
                       {/* End Trip button */}
                       <button
-                        onClick={() => handleEndTripWithGpsCheck(loc)}
+                        onClick={() => handleEndTripWithGpsCheck(correctedLoc)}
                         className="btn btn-primary"
                         style={{
                           width: '100%',
