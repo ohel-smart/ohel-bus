@@ -61,6 +61,10 @@ const TRANSLATIONS = {
     noPhoneCancel: 'ביטול',
     updateStatus: 'עדכן סטטוס פעילות נוכחי:',
     myTripsTodayTitle: 'הנסיעות שלי היום (סיכום אישי)',
+    myReportTitle: 'הדוח האישי שלי',
+    myReportWeek: 'שבוע אחרון',
+    myReportMonth: 'חודש אחרון',
+    myReportDownload: 'הורד דוח PDF',
     totalTrips: 'סה"כ נסיעות',
     totalPassengers: 'סה"כ נוסעים',
     noTripsRecorded: 'אין נסיעות מוקלטות עבורך היום',
@@ -326,6 +330,10 @@ const TRANSLATIONS = {
     noPhoneCancel: 'Cancel',
     updateStatus: 'Update Current Activity Status:',
     myTripsTodayTitle: 'My Trips Today (Personal Summary)',
+    myReportTitle: 'My Personal Report',
+    myReportWeek: 'Last Week',
+    myReportMonth: 'Last Month',
+    myReportDownload: 'Download PDF Report',
     totalTrips: 'Total Trips',
     totalPassengers: 'Total Passengers',
     noTripsRecorded: 'No trips recorded for you today',
@@ -1611,7 +1619,13 @@ export default function App() {
   // Hebrew month/year, parsha, origin, big-bus-only) to an arbitrary scan list -
   // used so the driver/dispatcher PDF reports reflect whatever is filtered there,
   // instead of always dumping a driver's/dispatcher's entire history.
-  const applyCentralFilters = (list: Scan[]): Scan[] => {
+  // `dateOverride` lets a caller (the driver/dispatcher self-service report)
+  // apply just its own date range, ignoring whatever admin-only central-table
+  // filters (month/year/parsha/origin/big-bus) might be sitting in state.
+  const applyCentralFilters = (list: Scan[], dateOverride?: { from: string; to: string }): Scan[] => {
+    if (dateOverride) {
+      return list.filter(s => s.logicalDate >= dateOverride.from && s.logicalDate <= dateOverride.to);
+    }
     return list.filter(s => {
       if (centralDateFrom && s.logicalDate < centralDateFrom) return false;
       if (centralDateTo && s.logicalDate > centralDateTo) return false;
@@ -1631,7 +1645,12 @@ export default function App() {
   // Human-readable summary of whichever central-table filters are currently
   // active, shown at the top of the PDF reports so it's clear what the numbers
   // below actually cover.
-  const buildFilterScopeLabel = (locale: 'he' | 'en'): string => {
+  const buildFilterScopeLabel = (locale: 'he' | 'en', dateOverride?: { from: string; to: string }): string => {
+    if (dateOverride) {
+      const fromLabel = getHebrewDate(new Date(dateOverride.from + 'T12:00:00'));
+      const toLabel = getHebrewDate(new Date(dateOverride.to + 'T12:00:00'));
+      return locale === 'he' ? `טווח תאריכים: מ-${fromLabel} עד ${toLabel}` : `Date range: ${fromLabel} to ${toLabel}`;
+    }
     const parts: string[] = [];
     if (centralDateFrom || centralDateTo) {
       const fromLabel = centralDateFrom ? getHebrewDate(new Date(centralDateFrom + 'T12:00:00')) : (locale === 'he' ? 'ההתחלה' : 'the start');
@@ -2439,10 +2458,12 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const handleExportDriverPdf = () => {
-    if (!selectedDriverForPdf) return;
+  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string }) => {
+    const driverName = override?.name ?? selectedDriverForPdf;
+    if (!driverName) return;
     const driverScans = applyCentralFilters(
-      scans.filter(s => (s.driverName || '').replace(' (נהג)', '') === selectedDriverForPdf)
+      scans.filter(s => (s.driverName || '').replace(' (נהג)', '') === driverName),
+      override ? { from: override.dateFrom, to: override.dateTo } : undefined
     )
       .slice()
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
@@ -2487,10 +2508,10 @@ export default function App() {
           <img src="${logoDark}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
-            <div class="driver-name">${t.driver}: ${escHtml(selectedDriverForPdf)}</div>
+            <div class="driver-name">${t.driver}: ${escHtml(driverName)}</div>
             <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>
           </div>
-          <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale)}</div>
+          <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale, override ? { from: override.dateFrom, to: override.dateTo } : undefined)}</div>
         </div>
         </div>
         <div class="stats-row">
@@ -2510,7 +2531,7 @@ export default function App() {
     };
 
     const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8">
-      <title>${lang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${escHtml(selectedDriverForPdf)}</title>
+      <title>${lang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${escHtml(driverName)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
@@ -2582,10 +2603,12 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const handleExportDispatcherPdf = () => {
-    if (!selectedDispatcherForPdf) return;
+  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string }) => {
+    const dispatcherName = override?.name ?? selectedDispatcherForPdf;
+    if (!dispatcherName) return;
     const dispatcherScans = applyCentralFilters(
-      scans.filter(s => (s.dispatcherName || '').replace(' (סדרן)', '') === selectedDispatcherForPdf)
+      scans.filter(s => (s.dispatcherName || '').replace(' (סדרן)', '') === dispatcherName),
+      override ? { from: override.dateFrom, to: override.dateTo } : undefined
     )
       .slice()
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
@@ -2629,10 +2652,10 @@ export default function App() {
           <img src="${logoDark}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
-            <div class="driver-name">${t.dispatcher}: ${escHtml(selectedDispatcherForPdf)}</div>
+            <div class="driver-name">${t.dispatcher}: ${escHtml(dispatcherName)}</div>
             <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>
           </div>
-          <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale)}</div>
+          <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale, override ? { from: override.dateFrom, to: override.dateTo } : undefined)}</div>
         </div>
         <div class="stats-row">
           <div class="stat-card"><span class="stat-value">${totalRides}</span><span class="stat-label">🚗 ${t.rides}</span></div>
@@ -2652,7 +2675,7 @@ export default function App() {
     };
 
     const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8">
-      <title>${lang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${escHtml(selectedDispatcherForPdf)}</title>
+      <title>${lang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${escHtml(dispatcherName)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
@@ -2714,6 +2737,27 @@ export default function App() {
     printWindow.document.close();
     printWindow.focus();
     setTimeout(() => printWindow.print(), 300);
+  };
+
+  // --- Self-service report for a logged-in driver/dispatcher: their own data
+  // only, for a period they pick (week/month), no on-screen table - just a
+  // period choice and a download, reusing the same PDF builders admins use.
+  const [selfReportPeriod, setSelfReportPeriod] = useState<'week' | 'month'>('month');
+
+  const handleDownloadMyReport = () => {
+    if (!currentUser) return;
+    const to = new Date();
+    const from = new Date(to);
+    if (selfReportPeriod === 'week') from.setDate(from.getDate() - 7);
+    else from.setMonth(from.getMonth() - 1);
+    const dateFrom = from.toISOString().split('T')[0];
+    const dateTo = to.toISOString().split('T')[0];
+
+    if (currentUser.role === 'driver') {
+      handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo });
+    } else if (currentUser.role === 'dispatcher') {
+      handleExportDispatcherPdf({ name: currentUser.name.replace(' (סדרן)', ''), dateFrom, dateTo });
+    }
   };
 
   const handleCopyReturnLink = () => {
@@ -3278,6 +3322,31 @@ export default function App() {
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                         {lang === 'he' ? `תאריך עבודה: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalDateLabel', { date: logicalToday })}
                       </span>
+                    </div>
+
+                    {/* Self-service PDF report - own data only, no table, just a period + download */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{t('myReportTitle')}</span>
+                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '3px', gap: '3px' }}>
+                        <button
+                          onClick={() => setSelfReportPeriod('week')}
+                          className={`btn ${selfReportPeriod === 'week' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'week' ? '#000' : '#fff' }}
+                        >
+                          {t('myReportWeek')}
+                        </button>
+                        <button
+                          onClick={() => setSelfReportPeriod('month')}
+                          className={`btn ${selfReportPeriod === 'month' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'month' ? '#000' : '#fff' }}
+                        >
+                          {t('myReportMonth')}
+                        </button>
+                      </div>
+                      <button onClick={handleDownloadMyReport} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px', color: '#fff', marginInlineStart: 'auto' }}>
+                        <FileText size={13} />
+                        {t('myReportDownload')}
+                      </button>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px', textAlign: 'center' }}>
@@ -3857,6 +3926,31 @@ export default function App() {
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                         {lang === 'he' ? `תאריך עבודה: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalDateLabel', { date: logicalToday })}
                       </span>
+                    </div>
+
+                    {/* Self-service PDF report - own data only, no table, just a period + download */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{t('myReportTitle')}</span>
+                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '3px', gap: '3px' }}>
+                        <button
+                          onClick={() => setSelfReportPeriod('week')}
+                          className={`btn ${selfReportPeriod === 'week' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'week' ? '#000' : '#fff' }}
+                        >
+                          {t('myReportWeek')}
+                        </button>
+                        <button
+                          onClick={() => setSelfReportPeriod('month')}
+                          className={`btn ${selfReportPeriod === 'month' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'month' ? '#000' : '#fff' }}
+                        >
+                          {t('myReportMonth')}
+                        </button>
+                      </div>
+                      <button onClick={handleDownloadMyReport} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px', color: '#fff', marginInlineStart: 'auto' }}>
+                        <FileText size={13} />
+                        {t('myReportDownload')}
+                      </button>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px', textAlign: 'center' }}>
@@ -4544,7 +4638,7 @@ export default function App() {
                           <option value="">{lang === 'he' ? 'בחר נהג...' : 'Select driver...'}</option>
                           {driverNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
                         </select>
-                        <button onClick={handleExportDriverPdf} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5 }}>
+                        <button onClick={() => handleExportDriverPdf()} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5 }}>
                           <FileText size={15} />
                           <span>{lang === 'he' ? 'דו"ח PDF לנהג' : 'Driver PDF report'}</span>
                         </button>
@@ -4557,7 +4651,7 @@ export default function App() {
                           <option value="">{lang === 'he' ? 'בחר סדרן...' : 'Select dispatcher...'}</option>
                           {dispatcherNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
                         </select>
-                        <button onClick={handleExportDispatcherPdf} disabled={!selectedDispatcherForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDispatcherForPdf ? 1 : 0.5 }}>
+                        <button onClick={() => handleExportDispatcherPdf()} disabled={!selectedDispatcherForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDispatcherForPdf ? 1 : 0.5 }}>
                           <FileText size={15} />
                           <span>{lang === 'he' ? 'דו"ח PDF לסדרן' : 'Dispatcher PDF report'}</span>
                         </button>
