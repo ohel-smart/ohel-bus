@@ -384,32 +384,21 @@ body {
 
 .toast {
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(180deg, #171a26 0%, #10131c 100%);
-  border: 1px solid rgba(var(--accent-rgb), 0.35);
-  color: var(--text-primary);
-  font-weight: 600;
-  padding: 16px 18px;
-  border-radius: 16px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(var(--accent-rgb), 0.06);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: rgba(36, 36, 40, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-weight: 500;
+  padding: 13px 14px;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
   display: flex;
   align-items: center;
-  gap: 14px;
-  animation: toast-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  gap: 11px;
+  animation: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   pointer-events: auto;
   font-size: 14px;
-}
-
-.toast::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  inset-inline-start: 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
 }
 
 .toast.toast-closing {
@@ -418,22 +407,19 @@ body {
 
 .toast .toast-icon {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 30% 30%, rgba(var(--accent-rgb), 0.35), rgba(var(--accent-rgb), 0.12));
-  color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3) inset;
+  color: #32d74b;
 }
 
 .toast .toast-close {
   flex-shrink: 0;
-  background: none;
+  background: rgba(255, 255, 255, 0.08);
   border: none;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.55);
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -442,41 +428,16 @@ body {
 }
 
 .toast .toast-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
 .toast .toast-progress {
-  position: absolute;
-  bottom: 0;
-  inset-inline-start: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent-hover), var(--accent));
-  opacity: 0.8;
-  animation: toast-progress 4s linear forwards;
-}
-
-.toast-danger {
-  border-color: rgba(239, 68, 68, 0.35);
-}
-
-.toast-danger::before {
-  background: linear-gradient(90deg, transparent, var(--danger), transparent);
+  display: none;
 }
 
 .toast-danger .toast-icon {
-  background: radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.35), rgba(239, 68, 68, 0.12));
-  color: var(--danger);
-  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3) inset;
-}
-
-.toast-danger .toast-progress {
-  background: linear-gradient(90deg, #b91c1c, var(--danger));
-}
-
-@keyframes toast-progress {
-  from { width: 100%; }
-  to { width: 0%; }
+  color: #ff453a;
 }
 
 @keyframes toast-out {
