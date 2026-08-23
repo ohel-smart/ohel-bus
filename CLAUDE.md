@@ -62,7 +62,7 @@ Other conventions in this layer:
 
 ### Hebrew calendar (`src/services/hebrewDate.ts`)
 
-Wraps `@hebcal/core`. `getWeeklyParsha(date)` is Havdalah-aware: a Saturday-night timestamp after `tzeit hakochavim` (computed via `Zmanim(...).tzeit(8.5)` at Crown Heights coordinates) already belongs to next week's parsha even though the calendar day is still Saturday. When computing a per-row parsha, pass the scan's actual `scannedAt` timestamp — passing "noon of logicalDate" will never trigger this branch.
+Wraps `@hebcal/core`. `getWeeklyParsha(date)` rolls a Saturday timestamp into next week's parsha once it's **4:00 PM or later in America/New_York** — a fixed org-specific cutoff (not halachic nightfall/tzeit), even though the calendar day is still Saturday. When computing a per-row parsha, pass the scan's actual `scannedAt` timestamp — passing "noon of logicalDate" will never trigger this branch.
 
 ### `api/daily-email.js` — separate runtime
 

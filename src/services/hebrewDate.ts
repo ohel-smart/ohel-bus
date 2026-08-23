@@ -1,10 +1,6 @@
 // Hebrew-date + weekly-parsha helpers for the central summary table.
 // Uses @hebcal/core (diaspora / chutz-la'aretz reading cycle).
-import { HDate, HebrewCalendar, Location, Zmanim } from '@hebcal/core';
-
-// Crown Heights (770) coordinates - close enough to Ohel (Boro Park) that the
-// few minutes of difference in sunset/tzeit never matter for this purpose.
-const NY_LOCATION = new Location(40.6690, -73.9429, false, 'America/New_York', 'Crown Heights', 'US');
+import { HDate, HebrewCalendar } from '@hebcal/core';
 
 // Remove Hebrew niqqud / cantillation so names render cleanly in a table.
 function stripNiqqud(s: string): string {
@@ -23,14 +19,15 @@ export function getWeeklyParsha(date: Date): string {
   try { hd = new HDate(date); } catch { return ''; }
   // Saturday of this week (getDay: 0=Sun .. 6=Sat).
   let sat = hd.add(6 - hd.getDay(), 'd');
-  // Shabbat itself ends at nightfall (tzeit hakochavim), not at Gregorian
-  // midnight - a timestamp on Saturday night after that point is already in
-  // next week's parsha, even though the calendar day is still "Saturday".
+  // A timestamp on Saturday from 4:00 PM (America/New_York) onward already
+  // counts as next week's parsha for this organization's purposes, even
+  // though the calendar day is still "Saturday" and actual halachic
+  // nightfall is later - this is a fixed org-specific cutoff, not tzeit.
   if (hd.getDay() === 6) {
-    try {
-      const tzeit = new Zmanim(NY_LOCATION, date, false).tzeit(8.5);
-      if (date.getTime() >= tzeit.getTime()) sat = sat.add(7, 'd');
-    } catch { /* keep same-week Saturday on any zmanim error */ }
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).formatToParts(date);
+    let nyHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    if (nyHour === 24) nyHour = 0; // some ICU implementations render midnight as "24" with hour12:false
+    if (nyHour >= 16) sat = sat.add(7, 'd');
   }
   const key = sat.toString();
   const cached = parshaCache.get(key);

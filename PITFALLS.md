@@ -20,7 +20,7 @@ If a future task is "make the SOS button work" or "show the driver's real GPS po
 ## Timezone / date bugs already hit once
 
 - **"Day" boundaries are America/New_York midnight**, not UTC and not the browser's local timezone. Always derive a trip's day via `dbService.getLogicalDate()` (or read `Scan.logicalDate`, already computed) — don't slice an ISO string or use `Date#getDate()`.
-- **Weekly parsha must use the scan's actual `scannedAt` timestamp**, not "noon of logicalDate." `getWeeklyParsha()` in `src/services/hebrewDate.ts` checks whether a Saturday timestamp is past Havdalah (`Zmanim(...).tzeit(8.5)`) to roll into next week's parsha — feeding it a synthetic noon timestamp means that branch can never trigger, silently misdating every row scanned after sundown on a Saturday.
+- **Weekly parsha must use the scan's actual `scannedAt` timestamp**, not "noon of logicalDate." `getWeeklyParsha()` in `src/services/hebrewDate.ts` rolls a Saturday timestamp into next week's parsha once it's 4:00 PM or later in America/New_York (a fixed org-specific cutoff, not halachic nightfall/tzeit) — feeding it a synthetic noon timestamp means that branch can never trigger, silently misdating every row scanned Saturday afternoon or evening.
 
 ## ETA field confusion (already caused a live countdown-drift bug, fixed in `8c79651`)
 
