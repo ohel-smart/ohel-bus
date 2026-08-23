@@ -1808,8 +1808,10 @@ export default function App() {
         const driverScans = scans.filter(s => s.driverId === loc.id);
         driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
         const matchingScan = driverScans[0];
-        const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
-        const etaDuration = loc.etaMinutes || 28;
+        const startTime = matchingScan
+          ? dbService.parseScannedAt(matchingScan.scannedAt, matchingScan.logicalDate).getTime()
+          : new Date(loc.scannedAt || loc.updatedAt).getTime();
+        const etaDuration = matchingScan?.etaMinutes || 28;
         const arrivalTimeMs = startTime + (etaDuration * 60000);
         return {
           ...loc,
@@ -1827,8 +1829,10 @@ export default function App() {
         const driverScans = scans.filter(s => s.driverId === loc.id);
         driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
         const matchingScan = driverScans[0];
-        const startTime = new Date(loc.scannedAt || loc.updatedAt).getTime();
-        const etaDuration = loc.etaMinutes || 28;
+        const startTime = matchingScan
+          ? dbService.parseScannedAt(matchingScan.scannedAt, matchingScan.logicalDate).getTime()
+          : new Date(loc.scannedAt || loc.updatedAt).getTime();
+        const etaDuration = matchingScan?.etaMinutes || 28;
         const arrivalTimeMs = startTime + (etaDuration * 60000);
         return {
           ...loc,
