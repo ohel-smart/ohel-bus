@@ -52,7 +52,7 @@ Translation strings live in one `TRANSLATIONS` object (`he`/`en` keys) near the 
 - `ActiveLocation.etaMinutes` — minutes *remaining right now*, recomputed fresh on every `getActiveLocations()` call. Adding this to a stale start time (instead of the fixed `Scan.etaMinutes`) makes a countdown drift.
 
 Other conventions in this layer:
-- `logicalDate` is NOT the calendar date — it's the day bucket per `getLogicalDate()`, which rolls over at midnight **America/New_York**, not UTC or the browser's local time. Always use this (or `parseScannedAt`) rather than slicing an ISO timestamp when grouping trips by "day".
+- `logicalDate` is NOT the calendar date — it's the day bucket per `getLogicalDate()`, which normally rolls over at midnight **America/New_York**, not UTC or the browser's local time — **except** on Erev Shabbat/Erev Yom Tov, where it rolls over 15 minutes before that evening's sunset instead (computed via `@hebcal/core`'s `Zmanim`/`isAssurBemlacha`, detecting the transition from melacha-permitted to melacha-forbidden at sunset — not simply "is Friday," since this also correctly covers movable holidays). Always use `getLogicalDate()` (or `parseScannedAt`) rather than slicing an ISO timestamp when grouping trips by "day".
 - Auth is a flat numeric `code` lookup (`loginWithCode`), not real accounts. Firebase anonymous auth (`firebase.ts`, `authReady`) exists only to satisfy Firestore security rules, not to identify the user.
 - ETA is computed via the Google Routes API (`getRouteEtaMinutes`, live traffic-aware) with a Haversine-distance fallback if that call fails or returns no route — the fallback is meaningfully less accurate and logs a `console.warn` when it's used, so check the browser console before assuming a wrong ETA is a Google API bug.
 

@@ -2,6 +2,7 @@ import {
   collection, doc, onSnapshot, setDoc, deleteDoc, getDocs,
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
+import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 
 // Types Definitions
 export type UserRole = 'admin' | 'driver' | 'dispatcher' | 'screen';
@@ -72,6 +73,54 @@ export const LOCATIONS = {
   '770': { latitude: 40.6690, longitude: -73.9429, name: '770 Eastern Parkway' },
   'Ohel': { latitude: 40.686559, longitude: -73.737622, name: 'Ohel Chabad Lubavitch' }
 };
+
+// Crown Heights coordinates, reused for the Erev Shabbat/Yom Tov logical-day cutover
+// below - close enough to Ohel/Boro Park that the few minutes of difference in
+// sunset never matter for this purpose.
+const NY_LOCATION = new Location(40.6690, -73.9429, false, 'America/New_York', 'Crown Heights', 'US');
+
+// Per-NY-calendar-day cache of the Erev Shabbat/Yom Tov early cutover moment (or null
+// on a regular day).
+const earlyCutoverCache = new Map<string, Date | null>();
+
+// On Erev Shabbat / Erev Yom Tov the organization's "day" ends 15 minutes before
+// sunset (America/New_York), not at midnight - a scan after that moment already
+// belongs to the next logical day. Returns the cutover Date for `ymd` (YYYY-MM-DD,
+// NY calendar date), or null if `ymd` is a regular day (plain midnight cutover applies).
+function getEarlyCutover(ymd: string): Date | null {
+  const cached = earlyCutoverCache.get(ymd);
+  if (cached !== undefined) return cached;
+
+  let result: Date | null = null;
+  try {
+    const [y, m, d] = ymd.split('-').map(Number);
+    // Local-constructed on purpose: Zmanim only reads the Y/M/D fields off this Date
+    // (hours are ignored), and building it via the local constructor makes those
+    // fields round-trip correctly regardless of the runtime's own timezone.
+    const dayRef = new Date(y, m - 1, d);
+    const sunset = new Zmanim(NY_LOCATION, dayRef, false).sunset();
+    const justBeforeSunset = new Date(sunset.getTime() - 60000);
+    const justAfterSunset = new Date(sunset.getTime() + 60000);
+    // Erev Shabbat / Erev Yom Tov = melacha becomes newly prohibited at tonight's
+    // sunset. If it was already prohibited beforehand (e.g. this is Shabbat or a
+    // Yom Tov day itself, still running into the evening, or day 1 of a 2-day
+    // diaspora Yom Tov flowing straight into day 2), that's not "erev" of anything.
+    if (!isAssurBemlacha(justBeforeSunset, NY_LOCATION, false) && isAssurBemlacha(justAfterSunset, NY_LOCATION, false)) {
+      result = new Date(sunset.getTime() - 15 * 60000);
+    }
+  } catch { /* fall back to a plain midnight cutover on any calculation error */ }
+
+  earlyCutoverCache.set(ymd, result);
+  return result;
+}
+
+// Adds `days` calendar days to a YYYY-MM-DD string, letting the local Date
+// constructor normalize month/year rollovers.
+function addDaysToYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
 
 // Public client-side Google Maps key (Routes API), used for the live traffic-aware ETA.
 // A client Maps key is ALWAYS visible in the shipped JS bundle, so exposure here is
@@ -258,7 +307,8 @@ class DBService {
   public getLogicalDate(dateStr: string = new Date().toISOString()): string {
     const date = new Date(dateStr);
 
-    // Format to YYYY-MM-DD in New York timezone (transitions exactly at midnight NY time)
+    // Format to YYYY-MM-DD in New York timezone (transitions at midnight NY time,
+    // except on Erev Shabbat/Erev Yom Tov - see the early-cutover check below).
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
       year: 'numeric',
@@ -270,8 +320,16 @@ class DBService {
     const year = parts.find(p => p.type === 'year')?.value;
     const month = parts.find(p => p.type === 'month')?.value;
     const day = parts.find(p => p.type === 'day')?.value;
+    const ymd = `${year}-${month}-${day}`;
 
-    return `${year}-${month}-${day}`;
+    // On Erev Shabbat / Erev Yom Tov, this day's "logical date" already ends 15
+    // minutes before tonight's sunset instead of at midnight.
+    const cutover = getEarlyCutover(ymd);
+    if (cutover && date.getTime() >= cutover.getTime()) {
+      return addDaysToYmd(ymd, 1);
+    }
+
+    return ymd;
   }
 
   private async writeScan(scan: Scan) {
