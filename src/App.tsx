@@ -1144,24 +1144,6 @@ export default function App() {
     }
   }, [currentUser, gpsSource]);
 
-  // Briefly show a spinner on the driver's own screen right when their status
-  // flips to "en route" (i.e. a dispatcher just scanned them), so the change
-  // reads as "got it, confirming..." instead of silently swapping to the full
-  // trip card the instant the real-time listener fires.
-  const [driverJustDispatched, setDriverJustDispatched] = useState(false);
-  const prevDriverStatusRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (!currentUser || currentUser.role !== 'driver') return;
-    const status = activeLocations.find(l => l.id === currentUser.id)?.status;
-    if (status === 'en_route' && prevDriverStatusRef.current !== 'en_route') {
-      setDriverJustDispatched(true);
-      const timer = setTimeout(() => setDriverJustDispatched(false), 1400);
-      prevDriverStatusRef.current = status;
-      return () => clearTimeout(timer);
-    }
-    prevDriverStatusRef.current = status;
-  }, [activeLocations, currentUser]);
-
   // Dispatcher location based on GPS source
   const dispatcherLocation = useMemo(() => {
     if (gpsSource === '770') {
@@ -1580,6 +1562,10 @@ export default function App() {
             routeLabelEn: isReturn ? 'Ohel -> 770' : '770 -> Ohel',
             // Central summary always rounds to the nearest half hour, including today's rows.
             time: roundToHalfHourStr(when),
+            // Computed from this ride's own scan time, not the day's noon - a
+            // Saturday-night ride is already in next week's parsha even though
+            // the calendar day is still "Saturday".
+            parsha: getWeeklyParsha(when),
             driver: (s.driverName || '').replace(' (נהג)', ''),
             dispatcher: (s.dispatcherName || '').replace(' (סדרן)', ''),
             origin: s.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel'),
@@ -1615,7 +1601,9 @@ export default function App() {
   const centralFlatRows = useMemo(() => {
     return centralSummary.flatMap(day => {
       const dayOfWeek = getDayOfWeekHe(new Date(day.dateStr + 'T12:00:00'));
-      return [...day.rows].reverse().map(r => ({ ...r, dateStr: day.dateStr, hebrewDate: day.hebrewDate, parsha: day.parsha, dayOfWeek }));
+      // Each row already carries its own scan-time-accurate `parsha` (set in
+      // centralSummary above) - don't overwrite it with the day's value here.
+      return [...day.rows].reverse().map(r => ({ ...r, dateStr: day.dateStr, hebrewDate: day.hebrewDate, dayOfWeek }));
     });
   }, [centralSummary]);
 
@@ -2348,7 +2336,7 @@ export default function App() {
     const rows = filteredScans.map(scan => {
       const scanDate = new Date(scan.logicalDate + 'T12:00:00');
       return [
-        getWeeklyParsha(scanDate),
+        getWeeklyParsha(new Date(scan.scannedAt)),
         getHebrewDate(scanDate),
         getDayOfWeekHe(scanDate),
         new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -3520,17 +3508,6 @@ export default function App() {
 
                   const routeColor = currentDriverDirection === 'to_ohel' ? 'var(--accent-route-ohel)' : 'var(--accent)';
                   const routeColorRgb = currentDriverDirection === 'to_ohel' ? '6, 182, 212' : '226, 176, 78';
-
-                  if (isDriverEnRoute && driverJustDispatched) {
-                    return (
-                      <div className="card" style={{ padding: '40px 22px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px' }}>
-                        <div className="saving-spinner" style={{ width: '44px', height: '44px' }} />
-                        <strong style={{ fontSize: '15px', color: '#fff' }}>
-                          {lang === 'he' ? 'נקלט! מאשר פרטי נסיעה...' : 'Got it! Confirming trip details...'}
-                        </strong>
-                      </div>
-                    );
-                  }
 
                   return (isDriverEnRoute && !shouldShowQrEvenEnRoute) ? (
                     <div className="card" style={{
@@ -5124,7 +5101,7 @@ export default function App() {
                                 const scanDate = new Date(scan.logicalDate + 'T12:00:00');
                                 return (
                                 <tr key={scan.id}>
-                                  <td>{getWeeklyParsha(scanDate)}</td>
+                                  <td>{getWeeklyParsha(new Date(scan.scannedAt))}</td>
                                   <td>{getHebrewDate(scanDate)}</td>
                                   <td>{getDayOfWeekHe(scanDate)}</td>
                                   <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
@@ -5185,7 +5162,7 @@ export default function App() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
                               <div>
                                 <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('parshaHeader')}</span>
-                                <span style={{ color: '#fff' }}>{getWeeklyParsha(scanDate) || '—'}</span>
+                                <span style={{ color: '#fff' }}>{getWeeklyParsha(new Date(scan.scannedAt)) || '—'}</span>
                               </div>
                               <div>
                                 <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('hebrewDateHeader')}</span>

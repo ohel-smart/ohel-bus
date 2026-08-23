@@ -1,6 +1,10 @@
 // Hebrew-date + weekly-parsha helpers for the central summary table.
 // Uses @hebcal/core (diaspora / chutz-la'aretz reading cycle).
-import { HDate, HebrewCalendar } from '@hebcal/core';
+import { HDate, HebrewCalendar, Location, Zmanim } from '@hebcal/core';
+
+// Crown Heights (770) coordinates - close enough to Ohel (Boro Park) that the
+// few minutes of difference in sunset/tzeit never matter for this purpose.
+const NY_LOCATION = new Location(40.6690, -73.9429, false, 'America/New_York', 'Crown Heights', 'US');
 
 // Remove Hebrew niqqud / cantillation so names render cleanly in a table.
 function stripNiqqud(s: string): string {
@@ -18,7 +22,16 @@ export function getWeeklyParsha(date: Date): string {
   let hd: HDate;
   try { hd = new HDate(date); } catch { return ''; }
   // Saturday of this week (getDay: 0=Sun .. 6=Sat).
-  const sat = hd.add(6 - hd.getDay(), 'd');
+  let sat = hd.add(6 - hd.getDay(), 'd');
+  // Shabbat itself ends at nightfall (tzeit hakochavim), not at Gregorian
+  // midnight - a timestamp on Saturday night after that point is already in
+  // next week's parsha, even though the calendar day is still "Saturday".
+  if (hd.getDay() === 6) {
+    try {
+      const tzeit = new Zmanim(NY_LOCATION, date, false).tzeit(8.5);
+      if (date.getTime() >= tzeit.getTime()) sat = sat.add(7, 'd');
+    } catch { /* keep same-week Saturday on any zmanim error */ }
+  }
   const key = sat.toString();
   const cached = parshaCache.get(key);
   if (cached !== undefined) return cached;
