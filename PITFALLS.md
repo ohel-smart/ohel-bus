@@ -49,3 +49,5 @@ Any driver/dispatcher/admin-entered free text (names, especially) that gets inte
 ## Two-repo coupling
 
 This site and the separate WhatsApp-bot service both read/write the same Firestore project directly, with no API layer between them. There's no schema migration tooling — if you change what a `Scan` or `User` field means (not just adding a new optional field), the bot-side code that reads the same collections needs a matching update, or it will silently misinterpret data.
+
+The bot also independently *reimplements* the Erev Shabbat/Erev Yom Tov early-cutover check (`getEarlyTriggerMoment` in the bot's `index.js`, mirroring `getEarlyCutover` in this repo's `src/services/db.ts`) to decide when to fire its daily WhatsApp summary — the two aren't shared code, just the same algorithm copy-pasted into both runtimes (one ESM/browser, one CommonJS/Node). If that erev-detection logic ever needs to change, update it in both places.
