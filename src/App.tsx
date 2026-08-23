@@ -810,8 +810,11 @@ const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en')
 };
 
 export default function App() {
-  // Internationalization (Language Switcher)
-  const [lang, setLang] = useState<'he' | 'en'>('he');
+  // Internationalization (Language Switcher) - persisted like currentUser, so it
+  // survives a refresh or closing and reopening the app.
+  const [lang, setLang] = useState<'he' | 'en'>(() => {
+    return (localStorage.getItem('tp_lang') as 'he' | 'en') || 'he';
+  });
 
   // Translation Helper
   const t = (key: keyof typeof TRANSLATIONS.he, variables?: { [key: string]: any }) => {
@@ -824,10 +827,11 @@ export default function App() {
     return text;
   };
 
-  // Dynamically toggle body/document text direction
+  // Dynamically toggle body/document text direction, and remember the choice
   useEffect(() => {
     document.documentElement.dir = lang === 'he' ? 'rtl' : 'ltr';
     document.documentElement.lang = lang;
+    localStorage.setItem('tp_lang', lang);
   }, [lang]);
 
   // Authentication & Session persistent initialization
