@@ -2458,9 +2458,10 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string }) => {
+  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
     const driverName = override?.name ?? selectedDriverForPdf;
     if (!driverName) return;
+    const pdfLang = override?.lang ?? lang;
     const driverScans = applyCentralFilters(
       scans.filter(s => (s.driverName || '').replace(' (נהג)', '') === driverName),
       override ? { from: override.dateFrom, to: override.dateTo } : undefined
@@ -2533,8 +2534,8 @@ export default function App() {
       </div>`;
     };
 
-    const html = `<!DOCTYPE html><html lang="${lang}" dir="${lang === 'he' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
-      <title>${lang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${escHtml(driverName)}</title>
+    const html = `<!DOCTYPE html><html lang="${pdfLang}" dir="${pdfLang === 'he' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
+      <title>${pdfLang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${escHtml(driverName)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
@@ -2572,7 +2573,7 @@ export default function App() {
         @media print { .download-footer { display: none; } body { padding: 0; } }
       </style></head>
       <body>
-        ${section(lang)}
+        ${section(pdfLang)}
       </body></html>`;
 
     // A Blob URL is a more reliable way to hand a full document to a new tab
@@ -2593,9 +2594,10 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string }) => {
+  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
     const dispatcherName = override?.name ?? selectedDispatcherForPdf;
     if (!dispatcherName) return;
+    const pdfLang = override?.lang ?? lang;
     const dispatcherScans = applyCentralFilters(
       scans.filter(s => (s.dispatcherName || '').replace(' (סדרן)', '') === dispatcherName),
       override ? { from: override.dateFrom, to: override.dateTo } : undefined
@@ -2667,8 +2669,8 @@ export default function App() {
       </div>`;
     };
 
-    const html = `<!DOCTYPE html><html lang="${lang}" dir="${lang === 'he' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
-      <title>${lang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${escHtml(dispatcherName)}</title>
+    const html = `<!DOCTYPE html><html lang="${pdfLang}" dir="${pdfLang === 'he' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
+      <title>${pdfLang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${escHtml(dispatcherName)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
@@ -2706,7 +2708,7 @@ export default function App() {
         @media print { .download-footer { display: none; } body { padding: 0; } }
       </style></head>
       <body>
-        ${section(lang)}
+        ${section(pdfLang)}
       </body></html>`;
 
     // A Blob URL is a more reliable way to hand a full document to a new tab
@@ -2723,6 +2725,7 @@ export default function App() {
   // only, for a period they pick (week/month), no on-screen table - just a
   // period choice and a download, reusing the same PDF builders admins use.
   const [selfReportPeriod, setSelfReportPeriod] = useState<'week' | 'month'>('month');
+  const [selfReportLang, setSelfReportLang] = useState<'he' | 'en'>(lang);
 
   const handleDownloadMyReport = () => {
     if (!currentUser) return;
@@ -2734,9 +2737,9 @@ export default function App() {
     const dateTo = to.toISOString().split('T')[0];
 
     if (currentUser.role === 'driver') {
-      handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo });
+      handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo, lang: selfReportLang });
     } else if (currentUser.role === 'dispatcher') {
-      handleExportDispatcherPdf({ name: currentUser.name.replace(' (סדרן)', ''), dateFrom, dateTo });
+      handleExportDispatcherPdf({ name: currentUser.name.replace(' (סדרן)', ''), dateFrom, dateTo, lang: selfReportLang });
     }
   };
 
@@ -3420,6 +3423,14 @@ export default function App() {
                         <option value="week">{t('myReportWeek')}</option>
                         <option value="month">{t('myReportMonth')}</option>
                       </select>
+                      <select
+                        value={selfReportLang}
+                        onChange={e => setSelfReportLang(e.target.value as 'he' | 'en')}
+                        style={{ fontSize: '11px', padding: '4px 6px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)' }}
+                      >
+                        <option value="he">עברית</option>
+                        <option value="en">English</option>
+                      </select>
                       <button
                         onClick={handleDownloadMyReport}
                         style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer', padding: '4px 2px' }}
@@ -4048,6 +4059,14 @@ export default function App() {
                       >
                         <option value="week">{t('myReportWeek')}</option>
                         <option value="month">{t('myReportMonth')}</option>
+                      </select>
+                      <select
+                        value={selfReportLang}
+                        onChange={e => setSelfReportLang(e.target.value as 'he' | 'en')}
+                        style={{ fontSize: '11px', padding: '4px 6px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)' }}
+                      >
+                        <option value="he">עברית</option>
+                        <option value="en">English</option>
                       </select>
                       <button
                         onClick={handleDownloadMyReport}
