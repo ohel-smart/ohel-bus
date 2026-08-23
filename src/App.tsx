@@ -2507,7 +2507,7 @@ export default function App() {
       const dir = locale === 'he' ? 'rtl' : 'ltr';
       return `<div class="lang-section" data-lang="${locale}" dir="${dir}">
         <div class="report-header">
-          <img src="${logoDark}" alt="Ohel Smart" class="logo" />
+          <img src="${new URL(logoDark, window.location.origin).href}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
             <div class="driver-name">${t.driver}: ${escHtml(driverName)}</div>
@@ -2641,7 +2641,7 @@ export default function App() {
       const dir = locale === 'he' ? 'rtl' : 'ltr';
       return `<div class="lang-section" data-lang="${locale}" dir="${dir}">
         <div class="report-header">
-          <img src="${logoDark}" alt="Ohel Smart" class="logo" />
+          <img src="${new URL(logoDark, window.location.origin).href}" alt="Ohel Smart" class="logo" />
           <div>
             <h1>${t.title}</h1>
             <div class="driver-name">${t.dispatcher}: ${escHtml(dispatcherName)}</div>
