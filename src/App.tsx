@@ -1876,10 +1876,21 @@ export default function App() {
     }
   };
 
+  // Unmounting the current role's view (especially the driver's live-tracking
+  // screen, with its GPS watch and real-time cards) is real synchronous work.
+  // Show the spinner FIRST via a state update, then defer the actual teardown
+  // to the next tick so the browser gets a chance to paint that spinner before
+  // the heavy unmount blocks the main thread - otherwise the tap can feel
+  // "stuck" for a moment with zero feedback.
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const handleLogout = () => {
-    localStorage.removeItem('tp_current_user');
-    setCurrentUser(null);
-    triggerToast(t('logoutSuccess'), 'success');
+    setIsLoggingOut(true);
+    setTimeout(() => {
+      localStorage.removeItem('tp_current_user');
+      setCurrentUser(null);
+      setIsLoggingOut(false);
+      triggerToast(t('logoutSuccess'), 'success');
+    }, 30);
   };
 
   const handleOfflineToggle = () => {
@@ -2808,8 +2819,8 @@ export default function App() {
         ))}
       </div>
 
-      {/* Scan-saving overlay: visible feedback from tap until the save resolves */}
-      {isSavingScan && (
+      {/* Scan-saving / logout overlay: visible feedback from tap until it resolves */}
+      {(isSavingScan || isLoggingOut) && (
         <div className="saving-overlay">
           <div className="saving-spinner" />
         </div>
