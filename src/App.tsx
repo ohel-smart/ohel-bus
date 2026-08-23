@@ -2533,17 +2533,13 @@ export default function App() {
       </div>`;
     };
 
-    const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8">
+    const html = `<!DOCTYPE html><html lang="${lang}" dir="${lang === 'he' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
       <title>${lang === 'he' ? 'דו"ח נהג' : 'Driver Report'} - ${escHtml(driverName)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; padding: 32px; color: var(--ink); background: #fff; margin: 0; }
-        .lang-toggle { position: fixed; top: 16px; inset-inline-end: 16px; display: flex; gap: 6px; z-index: 10; }
-        .lang-toggle button { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff; color: var(--ink); font-size: 12px; cursor: pointer; }
-        .lang-toggle button.active { background: var(--gold); color: #fff; border-color: var(--gold); }
-        .lang-section { display: none; max-width: 760px; margin: 0 auto; }
-        .lang-section.visible { display: block; }
+        .lang-section { max-width: 760px; margin: 0 auto; }
         .report-header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; border-bottom: 3px solid var(--gold); padding-bottom: 16px; margin-bottom: 20px; }
         .logo { height: 44px; }
         h1 { font-size: 20px; margin: 0 0 2px; color: var(--ink); }
@@ -2573,24 +2569,10 @@ export default function App() {
         .download-footer button { background: var(--gold); color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 14px; font-weight: 700; cursor: pointer; }
         .download-footer button:hover { opacity: 0.9; }
         .footer { margin-top: 20px; text-align: center; color: var(--muted); font-size: 11px; }
-        @media print { .lang-toggle { display: none; } .download-footer { display: none; } body { padding: 0; } }
+        @media print { .download-footer { display: none; } body { padding: 0; } }
       </style></head>
       <body>
-        <div class="lang-toggle">
-          <button id="btn-he" onclick="showLang('he')">עברית</button>
-          <button id="btn-en" onclick="showLang('en')">English</button>
-        </div>
-        ${section('he')}
-        ${section('en')}
-        <script>
-          function showLang(l) {
-            document.querySelectorAll('.lang-section').forEach(function(el){ el.classList.toggle('visible', el.dataset.lang === l); });
-            document.getElementById('btn-he').classList.toggle('active', l === 'he');
-            document.getElementById('btn-en').classList.toggle('active', l === 'en');
-            document.documentElement.lang = l;
-          }
-          showLang('${lang}');
-        </script>
+        ${section(lang)}
       </body></html>`;
 
     // A Blob URL is a more reliable way to hand a full document to a new tab
@@ -2685,17 +2667,13 @@ export default function App() {
       </div>`;
     };
 
-    const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8">
+    const html = `<!DOCTYPE html><html lang="${lang}" dir="${lang === 'he' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">
       <title>${lang === 'he' ? 'דו"ח סדרן' : 'Dispatcher Report'} - ${escHtml(dispatcherName)}</title>
       <style>
         :root { --gold: #b9872f; --gold-bg: #fbf3e3; --ink: #1a1a1a; --muted: #6b6b6b; --border: #e3d9c4; }
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; padding: 32px; color: var(--ink); background: #fff; margin: 0; }
-        .lang-toggle { position: fixed; top: 16px; inset-inline-end: 16px; display: flex; gap: 6px; z-index: 10; }
-        .lang-toggle button { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff; color: var(--ink); font-size: 12px; cursor: pointer; }
-        .lang-toggle button.active { background: var(--gold); color: #fff; border-color: var(--gold); }
-        .lang-section { display: none; max-width: 760px; margin: 0 auto; }
-        .lang-section.visible { display: block; }
+        .lang-section { max-width: 760px; margin: 0 auto; }
         .report-header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; border-bottom: 3px solid var(--gold); padding-bottom: 16px; margin-bottom: 20px; }
         .logo { height: 44px; }
         h1 { font-size: 20px; margin: 0 0 2px; color: var(--ink); }
@@ -2725,24 +2703,10 @@ export default function App() {
         .download-footer button { background: var(--gold); color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 14px; font-weight: 700; cursor: pointer; }
         .download-footer button:hover { opacity: 0.9; }
         .footer { margin-top: 20px; text-align: center; color: var(--muted); font-size: 11px; }
-        @media print { .lang-toggle { display: none; } .download-footer { display: none; } body { padding: 0; } }
+        @media print { .download-footer { display: none; } body { padding: 0; } }
       </style></head>
       <body>
-        <div class="lang-toggle">
-          <button id="btn-he" onclick="showLang('he')">עברית</button>
-          <button id="btn-en" onclick="showLang('en')">English</button>
-        </div>
-        ${section('he')}
-        ${section('en')}
-        <script>
-          function showLang(l) {
-            document.querySelectorAll('.lang-section').forEach(function(el){ el.classList.toggle('visible', el.dataset.lang === l); });
-            document.getElementById('btn-he').classList.toggle('active', l === 'he');
-            document.getElementById('btn-en').classList.toggle('active', l === 'en');
-            document.documentElement.lang = l;
-          }
-          showLang('${lang}');
-        </script>
+        ${section(lang)}
       </body></html>`;
 
     // A Blob URL is a more reliable way to hand a full document to a new tab
@@ -3340,31 +3304,6 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* Self-service PDF report - own data only, no table, just a period + download */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{t('myReportTitle')}</span>
-                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '3px', gap: '3px' }}>
-                        <button
-                          onClick={() => setSelfReportPeriod('week')}
-                          className={`btn ${selfReportPeriod === 'week' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'week' ? '#000' : '#fff' }}
-                        >
-                          {t('myReportWeek')}
-                        </button>
-                        <button
-                          onClick={() => setSelfReportPeriod('month')}
-                          className={`btn ${selfReportPeriod === 'month' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'month' ? '#000' : '#fff' }}
-                        >
-                          {t('myReportMonth')}
-                        </button>
-                      </div>
-                      <button onClick={handleDownloadMyReport} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px', color: '#fff', marginInlineStart: 'auto' }}>
-                        <FileText size={13} />
-                        {t('myReportDownload')}
-                      </button>
-                    </div>
-
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px', textAlign: 'center' }}>
                       <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('scannedTrips')}</span>
@@ -3469,6 +3408,25 @@ export default function App() {
                           })
                         )}
                       </div>
+                    </div>
+
+                    {/* Self-service PDF report - small link at the bottom */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--border-color)' }}>
+                      <select
+                        value={selfReportPeriod}
+                        onChange={e => setSelfReportPeriod(e.target.value as 'week' | 'month')}
+                        style={{ fontSize: '11px', padding: '4px 6px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)' }}
+                      >
+                        <option value="week">{t('myReportWeek')}</option>
+                        <option value="month">{t('myReportMonth')}</option>
+                      </select>
+                      <button
+                        onClick={handleDownloadMyReport}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer', padding: '4px 2px' }}
+                      >
+                        <FileText size={12} />
+                        {t('myReportDownload')}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -3944,31 +3902,6 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* Self-service PDF report - own data only, no table, just a period + download */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px', marginBottom: '20px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{t('myReportTitle')}</span>
-                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '3px', gap: '3px' }}>
-                        <button
-                          onClick={() => setSelfReportPeriod('week')}
-                          className={`btn ${selfReportPeriod === 'week' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'week' ? '#000' : '#fff' }}
-                        >
-                          {t('myReportWeek')}
-                        </button>
-                        <button
-                          onClick={() => setSelfReportPeriod('month')}
-                          className={`btn ${selfReportPeriod === 'month' ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ padding: '6px 12px', fontSize: '11px', border: 'none', color: selfReportPeriod === 'month' ? '#000' : '#fff' }}
-                        >
-                          {t('myReportMonth')}
-                        </button>
-                      </div>
-                      <button onClick={handleDownloadMyReport} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px', color: '#fff', marginInlineStart: 'auto' }}>
-                        <FileText size={13} />
-                        {t('myReportDownload')}
-                      </button>
-                    </div>
-
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px', textAlign: 'center' }}>
                       <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('driverTripsCompleted')}</span>
@@ -4105,6 +4038,25 @@ export default function App() {
                         </div>
                       </div>
                     )}
+
+                    {/* Self-service PDF report - small link at the bottom */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--border-color)' }}>
+                      <select
+                        value={selfReportPeriod}
+                        onChange={e => setSelfReportPeriod(e.target.value as 'week' | 'month')}
+                        style={{ fontSize: '11px', padding: '4px 6px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)' }}
+                      >
+                        <option value="week">{t('myReportWeek')}</option>
+                        <option value="month">{t('myReportMonth')}</option>
+                      </select>
+                      <button
+                        onClick={handleDownloadMyReport}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer', padding: '4px 2px' }}
+                      >
+                        <FileText size={12} />
+                        {t('myReportDownload')}
+                      </button>
+                    </div>
                   </div>
                 )}
 
