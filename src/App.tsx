@@ -5752,8 +5752,8 @@ export default function App() {
                               triggerToast(lang === 'he' ? 'היסטוריית הנסיעות נמחקה בהצלחה!' : 'Trip history deleted successfully!', 'success');
                             }
                           }} 
-                          className="btn btn-secondary" 
-                          style={{ width: '100%', borderColor: '#ef4444', color: '#ef4444', background: 'rgba(239, 68, 68, 0.05)', justifyContent: 'center' }}
+                          className="btn btn-secondary"
+                          style={{ width: '100%', borderColor: '#ef4444', color: '#fff', background: '#ef4444', justifyContent: 'center' }}
                         >
                           <Trash size={14} style={{ marginRight: '6px' }} />
                           {lang === 'he' ? 'מחק היסטוריית נסיעות (שמור נהגים ומשתמשים)' : 'Clear Trip History (Keep Users)'}
