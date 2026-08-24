@@ -25,11 +25,13 @@ const TXT = {
     roleDispatcher: 'סדרן',
     joiningAs: 'נרשם/ת בתור',
     capacityLabel: 'מספר מקומות באוטובוס',
-    bigBusLabel: 'אוטובוס גדול',
     codeLabel: 'בחר/י קוד כניסה אישי (לפחות 7 תווים, כולל אות אחת באנגלית לפחות)',
     codePlaceholder: 'קוד כניסה',
+    confirmCodeLabel: 'אימות קוד כניסה',
+    confirmCodePlaceholder: 'הקלד/י שוב את הקוד',
     codeTooShort: 'הקוד חייב להיות באורך 7 תווים לפחות',
     codeNeedsLetter: 'הקוד חייב לכלול לפחות אות אחת באנגלית',
+    codeMismatch: 'הקודים שהזנת לא תואמים',
     codeTaken: 'הקוד הזה כבר תפוס, נא לבחור קוד אחר',
     submit: 'שלח בקשה',
     submitting: 'שולח…',
@@ -53,11 +55,13 @@ const TXT = {
     roleDispatcher: 'Dispatcher',
     joiningAs: 'Joining as',
     capacityLabel: 'Bus seat capacity',
-    bigBusLabel: 'Big bus',
     codeLabel: 'Choose a personal login code (7+ characters, at least one English letter)',
     codePlaceholder: 'Login code',
+    confirmCodeLabel: 'Confirm login code',
+    confirmCodePlaceholder: 'Type the code again',
     codeTooShort: 'The code must be at least 7 characters long',
     codeNeedsLetter: 'The code must include at least one English letter',
+    codeMismatch: "The codes you entered don't match",
     codeTaken: 'That code is already taken, please choose another one',
     submit: 'Send Request',
     submitting: 'Sending…',
@@ -87,8 +91,8 @@ export default function RegisterRequest() {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'driver' | 'dispatcher'>(lockedRole || 'driver');
   const [capacity, setCapacity] = useState<number>(15);
-  const [isBigBus, setIsBigBus] = useState(false);
   const [code, setCode] = useState('');
+  const [confirmCode, setConfirmCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -105,6 +109,7 @@ export default function RegisterRequest() {
     const cleanCode = code.trim();
     if (cleanCode.length <= 6) { setError(tx.codeTooShort); return; }
     if (!/[a-zA-Z]/.test(cleanCode)) { setError(tx.codeNeedsLetter); return; }
+    if (cleanCode !== confirmCode.trim()) { setError(tx.codeMismatch); return; }
     setError('');
     setSubmitting(true);
     try {
@@ -118,12 +123,14 @@ export default function RegisterRequest() {
         ...dbService.getPendingRegistrations().map(r => r.code)
       ]);
       if (takenCodes.has(cleanCode)) { setError(tx.codeTaken); setSubmitting(false); return; }
+      // Big-bus status is intentionally NOT settable here - only an admin
+      // marks a bus as big, when approving or editing a user.
       const reg: Omit<PendingRegistration, 'id' | 'submittedAt'> = {
         name: name.trim(),
         phone: phone.trim(),
         role,
         code: code.trim(),
-        ...(role === 'driver' ? { capacity, isBigBus } : {})
+        ...(role === 'driver' ? { capacity } : {})
       };
       await dbService.submitRegistration(reg);
       fetch('/api/registration-notify', {
@@ -144,8 +151,8 @@ export default function RegisterRequest() {
     setPhone('');
     setRole(lockedRole || 'driver');
     setCapacity(15);
-    setIsBigBus(false);
     setCode('');
+    setConfirmCode('');
     setDone(false);
     setError('');
   };
@@ -208,16 +215,14 @@ export default function RegisterRequest() {
               </div>
             )}
 
-            {role === 'driver' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
-                <input type="checkbox" checked={isBigBus} onChange={e => setIsBigBus(e.target.checked)} style={{ width: '16px', height: '16px' }} />
-                {tx.bigBusLabel}
-              </label>
-            )}
-
             <div>
               <label style={labelStyle}>{tx.codeLabel}</label>
               <input value={code} onChange={e => setCode(e.target.value)} placeholder={tx.codePlaceholder} style={inputStyle} />
+            </div>
+
+            <div>
+              <label style={labelStyle}>{tx.confirmCodeLabel}</label>
+              <input value={confirmCode} onChange={e => setConfirmCode(e.target.value)} placeholder={tx.confirmCodePlaceholder} style={inputStyle} />
             </div>
 
             <button onClick={submit} disabled={submitting} className="btn btn-primary" style={{ ...btnStyle, opacity: submitting ? 0.6 : 1 }}>
