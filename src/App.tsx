@@ -890,7 +890,7 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
         </div>
       )}
       <div style={{ display: 'flex', gap: '8px' }}>
-        <button type="button" onClick={() => onApprove(reg, { name, phone, code, capacity, isBigBus })} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
+        <button type="button" onClick={() => { console.log('[DIAG] Approve button onClick fired'); onApprove(reg, { name, phone, code, capacity, isBigBus }); }} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
           {t('approveRegistration')}
         </button>
         {!editing ? (
@@ -2192,6 +2192,7 @@ export default function App() {
   // (optionally admin-edited first) and removes the pending request. Used by
   // both the auto-popup modal and the Users-tab card - see PendingRegistrationCard.
   const handleApproveRegistration = async (reg: PendingRegistration, values: { name: string; phone: string; code: string; capacity?: number; isBigBus?: boolean }) => {
+    console.log('[DIAG] handleApproveRegistration invoked', JSON.stringify({ reg, values }));
     const cleanName = values.name.trim();
     const cleanPhone = values.phone.trim();
     const cleanCode = values.code.trim();
