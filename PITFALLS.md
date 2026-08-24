@@ -13,10 +13,6 @@ Working notes for anyone (human or Claude) touching this codebase, grounded in b
 
 If a future task is "make the SOS button work" or "show the driver's real GPS position," that's a from-scratch feature, not a bug fix — the plumbing isn't there.
 
-## Destructive operations to treat with care
-
-- `dbService.resetTrips()` deletes **every** document in the `scans` collection (not just "today's"). It's wired to an admin "reset for new day" button. Never call this, or extend anything to call this automatically, without explicit user confirmation — there's no undo and no soft-delete.
-
 ## Timezone / date bugs already hit once
 
 - **"Day" boundaries are America/New_York midnight — except on Erev Shabbat/Erev Yom Tov**, where the day ends 15 minutes before that evening's sunset instead (`getEarlyCutover()` in `src/services/db.ts`, using `isAssurBemlacha` to detect the not-yet-forbidden→forbidden transition at sunset, not a hardcoded "is it Friday" check, so it correctly covers Rosh Hashana/Yom Kippur/Sukkot/Pesach/Shavuot/Shmini Atzeret too). Always derive a trip's day via `dbService.getLogicalDate()` (or read `Scan.logicalDate`, already computed) — don't slice an ISO string or use `Date#getDate()`.
