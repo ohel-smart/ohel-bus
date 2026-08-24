@@ -1,0 +1,21 @@
+name: Trigger daily manager email
+
+# Pings api/daily-email every 10 minutes. The endpoint itself decides whether
+# "now" is actually today's trigger moment (23:59 New York time, or 15 minutes
+# before sunset on Erev Shabbat/Erev Yom Tov - see api/daily-email.js) and
+# no-ops otherwise, so most runs are harmless. This is deliberately independent
+# of the separate WhatsApp-bot service, and of Vercel's own Cron (which on the
+# Hobby plan can only run once/day with imprecise timing, not useful here).
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the daily-email endpoint
+        run: |
+          curl -sf -X GET "https://ohel-bus.vercel.app/api/daily-email" \
+            -H "User-Agent: vercel-cron/1.0 (github-actions-relay)"
