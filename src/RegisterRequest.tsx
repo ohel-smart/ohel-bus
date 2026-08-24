@@ -6,7 +6,7 @@
 // a pending_registrations doc and emails the manager. An admin reviews and
 // approves it (see the pending-registrations modal/section in App.tsx), which
 // is what actually creates the User with this requested (or an admin-edited) code.
-import { useState, type CSSProperties } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import dbService from './services/db';
 import type { PendingRegistration } from './services/db';
 import logo from './assets/logo.png';
@@ -26,9 +26,11 @@ const TXT = {
     joiningAs: 'נרשם/ת בתור',
     capacityLabel: 'מספר מקומות באוטובוס',
     bigBusLabel: 'אוטובוס גדול',
-    codeLabel: 'בחר/י קוד כניסה אישי (לפחות 7 תווים)',
+    codeLabel: 'בחר/י קוד כניסה אישי (לפחות 7 תווים, כולל אות אחת באנגלית לפחות)',
     codePlaceholder: 'קוד כניסה',
     codeTooShort: 'הקוד חייב להיות באורך 7 תווים לפחות',
+    codeNeedsLetter: 'הקוד חייב לכלול לפחות אות אחת באנגלית',
+    codeTaken: 'הקוד הזה כבר תפוס, נא לבחור קוד אחר',
     submit: 'שלח בקשה',
     submitting: 'שולח…',
     fillAllFields: 'נא למלא שם וטלפון',
@@ -52,9 +54,11 @@ const TXT = {
     joiningAs: 'Joining as',
     capacityLabel: 'Bus seat capacity',
     bigBusLabel: 'Big bus',
-    codeLabel: 'Choose a personal login code (7+ characters)',
+    codeLabel: 'Choose a personal login code (7+ characters, at least one English letter)',
     codePlaceholder: 'Login code',
     codeTooShort: 'The code must be at least 7 characters long',
+    codeNeedsLetter: 'The code must include at least one English letter',
+    codeTaken: 'That code is already taken, please choose another one',
     submit: 'Send Request',
     submitting: 'Sending…',
     fillAllFields: 'Please fill in your name and phone',
@@ -89,9 +93,21 @@ export default function RegisterRequest() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Pull the latest users so the code-uniqueness check below works even on a
+  // cold page load (pending_registrations is already kept live by dbService's
+  // own onSnapshot listener, started as soon as this page imports dbService).
+  useEffect(() => { dbService.fetchDataFromSheets(); }, []);
+
   const submit = async () => {
     if (!name.trim() || !phone.trim()) { setError(tx.fillAllFields); return; }
-    if (code.trim().length <= 6) { setError(tx.codeTooShort); return; }
+    const cleanCode = code.trim();
+    if (cleanCode.length <= 6) { setError(tx.codeTooShort); return; }
+    if (!/[a-zA-Z]/.test(cleanCode)) { setError(tx.codeNeedsLetter); return; }
+    const takenCodes = new Set([
+      ...dbService.getUsers().map(u => u.code),
+      ...dbService.getPendingRegistrations().map(r => r.code)
+    ]);
+    if (takenCodes.has(cleanCode)) { setError(tx.codeTaken); return; }
     setError('');
     setSubmitting(true);
     try {

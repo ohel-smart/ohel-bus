@@ -635,6 +635,15 @@ body {
     grid-template-columns: 1fr !important;
     gap: 16px !important;
   }
+
+  /* A grid item's automatic min-width defaults to its content's min-content
+     size, so a wide table anywhere inside (e.g. the System Administrators
+     table, which has no mobile-card fallback) was stretching these whole
+     grids - and everything stacked in the same column - past the viewport
+     instead of scrolling within its own .table-container. */
+  .settings-grid > *, .users-grid > *, .dashboard-grid > * {
+    min-width: 0 !important;
+  }
   
   .desktop-layout {
     flex-direction: column !important;
