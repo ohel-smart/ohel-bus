@@ -64,15 +64,13 @@ Other conventions in this layer:
 
 Wraps `@hebcal/core`. `getWeeklyParsha(date)` rolls a Saturday timestamp into next week's parsha once it's **4:00 PM or later in America/New_York** — a fixed org-specific cutoff (not halachic nightfall/tzeit), even though the calendar day is still Saturday. When computing a per-row parsha, pass the scan's actual `scannedAt` timestamp — passing "noon of logicalDate" will never trigger this branch.
 
-### `api/daily-email.js` — separate runtime, two triggers
+### `api/daily-email.js` — separate runtime, self-triggered
 
-A Vercel Function (not part of the Vite/React bundle) that emails the manager a daily summary via Resend. Uses `firebase-admin` (not the client SDK) with a service-account key from `process.env.FIREBASE_KEY`, and reimplements a few helpers (Hebrew date, NY date, HTML-escaping) locally rather than importing from `src/` — keep both in sync manually if the logic changes.
+A Vercel Function (not part of the Vite/React bundle) that emails the manager a daily rides summary via Resend. Uses `firebase-admin` (not the client SDK) with a service-account key from `process.env.FIREBASE_KEY`, and reimplements a few helpers (Hebrew date, NY date, HTML-escaping, and the Erev Shabbat/Erev Yom Tov trigger-moment check) locally rather than importing from `src/` — keep all of these in sync manually if the logic changes.
 
-It has **two independent triggers**, both hitting the same endpoint, deduplicated via a Firestore doc (`bot_state/daily_email`, field `lastEmailDate`) so only the first one for a given date actually sends:
-- **Primary**: the WhatsApp bot (separate repo) calls it with `?date=<YYYY-MM-DD>` at the exact same Erev Shabbat/Erev Yom Tov-aware moment it sends its own WhatsApp summary (see `triggerDailyEmail` in the bot's `index.js`) — this is what makes the email follow the same policy as the WhatsApp message instead of a fixed clock time.
-- **Fallback**: `vercel.json`'s own Cron entry (`0 5 * * *`), kept as a safety net in case the bot is down when the trigger moment passes. Vercel's Hobby plan can only run a cron once/day with up to ±59 minutes of imprecision (a hard platform limit, not a bug) — it can't itself replicate the bot's dynamic per-day trigger time, which is why the bot is the primary path.
+It is **not** invoked by Vercel Cron and **deliberately not** invoked by the WhatsApp bot (separate repo) either — both were considered and rejected: Vercel's Hobby plan can only run a cron once/day with up to ±59 minutes of imprecision (a hard platform limit — see [Vercel's cron docs](https://vercel.com/docs/cron-jobs/usage-and-pricing)), and coupling the trigger to the bot would make the email depend on that service's uptime. Instead, `.github/workflows/daily-email-trigger.yml` pings this endpoint every 10 minutes via GitHub Actions (free/unlimited on a public repo), and the function decides for itself whether "now" is today's actual trigger moment (`getTodaysTriggerMoment`: 23:59 New York time, or 15 minutes before sunset on Erev Shabbat/Erev Yom Tov) — most pings are harmless no-ops. A Firestore doc (`bot_state/daily_email`, field `lastEmailDate`) guards against sending the same day's summary twice.
 
-Neither caller sends a real secret — both are accepted via the endpoint's existing `user-agent` includes `vercel-cron` check (no `CRON_SECRET` env var is configured). This is publicly visible in this repo's source, so treat it as a soft gate, not real authentication.
+The endpoint isn't behind a real secret — it accepts any caller whose `user-agent` includes `vercel-cron` (no `CRON_SECRET` env var is configured). This is publicly visible in this repo's source, so treat it as a soft gate, not real authentication.
 
 ### Security-sensitive spots
 

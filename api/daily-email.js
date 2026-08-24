@@ -1,9 +1,14 @@
-// Vercel Cron function — emails the manager the previous day's rides summary
-// via Resend. Scheduled daily in vercel.json. Runs on the site's cloud (Vercel),
-// which — unlike the free Render bot — never spins down, so the email is reliable.
-// Reads the current ride data from Firestore (same source the app uses).
+// Emails the manager a daily rides summary via Resend, self-triggered - not
+// invoked by Vercel Cron (Hobby plan only allows once/day with up to ±59min of
+// imprecision - see https://vercel.com/docs/cron-jobs/usage-and-pricing) and
+// deliberately NOT invoked by the WhatsApp bot (separate repo) either, so this
+// stays independent of that service's uptime. Instead, a GitHub Actions
+// workflow (.github/workflows/daily-email-trigger.yml) pings this endpoint
+// every few minutes; the function itself decides whether "now" is actually
+// this day's trigger moment and no-ops otherwise. Reads ride data from
+// Firestore (same source the app uses).
 
-import { HDate } from '@hebcal/core';
+import { HDate, Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -36,10 +41,48 @@ function nyDateStr(d) {
   return `${g('year')}-${g('month')}-${g('day')}`;
 }
 
+// The UTC instant for a given HH:MM wall-clock moment in New York on `dateStr`.
+function nyTimeUTC(dateStr, hour, minute) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const utcGuess = new Date(Date.UTC(y, m - 1, d, hour, minute, 0));
+  const offsetPart = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' })
+    .formatToParts(utcGuess).find(p => p.type === 'timeZoneName').value; // e.g. "GMT-4"
+  const offsetHours = parseInt((offsetPart.match(/GMT([+-]\d+)/) || [, '-4'])[1], 10);
+  return new Date(utcGuess.getTime() - offsetHours * 3600000);
+}
+
+const NY_LOCATION = new Location(40.6690, -73.9429, false, 'America/New_York', 'Crown Heights', 'US');
+
+// On Erev Shabbat/Erev Yom Tov, today's trigger moment is 15 minutes before
+// sunset; otherwise it's 23:59 New York time. Mirrors getEarlyCutover in
+// src/services/db.ts (the site's own logicalDate boundary) - independently
+// reimplemented here (and again in the WhatsApp bot's index.js) since none of
+// these three runtimes share code with each other.
+function getTodaysTriggerMoment(dateStr) {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    // Local-constructed on purpose: Zmanim only reads the Y/M/D fields off this
+    // Date (hours are ignored), and building it via the local constructor makes
+    // those fields round-trip correctly regardless of the runtime's own timezone.
+    const dayRef = new Date(y, m - 1, d);
+    const sunset = new Zmanim(NY_LOCATION, dayRef, false).sunset();
+    const justBefore = new Date(sunset.getTime() - 60000);
+    const justAfter = new Date(sunset.getTime() + 60000);
+    // Erev Shabbat/Erev Yom Tov = melacha becomes newly prohibited at tonight's
+    // sunset (not already prohibited beforehand, e.g. this being Shabbat/Yom Tov
+    // itself running into the evening doesn't count).
+    if (!isAssurBemlacha(justBefore, NY_LOCATION, false) && isAssurBemlacha(justAfter, NY_LOCATION, false)) {
+      return new Date(sunset.getTime() - 15 * 60000);
+    }
+  } catch { /* fall back to the 23:59 default below on any calculation error */ }
+  return nyTimeUTC(dateStr, 23, 59);
+}
+
 const esc = v => String(v ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 export default async function handler(req, res) {
-  // Only Vercel Cron (or an explicit ?key=CRON_SECRET) may trigger a send.
+  // Only an automated trigger (our GitHub Actions pinger, or an explicit
+  // ?key=CRON_SECRET) may cause a send.
   const secret = process.env.CRON_SECRET;
   const auth = req.headers['authorization'] || '';
   const ua = req.headers['user-agent'] || '';
@@ -55,18 +98,13 @@ export default async function handler(req, res) {
   const db = getDb();
   if (!db) return res.status(500).json({ error: 'FIREBASE_KEY not configured' });
 
-  // The day to summarize, in New York time. An explicit ?date= (sent by the
-  // WhatsApp bot, which calls this endpoint at the exact same Erev Shabbat/Yom
-  // Tov-aware moment it sends its own daily summary - see checkDailySummaryTrigger
-  // in whatsapp-bot/index.js) takes priority. Without one, assume this is the
-  // Vercel Cron fallback firing shortly after midnight NY and target the day that
-  // just ended (Hobby-plan cron can only run once/day, at an imprecise fixed
-  // time, so this fallback exists in case the bot's own trigger never fires).
-  const explicitDate = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
-  const target = explicitDate || nyDateStr(new Date(Date.now() - 6 * 3600 * 1000));
+  const target = nyDateStr(new Date());
+  const triggerMoment = getTodaysTriggerMoment(target);
+  if (Date.now() < triggerMoment.getTime()) {
+    return res.status(200).json({ ok: true, skipped: true, reason: 'not yet time', date: target, triggerMoment: triggerMoment.toISOString() });
+  }
 
-  // Guards against sending the same day's summary twice (once from the bot's
-  // trigger, once from the Vercel fallback, or a manual re-trigger).
+  // Guards against sending the same day's summary twice from repeated pings.
   const stateRef = db.collection('bot_state').doc('daily_email');
   const stateSnap = await stateRef.get();
   if (stateSnap.exists && stateSnap.data().lastEmailDate === target) {

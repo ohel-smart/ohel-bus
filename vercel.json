@@ -1,7 +1,4 @@
 {
-  "crons": [
-    { "path": "/api/daily-email", "schedule": "0 5 * * *" }
-  ],
   "rewrites": [
     { "source": "/board", "destination": "/index.html" },
     { "source": "/board/", "destination": "/index.html" }
