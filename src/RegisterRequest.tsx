@@ -73,10 +73,12 @@ function roleFromQuery(): 'driver' | 'dispatcher' | null {
 }
 
 export default function RegisterRequest() {
-  const [lang, setLang] = useState<'he' | 'en'>('he');
+  const lockedRole = roleFromQuery();
+  // Drivers land in English by default (switchable to Hebrew); dispatchers
+  // and the role-less fallback land in Hebrew by default (switchable to English).
+  const [lang, setLang] = useState<'he' | 'en'>(lockedRole === 'driver' ? 'en' : 'he');
   const tx = TXT[lang];
 
-  const lockedRole = roleFromQuery();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'driver' | 'dispatcher'>(lockedRole || 'driver');
