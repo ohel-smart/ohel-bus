@@ -93,9 +93,11 @@ export default function RegisterRequest() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Pull the latest users so the code-uniqueness check below works even on a
-  // cold page load (pending_registrations is already kept live by dbService's
-  // own onSnapshot listener, started as soon as this page imports dbService).
+  // Pull the latest users on mount so the page isn't sitting on a cold,
+  // empty cache for longer than necessary (dbService falls back to a
+  // hardcoded offline default list - real codes 770/777/778/1000 don't
+  // exist in production, but if someone submits before this resolves, the
+  // uniqueness check below would wrongly flag those as taken).
   useEffect(() => { dbService.fetchDataFromSheets(); }, []);
 
   const submit = async () => {
@@ -103,14 +105,19 @@ export default function RegisterRequest() {
     const cleanCode = code.trim();
     if (cleanCode.length <= 6) { setError(tx.codeTooShort); return; }
     if (!/[a-zA-Z]/.test(cleanCode)) { setError(tx.codeNeedsLetter); return; }
-    const takenCodes = new Set([
-      ...dbService.getUsers().map(u => u.code),
-      ...dbService.getPendingRegistrations().map(r => r.code)
-    ]);
-    if (takenCodes.has(cleanCode)) { setError(tx.codeTaken); return; }
     setError('');
     setSubmitting(true);
     try {
+      // Re-fetch right before checking, instead of trusting whatever the
+      // mount-time fetch (or dbService's own offline-fallback default list)
+      // happened to leave in the cache - this is the only way to guarantee
+      // the uniqueness check reflects the real, current Firestore state.
+      await dbService.fetchDataFromSheets();
+      const takenCodes = new Set([
+        ...dbService.getUsers().map(u => u.code),
+        ...dbService.getPendingRegistrations().map(r => r.code)
+      ]);
+      if (takenCodes.has(cleanCode)) { setError(tx.codeTaken); setSubmitting(false); return; }
       const reg: Omit<PendingRegistration, 'id' | 'submittedAt'> = {
         name: name.trim(),
         phone: phone.trim(),
