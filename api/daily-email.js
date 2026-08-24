@@ -55,8 +55,23 @@ export default async function handler(req, res) {
   const db = getDb();
   if (!db) return res.status(500).json({ error: 'FIREBASE_KEY not configured' });
 
-  // The day that just ended, in New York time.
-  const target = nyDateStr(new Date(Date.now() - 6 * 3600 * 1000));
+  // The day to summarize, in New York time. An explicit ?date= (sent by the
+  // WhatsApp bot, which calls this endpoint at the exact same Erev Shabbat/Yom
+  // Tov-aware moment it sends its own daily summary - see checkDailySummaryTrigger
+  // in whatsapp-bot/index.js) takes priority. Without one, assume this is the
+  // Vercel Cron fallback firing shortly after midnight NY and target the day that
+  // just ended (Hobby-plan cron can only run once/day, at an imprecise fixed
+  // time, so this fallback exists in case the bot's own trigger never fires).
+  const explicitDate = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
+  const target = explicitDate || nyDateStr(new Date(Date.now() - 6 * 3600 * 1000));
+
+  // Guards against sending the same day's summary twice (once from the bot's
+  // trigger, once from the Vercel fallback, or a manual re-trigger).
+  const stateRef = db.collection('bot_state').doc('daily_email');
+  const stateSnap = await stateRef.get();
+  if (stateSnap.exists && stateSnap.data().lastEmailDate === target) {
+    return res.status(200).json({ ok: true, skipped: true, reason: 'already sent for this date', date: target });
+  }
 
   let dayScans = [];
   try {
@@ -145,6 +160,7 @@ export default async function handler(req, res) {
     });
     const body = await er.text();
     if (!er.ok) return res.status(502).json({ error: 'resend failed', status: er.status, body });
+    await stateRef.set({ lastEmailDate: target }, { merge: true });
     return res.status(200).json({ ok: true, date: target, totalRides, totalPassengers });
   } catch (e) {
     return res.status(502).json({ error: 'send failed: ' + e.message });
