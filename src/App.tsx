@@ -131,7 +131,6 @@ const TRANSLATIONS = {
     confirmRejectRegistration: 'לדחות ולמחוק את בקשת ההרשמה הזו?',
     registrationRejected: 'הבקשה נדחתה',
     approveRegistrationFailed: 'האישור נכשל (בעיית רשת?) - הבקשה נשארה ברשימה, נסה שוב',
-    approveRegistrationPartial: 'המשתמש {name} נוצר בהצלחה, אך מחיקת הבקשה מהרשימה נכשלה (בעיית רשת?) - לחץ/י "דחה" כדי להסיר אותה מהרשימה (המשתמש לא יימחק)',
     rejectRegistrationFailed: 'הדחייה נכשלה (בעיית רשת?), נסה שוב',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
@@ -410,7 +409,6 @@ const TRANSLATIONS = {
     confirmRejectRegistration: 'Reject and delete this registration request?',
     registrationRejected: 'Request rejected',
     approveRegistrationFailed: 'Approval failed (network issue?) - the request is still in the list, try again',
-    approveRegistrationPartial: 'User {name} was created successfully, but removing the request from the list failed (network issue?) - click "Reject" to remove it (the user will NOT be deleted)',
     rejectRegistrationFailed: 'Rejection failed (network issue?), try again',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
@@ -890,7 +888,7 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
         </div>
       )}
       <div style={{ display: 'flex', gap: '8px' }}>
-        <button type="button" onClick={() => { console.log('[DIAG] Approve button onClick fired'); onApprove(reg, { name, phone, code, capacity, isBigBus }); }} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
+        <button type="button" onClick={() => onApprove(reg, { name, phone, code, capacity, isBigBus })} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
           {t('approveRegistration')}
         </button>
         {!editing ? (
@@ -2192,7 +2190,6 @@ export default function App() {
   // (optionally admin-edited first) and removes the pending request. Used by
   // both the auto-popup modal and the Users-tab card - see PendingRegistrationCard.
   const handleApproveRegistration = async (reg: PendingRegistration, values: { name: string; phone: string; code: string; capacity?: number; isBigBus?: boolean }) => {
-    console.log('[DIAG] handleApproveRegistration invoked', JSON.stringify({ reg, values }));
     const cleanName = values.name.trim();
     const cleanPhone = values.phone.trim();
     const cleanCode = values.code.trim();
@@ -2201,66 +2198,53 @@ export default function App() {
       return;
     }
 
-    const id = 'usr_' + Math.random().toString(36).substr(2, 9);
-    const roleSuffix = reg.role === 'driver' ? ' (נהג)' : ' (סדרן)';
-    // Tracks whether the user-create step below actually completed, so a
-    // later hang/failure (specifically on the delete) can be reported
-    // differently - the user already exists at that point, so "approval
-    // failed, try again" would be misleading and risks the admin trying
-    // to re-approve into a second, now-correctly-blocked duplicate.
-    let userCreated = false;
-
+    // The actual create-user + delete-pending-request writes happen entirely
+    // server-side (api/approve-registration.js), as one atomic Firestore
+    // batch - either both land or neither does. This used to be two
+    // sequential client-side Firestore calls guarded by a client-side
+    // setTimeout-based timeout; that guard didn't actually help against the
+    // real failure mode observed live: a backgrounded browser tab (admin
+    // switches apps, phone screen locks mid-approval) throttles JS timers,
+    // including the "safety" timeout itself, leaving the card silently
+    // stuck with zero feedback and zero Firestore writes ever attempted.
+    // Doing the writes server-side removes the browser tab's lifecycle from
+    // the equation - the approval completes regardless of what the tab does
+    // after the request is sent.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      // Re-fetch right before checking, instead of trusting the local `users`
-      // state (which can lag behind real Firestore data, e.g. after the tab
-      // was backgrounded on mobile) - a false "code already taken" here used
-      // to block real approvals even though the code wasn't actually in use.
-      // Every Firestore call in this function is wrapped in withTimeout():
-      // each one can occasionally hang on a degraded long-poll connection
-      // without ever resolving OR rejecting (dbService swallows some of
-      // these errors internally), which used to leave the admin staring at
-      // an unresponsive button forever with no toast. One observed case hung
-      // on the FINAL delete after the create had already gone through,
-      // leaving a real user created but its pending request stuck in the
-      // list forever with no feedback that anything had gone wrong.
-      await withTimeout(dbService.fetchDataFromSheets(), 10000, 'fetchDataFromSheets');
-      if (dbService.getUsers().some(u => u.code === cleanCode)) {
-        triggerToast(t('codeDuplicate'), 'danger');
+      const resp = await fetch('/api/approve-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          pendingId: reg.id,
+          name: cleanName,
+          phone: cleanPhone,
+          role: reg.role,
+          code: cleanCode,
+          capacity: reg.role === 'driver' ? values.capacity : undefined,
+          isBigBus: reg.role === 'driver' ? values.isBigBus : undefined
+        })
+      });
+      await resp.json();
+      if (!resp.ok) {
+        if (resp.status === 409) {
+          triggerToast(t('codeDuplicate'), 'danger');
+        } else {
+          triggerToast(t('approveRegistrationFailed'), 'danger');
+        }
         return;
       }
-
-      // Awaited, and the pending request is only deleted AFTER the user is
-      // confirmed persisted - these used to be two independent fire-and-forget
-      // writes with no ordering between them, so a failed user-create (e.g. a
-      // transient network blip) could still let the pending-delete succeed,
-      // silently destroying the only record of the request with no user ever
-      // actually created in its place.
-      await withTimeout(dbService.saveUser({
-        id,
-        name: cleanName + roleSuffix,
-        phone: cleanPhone,
-        role: reg.role,
-        code: cleanCode,
-        capacity: reg.role === 'driver' ? values.capacity : undefined,
-        isBigBus: reg.role === 'driver' ? values.isBigBus : undefined,
-        createdAt: new Date().toISOString()
-      }), 10000, 'saveUser');
-      userCreated = true;
-      await withTimeout(dbService.deletePendingRegistration(reg.id), 10000, 'deletePendingRegistration');
       triggerToast(t('userCreatedText', { name: cleanName }), 'success');
     } catch (e) {
-      if (userCreated) {
-        // The user now genuinely exists - only the cleanup delete failed.
-        // Leaving the pending card up is correct (there's no undo for the
-        // create), but a plain "approval failed, try again" would be wrong:
-        // retrying would hit "code already taken" against the user that
-        // already exists. Tell the admin what actually happened instead.
-        triggerToast(t('approveRegistrationPartial', { name: cleanName }), 'danger');
-      } else {
-        // Nothing was created - the pending request is left intact, nothing
-        // to recover, the admin just retries the approval.
-        triggerToast(t('approveRegistrationFailed'), 'danger');
-      }
+      // The request may still complete server-side even if the client never
+      // sees the response (e.g. the tab was backgrounded when it returned) -
+      // the pending card will simply disappear once the live Firestore
+      // listener picks up the delete, whenever that response actually lands.
+      triggerToast(t('approveRegistrationFailed'), 'danger');
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
