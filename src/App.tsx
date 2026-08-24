@@ -131,6 +131,7 @@ const TRANSLATIONS = {
     confirmRejectRegistration: 'לדחות ולמחוק את בקשת ההרשמה הזו?',
     registrationRejected: 'הבקשה נדחתה',
     approveRegistrationFailed: 'האישור נכשל (בעיית רשת?) - הבקשה נשארה ברשימה, נסה שוב',
+    approveRegistrationPartial: 'המשתמש {name} נוצר בהצלחה, אך מחיקת הבקשה מהרשימה נכשלה (בעיית רשת?) - לחץ/י "דחה" כדי להסיר אותה מהרשימה (המשתמש לא יימחק)',
     rejectRegistrationFailed: 'הדחייה נכשלה (בעיית רשת?), נסה שוב',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
@@ -409,6 +410,7 @@ const TRANSLATIONS = {
     confirmRejectRegistration: 'Reject and delete this registration request?',
     registrationRejected: 'Request rejected',
     approveRegistrationFailed: 'Approval failed (network issue?) - the request is still in the list, try again',
+    approveRegistrationPartial: 'User {name} was created successfully, but removing the request from the list failed (network issue?) - click "Reject" to remove it (the user will NOT be deleted)',
     rejectRegistrationFailed: 'Rejection failed (network issue?), try again',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
@@ -595,6 +597,21 @@ const csvCell = (v: unknown): string => {
   if (/^[=+\-@]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 };
+
+// Races a promise against a timeout so a Firestore call that hangs forever
+// (no resolve, no reject - seen on a degraded long-poll connection) can't
+// leave a caller stuck indefinitely with no feedback. Used by
+// handleApproveRegistration, which chains three separate Firestore calls
+// (a re-fetch, then a create, then a delete) - any one of them hanging used
+// to freeze the whole approval with no toast and no way to know it needs a
+// retry, in one observed case after the create had already succeeded,
+// leaving a real user created but its pending request stuck forever.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms))
+  ]);
+}
 
 // Haversine Distance Helper
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -2185,23 +2202,27 @@ export default function App() {
 
     const id = 'usr_' + Math.random().toString(36).substr(2, 9);
     const roleSuffix = reg.role === 'driver' ? ' (נהג)' : ' (סדרן)';
+    // Tracks whether the user-create step below actually completed, so a
+    // later hang/failure (specifically on the delete) can be reported
+    // differently - the user already exists at that point, so "approval
+    // failed, try again" would be misleading and risks the admin trying
+    // to re-approve into a second, now-correctly-blocked duplicate.
+    let userCreated = false;
 
     try {
       // Re-fetch right before checking, instead of trusting the local `users`
       // state (which can lag behind real Firestore data, e.g. after the tab
       // was backgrounded on mobile) - a false "code already taken" here used
       // to block real approvals even though the code wasn't actually in use.
-      // Guarded with a timeout: fetchDataFromSheets() can occasionally hang on
-      // a degraded Firestore long-poll connection without ever resolving OR
-      // rejecting (it swallows its own errors internally), which used to leave
-      // the admin staring at an unresponsive button forever with no toast and
-      // no way to know the approval needs a retry. A timeout turns that silent
-      // hang into the same "approval failed, pending request left intact"
-      // path as any other error below.
-      await Promise.race([
-        dbService.fetchDataFromSheets(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('fetchDataFromSheets timed out')), 10000))
-      ]);
+      // Every Firestore call in this function is wrapped in withTimeout():
+      // each one can occasionally hang on a degraded long-poll connection
+      // without ever resolving OR rejecting (dbService swallows some of
+      // these errors internally), which used to leave the admin staring at
+      // an unresponsive button forever with no toast. One observed case hung
+      // on the FINAL delete after the create had already gone through,
+      // leaving a real user created but its pending request stuck in the
+      // list forever with no feedback that anything had gone wrong.
+      await withTimeout(dbService.fetchDataFromSheets(), 10000, 'fetchDataFromSheets');
       if (dbService.getUsers().some(u => u.code === cleanCode)) {
         triggerToast(t('codeDuplicate'), 'danger');
         return;
@@ -2213,7 +2234,7 @@ export default function App() {
       // transient network blip) could still let the pending-delete succeed,
       // silently destroying the only record of the request with no user ever
       // actually created in its place.
-      await dbService.saveUser({
+      await withTimeout(dbService.saveUser({
         id,
         name: cleanName + roleSuffix,
         phone: cleanPhone,
@@ -2222,20 +2243,30 @@ export default function App() {
         capacity: reg.role === 'driver' ? values.capacity : undefined,
         isBigBus: reg.role === 'driver' ? values.isBigBus : undefined,
         createdAt: new Date().toISOString()
-      });
-      await dbService.deletePendingRegistration(reg.id);
+      }), 10000, 'saveUser');
+      userCreated = true;
+      await withTimeout(dbService.deletePendingRegistration(reg.id), 10000, 'deletePendingRegistration');
       triggerToast(t('userCreatedText', { name: cleanName }), 'success');
     } catch (e) {
-      // The pending request is left intact on failure - nothing to recover,
-      // the admin just retries the approval.
-      triggerToast(t('approveRegistrationFailed'), 'danger');
+      if (userCreated) {
+        // The user now genuinely exists - only the cleanup delete failed.
+        // Leaving the pending card up is correct (there's no undo for the
+        // create), but a plain "approval failed, try again" would be wrong:
+        // retrying would hit "code already taken" against the user that
+        // already exists. Tell the admin what actually happened instead.
+        triggerToast(t('approveRegistrationPartial', { name: cleanName }), 'danger');
+      } else {
+        // Nothing was created - the pending request is left intact, nothing
+        // to recover, the admin just retries the approval.
+        triggerToast(t('approveRegistrationFailed'), 'danger');
+      }
     }
   };
 
   const handleRejectRegistration = async (id: string) => {
     if (!window.confirm(t('confirmRejectRegistration'))) return;
     try {
-      await dbService.deletePendingRegistration(id);
+      await withTimeout(dbService.deletePendingRegistration(id), 10000, 'deletePendingRegistration');
       triggerToast(t('registrationRejected'), 'success');
     } catch (e) {
       triggerToast(t('rejectRegistrationFailed'), 'danger');
