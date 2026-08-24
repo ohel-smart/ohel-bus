@@ -1,8 +1,11 @@
 // Standalone, public self-registration page for new drivers/dispatchers.
-// Reached via a link (…/join). Anyone can submit their details here; it does
-// NOT create a real User or login code - it only writes a pending_registrations
-// doc and emails the manager. An admin reviews and approves it from the normal
-// "User Management" tab, which is what actually creates the User + code.
+// Reached via a link (…/join?role=driver or …/join?role=dispatcher - two
+// separate links meant to be shared with each group; the role is locked when
+// present, bare …/join falls back to a role picker). Anyone can submit their
+// details here; it does NOT create a real User or login code - it only writes
+// a pending_registrations doc and emails the manager. An admin reviews and
+// approves it (see the pending-registrations modal/section in App.tsx), which
+// is what actually creates the User with this requested (or an admin-edited) code.
 import { useState, type CSSProperties } from 'react';
 import dbService from './services/db';
 import type { PendingRegistration } from './services/db';
@@ -12,7 +15,7 @@ import './App.css';
 const TXT = {
   he: {
     title: 'בקשת הצטרפות',
-    subtitle: 'נהג או סדרן חדש? מלא/י את הפרטים - מנהל המערכת יאשר את הבקשה ויקצה לך קוד כניסה.',
+    subtitle: 'נהג או סדרן חדש? מלא/י את הפרטים - מנהל המערכת יאשר את הבקשה.',
     nameLabel: 'שם מלא',
     namePlaceholder: 'שם מלא',
     phoneLabel: 'טלפון',
@@ -20,19 +23,25 @@ const TXT = {
     roleLabel: 'תפקיד',
     roleDriver: 'נהג',
     roleDispatcher: 'סדרן',
+    joiningAs: 'נרשם/ת בתור',
     capacityLabel: 'מספר מקומות באוטובוס',
     bigBusLabel: 'אוטובוס גדול',
+    codeLabel: 'בחר/י קוד כניסה אישי (לפחות 7 תווים)',
+    codePlaceholder: 'קוד כניסה',
+    codeTooShort: 'הקוד חייב להיות באורך 7 תווים לפחות',
     submit: 'שלח בקשה',
     submitting: 'שולח…',
     fillAllFields: 'נא למלא שם וטלפון',
     submitError: 'שגיאה בשליחת הבקשה, נסה שוב.',
     successTitle: 'הבקשה נשלחה בהצלחה!',
-    successHint: 'מנהל המערכת יבדוק את הבקשה ויקצה לך קוד כניסה אישי. תיצור קשר איתך בהמשך.',
+    successHint: 'מנהל המערכת יבדוק את הבקשה. האישור בדרך כלל ניתן תוך כמה דקות.',
+    goToSite: 'כניסה לאתר',
+    goToSiteHint: 'נסה/י להתחבר עם הקוד שבחרת בעוד דקה - סביר שהבקשה כבר תאושר.',
     another: 'שלח בקשה נוספת',
   },
   en: {
     title: 'Join Request',
-    subtitle: 'New driver or dispatcher? Fill in your details - the manager will review and assign you a login code.',
+    subtitle: 'New driver or dispatcher? Fill in your details - the manager will review the request.',
     nameLabel: 'Full name',
     namePlaceholder: 'Full name',
     phoneLabel: 'Phone',
@@ -40,33 +49,47 @@ const TXT = {
     roleLabel: 'Role',
     roleDriver: 'Driver',
     roleDispatcher: 'Dispatcher',
+    joiningAs: 'Joining as',
     capacityLabel: 'Bus seat capacity',
     bigBusLabel: 'Big bus',
+    codeLabel: 'Choose a personal login code (7+ characters)',
+    codePlaceholder: 'Login code',
+    codeTooShort: 'The code must be at least 7 characters long',
     submit: 'Send Request',
     submitting: 'Sending…',
     fillAllFields: 'Please fill in your name and phone',
     submitError: 'Failed to send the request, try again.',
     successTitle: 'Request sent successfully!',
-    successHint: "The manager will review it and assign you a personal login code. You'll be contacted soon.",
+    successHint: "The manager will review it. Approval is usually given within a few minutes.",
+    goToSite: 'Go to the site',
+    goToSiteHint: "Try logging in with the code you chose in a minute - it's usually approved by then.",
     another: 'Send another request',
   },
 } as const;
+
+function roleFromQuery(): 'driver' | 'dispatcher' | null {
+  const r = new URLSearchParams(window.location.search).get('role');
+  return r === 'driver' || r === 'dispatcher' ? r : null;
+}
 
 export default function RegisterRequest() {
   const [lang, setLang] = useState<'he' | 'en'>('he');
   const tx = TXT[lang];
 
+  const lockedRole = roleFromQuery();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'driver' | 'dispatcher'>('driver');
+  const [role, setRole] = useState<'driver' | 'dispatcher'>(lockedRole || 'driver');
   const [capacity, setCapacity] = useState<number>(15);
   const [isBigBus, setIsBigBus] = useState(false);
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
   const submit = async () => {
     if (!name.trim() || !phone.trim()) { setError(tx.fillAllFields); return; }
+    if (code.trim().length <= 6) { setError(tx.codeTooShort); return; }
     setError('');
     setSubmitting(true);
     try {
@@ -74,6 +97,7 @@ export default function RegisterRequest() {
         name: name.trim(),
         phone: phone.trim(),
         role,
+        code: code.trim(),
         ...(role === 'driver' ? { capacity, isBigBus } : {})
       };
       await dbService.submitRegistration(reg);
@@ -93,9 +117,10 @@ export default function RegisterRequest() {
   const reset = () => {
     setName('');
     setPhone('');
-    setRole('driver');
+    setRole(lockedRole || 'driver');
     setCapacity(15);
     setIsBigBus(false);
+    setCode('');
     setDone(false);
     setError('');
   };
@@ -117,6 +142,15 @@ export default function RegisterRequest() {
 
         {!done && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: lang === 'he' ? 'right' : 'left' }}>
+            {lockedRole && (
+              <div style={{ background: 'rgba(226,176,78,0.08)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '10px 14px', textAlign: 'center' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{tx.joiningAs}</span>
+                <strong style={{ display: 'block', color: 'var(--accent)', fontSize: '15px' }}>
+                  {role === 'driver' ? tx.roleDriver : tx.roleDispatcher}
+                </strong>
+              </div>
+            )}
+
             <div>
               <label style={labelStyle}>{tx.nameLabel}</label>
               <input value={name} onChange={e => setName(e.target.value)} placeholder={tx.namePlaceholder} style={inputStyle} />
@@ -127,13 +161,15 @@ export default function RegisterRequest() {
               <input value={phone} onChange={e => setPhone(e.target.value)} placeholder={tx.phonePlaceholder} type="tel" style={inputStyle} />
             </div>
 
-            <div>
-              <label style={labelStyle}>{tx.roleLabel}</label>
-              <select value={role} onChange={e => setRole(e.target.value as 'driver' | 'dispatcher')} style={{ ...inputStyle, textAlign: lang === 'he' ? 'right' : 'left' }}>
-                <option value="driver">{tx.roleDriver}</option>
-                <option value="dispatcher">{tx.roleDispatcher}</option>
-              </select>
-            </div>
+            {!lockedRole && (
+              <div>
+                <label style={labelStyle}>{tx.roleLabel}</label>
+                <select value={role} onChange={e => setRole(e.target.value as 'driver' | 'dispatcher')} style={{ ...inputStyle, textAlign: lang === 'he' ? 'right' : 'left' }}>
+                  <option value="driver">{tx.roleDriver}</option>
+                  <option value="dispatcher">{tx.roleDispatcher}</option>
+                </select>
+              </div>
+            )}
 
             {role === 'driver' && (
               <div>
@@ -154,6 +190,11 @@ export default function RegisterRequest() {
               </label>
             )}
 
+            <div>
+              <label style={labelStyle}>{tx.codeLabel}</label>
+              <input value={code} onChange={e => setCode(e.target.value)} placeholder={tx.codePlaceholder} style={inputStyle} />
+            </div>
+
             <button onClick={submit} disabled={submitting} className="btn btn-primary" style={{ ...btnStyle, opacity: submitting ? 0.6 : 1 }}>
               {submitting ? tx.submitting : tx.submit}
             </button>
@@ -165,7 +206,11 @@ export default function RegisterRequest() {
             <div style={{ fontSize: '46px' }}>✅</div>
             <strong style={{ color: 'var(--success)', fontSize: '18px' }}>{tx.successTitle}</strong>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>{tx.successHint}</p>
-            <button onClick={reset} className="btn btn-primary" style={btnStyle}>{tx.another}</button>
+            <a href="/" className="btn btn-primary" style={{ ...btnStyle, textDecoration: 'none', display: 'block', boxSizing: 'border-box' }}>
+              {tx.goToSite}
+            </a>
+            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{tx.goToSiteHint}</p>
+            <button onClick={reset} className="btn btn-secondary" style={{ ...btnStyle, color: '#fff' }}>{tx.another}</button>
           </div>
         )}
 

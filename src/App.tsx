@@ -124,6 +124,8 @@ const TRANSLATIONS = {
     canSelfReportLabel: 'מורשה לדיווח נסיעת חזרה עצמאי (קישור לנהג)',
     createUser: 'צור משתמש חדש',
     pendingRegistrationsTitle: 'בקשות הרשמה ממתינות',
+    requestedCodeLabel: 'קוד מבוקש',
+    editRegistration: 'ערוך',
     approveRegistration: 'אשר',
     rejectRegistration: 'דחה',
     confirmRejectRegistration: 'לדחות ולמחוק את בקשת ההרשמה הזו?',
@@ -398,6 +400,8 @@ const TRANSLATIONS = {
     canSelfReportLabel: 'Authorized for self-service return report (driver link)',
     createUser: 'Create New User',
     pendingRegistrationsTitle: 'Pending Registration Requests',
+    requestedCodeLabel: 'Requested code',
+    editRegistration: 'Edit',
     approveRegistration: 'Approve',
     rejectRegistration: 'Reject',
     confirmRejectRegistration: 'Reject and delete this registration request?',
@@ -819,6 +823,72 @@ const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en')
   }).join('');
 };
 
+// One pending self-registration request, with inline Approve / Edit-then-approve
+// / Reject actions. Reused by both the admin's auto-popup modal and the
+// "Pending Registration Requests" card in the Users tab, so both stay in sync.
+function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
+  reg: PendingRegistration;
+  t: (key: keyof typeof TRANSLATIONS.he, variables?: { [key: string]: any }) => string;
+  onApprove: (reg: PendingRegistration, values: { name: string; phone: string; code: string; capacity?: number; isBigBus?: boolean }) => void;
+  onReject: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(reg.name);
+  const [phone, setPhone] = useState(reg.phone);
+  const [code, setCode] = useState(reg.code);
+  const [capacity, setCapacity] = useState(reg.capacity || 15);
+  const [isBigBus, setIsBigBus] = useState(reg.isBigBus || false);
+
+  const submitFieldStyle: CSSProperties = { fontSize: '13px', padding: '7px 10px' };
+  const roleLine = `${phone} · ${reg.role === 'driver' ? t('roleDriver') : t('roleDispatcher')}` +
+    (reg.role === 'driver' && capacity ? ` · ${capacity} ${t('capacityLabel')}` : '') +
+    (reg.role === 'driver' && isBigBus ? ` · ${t('bigBusLabel')}` : '');
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px' }}>
+      {!editing ? (
+        <div style={{ marginBottom: '10px' }}>
+          <strong style={{ color: '#fff', fontSize: '14px', display: 'block' }}>{name}</strong>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block' }}>{roleLine}</span>
+          <span style={{ fontSize: '12px', color: 'var(--accent)' }}>{t('requestedCodeLabel')}: <code>{code}</code></span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+          <input value={name} onChange={e => setName(e.target.value)} className="form-input" style={submitFieldStyle} placeholder={t('userName')} />
+          <input value={phone} onChange={e => setPhone(e.target.value)} className="form-input" style={submitFieldStyle} placeholder={t('phoneLabel')} />
+          <input value={code} onChange={e => setCode(e.target.value)} className="form-input" style={submitFieldStyle} placeholder={t('passcodeLabel')} />
+          {reg.role === 'driver' && (
+            <input type="number" value={capacity} onChange={e => setCapacity(Math.max(1, parseInt(e.target.value) || 15))} className="form-input" style={submitFieldStyle} />
+          )}
+          {reg.role === 'driver' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#fff', cursor: 'pointer' }}>
+              <input type="checkbox" checked={isBigBus} onChange={e => setIsBigBus(e.target.checked)} style={{ width: '14px', height: '14px' }} />
+              {t('bigBusLabel')}
+            </label>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button type="button" onClick={() => onApprove(reg, { name, phone, code, capacity, isBigBus })} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
+          {t('approveRegistration')}
+        </button>
+        {!editing ? (
+          <button type="button" onClick={() => setEditing(true)} className="btn btn-secondary" style={{ flex: 1, padding: '7px', fontSize: '12px', color: '#fff' }}>
+            {t('editRegistration')}
+          </button>
+        ) : (
+          <button type="button" onClick={() => setEditing(false)} className="btn btn-secondary" style={{ flex: 1, padding: '7px', fontSize: '12px', color: '#fff' }}>
+            {t('cancel')}
+          </button>
+        )}
+        <button type="button" onClick={() => onReject(reg.id)} className="btn btn-secondary" style={{ flex: 1, padding: '7px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+          {t('rejectRegistration')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // Internationalization (Language Switcher) - persisted like currentUser, so it
   // survives a refresh or closing and reopening the app.
@@ -950,9 +1020,9 @@ export default function App() {
   const [newUserCode, setNewUserCode] = useState('');
   // Self-registration requests (…/join) awaiting admin approval.
   const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
-  // Set while the Add User form is pre-filled from a pending registration -
-  // cleared (and that registration deleted) once the user is actually created.
-  const [approvingRegistrationId, setApprovingRegistrationId] = useState<string | null>(null);
+  // Auto-opens once per newly-arrived pending registration - see the effect below.
+  const [showPendingRegModal, setShowPendingRegModal] = useState(false);
+  const dismissedRegIdsRef = useRef<Set<string>>(new Set());
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [editUserName, setEditUserName] = useState('');
   const [editUserPhone, setEditUserPhone] = useState('');
@@ -1051,6 +1121,21 @@ export default function App() {
       clearInterval(intervalId);
     };
   }, []);
+
+  // Auto-pop the pending-registrations modal for the admin whenever there's at
+  // least one request that hasn't already been shown-and-dismissed this
+  // session - covers both "just opened the app" and "a new one arrived live".
+  useEffect(() => {
+    if (currentUser?.role !== 'admin') return;
+    if (pendingRegistrations.length === 0) { setShowPendingRegModal(false); return; }
+    const hasUndismissed = pendingRegistrations.some(r => !dismissedRegIdsRef.current.has(r.id));
+    if (hasUndismissed) setShowPendingRegModal(true);
+  }, [currentUser, pendingRegistrations]);
+
+  const closePendingRegModal = () => {
+    pendingRegistrations.forEach(r => dismissedRegIdsRef.current.add(r.id));
+    setShowPendingRegModal(false);
+  };
 
   // Deep linking simulator URL query scanner
   useEffect(() => {
@@ -2073,13 +2158,6 @@ export default function App() {
 
     triggerToast(t('userCreatedText', { name: newUserName }), 'success');
 
-    // If this Add User submission was pre-filled from a pending self-registration
-    // request, the request has now been turned into a real user - remove it.
-    if (approvingRegistrationId) {
-      dbService.deletePendingRegistration(approvingRegistrationId);
-      setApprovingRegistrationId(null);
-    }
-
     // Reset Form
     setNewUserName('');
     setNewUserPhone('');
@@ -2089,25 +2167,43 @@ export default function App() {
     setNewUserCapacity(15);
   };
 
-  // Pre-fills the Add User form from a pending self-registration request, so
-  // the admin only needs to pick a login code and click Create.
-  const handleApproveRegistrationClick = (reg: PendingRegistration) => {
-    setNewUserName(reg.name);
-    setNewUserPhone(reg.phone);
-    setNewUserRole(reg.role);
-    if (reg.role === 'driver') {
-      setNewUserCapacity(reg.capacity || 15);
-      setNewUserIsBigBus(reg.isBigBus || false);
+  // Creates the real User directly from a pending self-registration request
+  // (optionally admin-edited first) and removes the pending request. Used by
+  // both the auto-popup modal and the Users-tab card - see PendingRegistrationCard.
+  const handleApproveRegistration = (reg: PendingRegistration, values: { name: string; phone: string; code: string; capacity?: number; isBigBus?: boolean }) => {
+    const cleanName = values.name.trim();
+    const cleanPhone = values.phone.trim();
+    const cleanCode = values.code.trim();
+    if (!cleanName || !cleanCode || !cleanPhone) {
+      triggerToast(t('fillAllFields'), 'danger');
+      return;
     }
-    setNewUserCode('');
-    setApprovingRegistrationId(reg.id);
-    document.getElementById('add-user-form-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (users.some(u => u.code === cleanCode)) {
+      triggerToast(t('codeDuplicate'), 'danger');
+      return;
+    }
+
+    const id = 'usr_' + Math.random().toString(36).substr(2, 9);
+    const roleSuffix = reg.role === 'driver' ? ' (נהג)' : ' (סדרן)';
+
+    dbService.saveUser({
+      id,
+      name: cleanName + roleSuffix,
+      phone: cleanPhone,
+      role: reg.role,
+      code: cleanCode,
+      capacity: reg.role === 'driver' ? values.capacity : undefined,
+      isBigBus: reg.role === 'driver' ? values.isBigBus : undefined,
+      createdAt: new Date().toISOString()
+    });
+    dbService.deletePendingRegistration(reg.id);
+
+    triggerToast(t('userCreatedText', { name: cleanName }), 'success');
   };
 
   const handleRejectRegistration = (id: string) => {
     if (window.confirm(t('confirmRejectRegistration'))) {
       dbService.deletePendingRegistration(id);
-      if (approvingRegistrationId === id) setApprovingRegistrationId(null);
       triggerToast(t('registrationRejected'), 'success');
     }
   };
@@ -2893,6 +2989,29 @@ export default function App() {
       {(isSavingScan || isLoggingOut) && (
         <div className="saving-overlay">
           <div className="saving-spinner" />
+        </div>
+      )}
+
+      {/* Pending self-registration requests - pops up for the admin as soon as
+          the app is open (any tab), not just when they navigate to Users. */}
+      {showPendingRegModal && currentUser?.role === 'admin' && pendingRegistrations.length > 0 && (
+        <div className="modal-backdrop" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(10px)' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px', maxHeight: '85vh', overflowY: 'auto', padding: '24px', border: '1px solid var(--accent)', background: 'var(--bg-secondary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <UserCheck size={18} color="var(--accent)" />
+                {t('pendingRegistrationsTitle')} ({pendingRegistrations.length})
+              </h3>
+              <button onClick={closePendingRegModal} className="btn btn-icon-only" style={{ color: 'var(--text-secondary)' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {pendingRegistrations.map(reg => (
+                <PendingRegistrationCard key={reg.id} reg={reg} t={t} onApprove={handleApproveRegistration} onReject={handleRejectRegistration} />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -5471,26 +5590,7 @@ export default function App() {
                           </h3>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {pendingRegistrations.map(reg => (
-                              <div key={reg.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
-                                  <div>
-                                    <strong style={{ color: '#fff', fontSize: '14px', display: 'block' }}>{reg.name}</strong>
-                                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                      {reg.phone} · {reg.role === 'driver' ? t('roleDriver') : t('roleDispatcher')}
-                                      {reg.role === 'driver' && reg.capacity ? ` · ${reg.capacity} ${t('capacityLabel')}` : ''}
-                                      {reg.role === 'driver' && reg.isBigBus ? ` · ${t('bigBusLabel')}` : ''}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                  <button type="button" onClick={() => handleApproveRegistrationClick(reg)} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
-                                    {t('approveRegistration')}
-                                  </button>
-                                  <button type="button" onClick={() => handleRejectRegistration(reg.id)} className="btn btn-secondary" style={{ flex: 1, padding: '7px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>
-                                    {t('rejectRegistration')}
-                                  </button>
-                                </div>
-                              </div>
+                              <PendingRegistrationCard key={reg.id} reg={reg} t={t} onApprove={handleApproveRegistration} onReject={handleRejectRegistration} />
                             ))}
                           </div>
                         </div>

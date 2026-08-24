@@ -75,6 +75,7 @@ export interface PendingRegistration {
   name: string;
   phone: string;
   role: 'driver' | 'dispatcher';
+  code: string; // Self-chosen at registration; admin can still change it on approval
   capacity?: number; // Only for drivers
   isBigBus?: boolean; // Only for drivers
   submittedAt: string;

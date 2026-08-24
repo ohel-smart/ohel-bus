@@ -16,7 +16,8 @@ export default async function handler(req, res) {
   const name = String(body.name || '').trim();
   const phone = String(body.phone || '').trim();
   const role = body.role === 'driver' || body.role === 'dispatcher' ? body.role : '';
-  if (!name || !phone || !role) return res.status(400).json({ error: 'missing required fields (name, phone, role)' });
+  const code = String(body.code || '').trim();
+  if (!name || !phone || !role || !code) return res.status(400).json({ error: 'missing required fields (name, phone, role, code)' });
 
   const capacity = Number.isFinite(body.capacity) ? body.capacity : null;
   const isBigBus = !!body.isBigBus;
@@ -34,6 +35,7 @@ export default async function handler(req, res) {
         ${row('שם', name)}
         ${row('טלפון', phone)}
         ${row('תפקיד', roleLabel)}
+        ${row('קוד מבוקש', code)}
         ${role === 'driver' && capacity !== null ? row('מספר מקומות', String(capacity)) : ''}
         ${role === 'driver' ? row('אוטובוס גדול', isBigBus ? 'כן' : 'לא') : ''}
       </table>
