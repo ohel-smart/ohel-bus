@@ -2182,15 +2182,21 @@ export default function App() {
       triggerToast(t('fillAllFields'), 'danger');
       return;
     }
-    if (users.some(u => u.code === cleanCode)) {
-      triggerToast(t('codeDuplicate'), 'danger');
-      return;
-    }
 
     const id = 'usr_' + Math.random().toString(36).substr(2, 9);
     const roleSuffix = reg.role === 'driver' ? ' (נהג)' : ' (סדרן)';
 
     try {
+      // Re-fetch right before checking, instead of trusting the local `users`
+      // state (which can lag behind real Firestore data, e.g. after the tab
+      // was backgrounded on mobile) - a false "code already taken" here used
+      // to block real approvals even though the code wasn't actually in use.
+      await dbService.fetchDataFromSheets();
+      if (dbService.getUsers().some(u => u.code === cleanCode)) {
+        triggerToast(t('codeDuplicate'), 'danger');
+        return;
+      }
+
       // Awaited, and the pending request is only deleted AFTER the user is
       // confirmed persisted - these used to be two independent fire-and-forget
       // writes with no ordering between them, so a failed user-create (e.g. a
