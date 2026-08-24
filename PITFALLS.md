@@ -34,6 +34,10 @@ Never add `ActiveLocation.etaMinutes` onto a stale start time as if it were the 
 
 A driver-card bug (fixed in `2618c85`) came from `direction` being read from `ActiveLocation` state while `time remaining` was independently recomputed from `Scan[]` state elsewhere in the same component — two separate "what's the driver's latest scan" derivations that could transiently disagree during a re-render. When a UI block needs several derived values about "the current trip," compute them from one `latestScan` lookup, not several.
 
+## Coupled Firestore writes need to be awaited in order, not fired in parallel
+
+`handleApproveRegistration` in `App.tsx` (approving a `/join` self-registration) used to call `dbService.saveUser(...)` and `dbService.deletePendingRegistration(...)` back-to-back without `await`, then show a success toast unconditionally. Both `db.ts` methods do an *optimistic* local-cache update synchronously before their real `setDoc`/`deleteDoc` call, so the UI looked instantly successful regardless of whether either network write actually completed. Since the two writes were unrelated promises racing each other, a failed user-create (e.g. a transient network blip) could still let the pending-request delete succeed — permanently destroying the only record of the request with no user ever actually created. Fixed by `await`ing the create, only deleting the pending doc after that resolves, and wrapping both in try/catch so a failure leaves the pending request intact and shows an error toast instead of a false "success." When one write's completion should gate another (especially a delete that removes the only copy of some data), await the first and handle its rejection — never fire both and assume success.
+
 ## CSS
 
 `body`'s `direction` must never be hardcoded to `rtl` in `src/index.css` — `lang` state toggles `<html dir>` in `App.tsx`, and a hardcoded body direction silently overrides it, breaking bidi layout in English mode (numbers/words reordering, e.g. "min 16" instead of "16 min"). This already happened once.

@@ -130,6 +130,8 @@ const TRANSLATIONS = {
     rejectRegistration: 'דחה',
     confirmRejectRegistration: 'לדחות ולמחוק את בקשת ההרשמה הזו?',
     registrationRejected: 'הבקשה נדחתה',
+    approveRegistrationFailed: 'האישור נכשל (בעיית רשת?) - הבקשה נשארה ברשימה, נסה שוב',
+    rejectRegistrationFailed: 'הדחייה נכשלה (בעיית רשת?), נסה שוב',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
     emailConfig: 'הגדרות הפצת דוחות ומיילים',
@@ -406,6 +408,8 @@ const TRANSLATIONS = {
     rejectRegistration: 'Reject',
     confirmRejectRegistration: 'Reject and delete this registration request?',
     registrationRejected: 'Request rejected',
+    approveRegistrationFailed: 'Approval failed (network issue?) - the request is still in the list, try again',
+    rejectRegistrationFailed: 'Rejection failed (network issue?), try again',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
     emailConfig: 'Reports Distribution & Emails Settings',
@@ -2170,7 +2174,7 @@ export default function App() {
   // Creates the real User directly from a pending self-registration request
   // (optionally admin-edited first) and removes the pending request. Used by
   // both the auto-popup modal and the Users-tab card - see PendingRegistrationCard.
-  const handleApproveRegistration = (reg: PendingRegistration, values: { name: string; phone: string; code: string; capacity?: number; isBigBus?: boolean }) => {
+  const handleApproveRegistration = async (reg: PendingRegistration, values: { name: string; phone: string; code: string; capacity?: number; isBigBus?: boolean }) => {
     const cleanName = values.name.trim();
     const cleanPhone = values.phone.trim();
     const cleanCode = values.code.trim();
@@ -2186,25 +2190,39 @@ export default function App() {
     const id = 'usr_' + Math.random().toString(36).substr(2, 9);
     const roleSuffix = reg.role === 'driver' ? ' (נהג)' : ' (סדרן)';
 
-    dbService.saveUser({
-      id,
-      name: cleanName + roleSuffix,
-      phone: cleanPhone,
-      role: reg.role,
-      code: cleanCode,
-      capacity: reg.role === 'driver' ? values.capacity : undefined,
-      isBigBus: reg.role === 'driver' ? values.isBigBus : undefined,
-      createdAt: new Date().toISOString()
-    });
-    dbService.deletePendingRegistration(reg.id);
-
-    triggerToast(t('userCreatedText', { name: cleanName }), 'success');
+    try {
+      // Awaited, and the pending request is only deleted AFTER the user is
+      // confirmed persisted - these used to be two independent fire-and-forget
+      // writes with no ordering between them, so a failed user-create (e.g. a
+      // transient network blip) could still let the pending-delete succeed,
+      // silently destroying the only record of the request with no user ever
+      // actually created in its place.
+      await dbService.saveUser({
+        id,
+        name: cleanName + roleSuffix,
+        phone: cleanPhone,
+        role: reg.role,
+        code: cleanCode,
+        capacity: reg.role === 'driver' ? values.capacity : undefined,
+        isBigBus: reg.role === 'driver' ? values.isBigBus : undefined,
+        createdAt: new Date().toISOString()
+      });
+      await dbService.deletePendingRegistration(reg.id);
+      triggerToast(t('userCreatedText', { name: cleanName }), 'success');
+    } catch (e) {
+      // The pending request is left intact on failure - nothing to recover,
+      // the admin just retries the approval.
+      triggerToast(t('approveRegistrationFailed'), 'danger');
+    }
   };
 
-  const handleRejectRegistration = (id: string) => {
-    if (window.confirm(t('confirmRejectRegistration'))) {
-      dbService.deletePendingRegistration(id);
+  const handleRejectRegistration = async (id: string) => {
+    if (!window.confirm(t('confirmRejectRegistration'))) return;
+    try {
+      await dbService.deletePendingRegistration(id);
       triggerToast(t('registrationRejected'), 'success');
+    } catch (e) {
+      triggerToast(t('rejectRegistrationFailed'), 'danger');
     }
   };
 
