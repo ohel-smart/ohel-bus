@@ -2191,7 +2191,17 @@ export default function App() {
       // state (which can lag behind real Firestore data, e.g. after the tab
       // was backgrounded on mobile) - a false "code already taken" here used
       // to block real approvals even though the code wasn't actually in use.
-      await dbService.fetchDataFromSheets();
+      // Guarded with a timeout: fetchDataFromSheets() can occasionally hang on
+      // a degraded Firestore long-poll connection without ever resolving OR
+      // rejecting (it swallows its own errors internally), which used to leave
+      // the admin staring at an unresponsive button forever with no toast and
+      // no way to know the approval needs a retry. A timeout turns that silent
+      // hang into the same "approval failed, pending request left intact"
+      // path as any other error below.
+      await Promise.race([
+        dbService.fetchDataFromSheets(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('fetchDataFromSheets timed out')), 10000))
+      ]);
       if (dbService.getUsers().some(u => u.code === cleanCode)) {
         triggerToast(t('codeDuplicate'), 'danger');
         return;
