@@ -68,6 +68,18 @@ export interface GlobalConfig {
   twilioRecipientSms?: string;
 }
 
+// A driver/dispatcher self-registration request, awaiting admin approval
+// before it becomes a real User with a login code.
+export interface PendingRegistration {
+  id: string;
+  name: string;
+  phone: string;
+  role: 'driver' | 'dispatcher';
+  capacity?: number; // Only for drivers
+  isBigBus?: boolean; // Only for drivers
+  submittedAt: string;
+}
+
 // Coordinates (Precise physical locations for GPS verification and Map routing)
 export const LOCATIONS = {
   '770': { latitude: 40.6690, longitude: -73.9429, name: '770 Eastern Parkway' },
@@ -147,6 +159,7 @@ class DBService {
   private usersCache: User[] = [];
   private scansCache: Scan[] = [];
   private configCache: GlobalConfig = { reportEmail: 'manager@transit.pro' };
+  private pendingRegistrationsCache: PendingRegistration[] = [];
 
   constructor() {
     // Seed from localStorage instantly so the UI has something to render
@@ -191,6 +204,11 @@ class DBService {
         this.notify();
       }
     }, (e) => console.error('Firestore settings listener error:', e));
+
+    onSnapshot(collection(firestore, 'pending_registrations'), (snap) => {
+      this.pendingRegistrationsCache = snap.docs.map(d => d.data() as PendingRegistration);
+      this.notify();
+    }, (e) => console.error('Firestore pending_registrations listener error:', e));
   }
 
   private cleanDate(dateStr: string): string {
@@ -297,6 +315,36 @@ class DBService {
 
     await authReady;
     await deleteDoc(doc(firestore, 'users', userId));
+  }
+
+  // --- Self-registration requests (pending admin approval) ---
+  public getPendingRegistrations(): PendingRegistration[] {
+    return this.pendingRegistrationsCache;
+  }
+
+  // Called from the public, unauthenticated self-registration page - does NOT
+  // create a real User (no login code yet). An admin reviews it and creates
+  // the actual user via the normal Add User form; see App.tsx's
+  // "Pending Registrations" section.
+  public async submitRegistration(reg: Omit<PendingRegistration, 'id' | 'submittedAt'>) {
+    await authReady;
+    const newReg: PendingRegistration = {
+      ...reg,
+      id: 'reg_' + Math.random().toString(36).substr(2, 9),
+      submittedAt: new Date().toISOString()
+    };
+    await setDoc(doc(firestore, 'pending_registrations', newReg.id), newReg);
+    return newReg;
+  }
+
+  // Removes a pending request - used both to reject one and to clear it out
+  // once an admin has approved it and created the real User.
+  public async deletePendingRegistration(id: string) {
+    this.pendingRegistrationsCache = this.pendingRegistrationsCache.filter(r => r.id !== id);
+    this.notify();
+
+    await authReady;
+    await deleteDoc(doc(firestore, 'pending_registrations', id));
   }
 
   // --- Scans CRUD ---

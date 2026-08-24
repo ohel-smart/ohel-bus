@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/board", "destination": "/index.html" },
-    { "source": "/board/", "destination": "/index.html" }
+    { "source": "/board/", "destination": "/index.html" },
+    { "source": "/join", "destination": "/index.html" },
+    { "source": "/join/", "destination": "/index.html" }
   ]
 }

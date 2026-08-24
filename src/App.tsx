@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronRight, X
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
-import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction } from './services/db';
+import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
 import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
@@ -123,6 +123,11 @@ const TRANSLATIONS = {
     bigBusLabel: 'אוטובוס גדול',
     canSelfReportLabel: 'מורשה לדיווח נסיעת חזרה עצמאי (קישור לנהג)',
     createUser: 'צור משתמש חדש',
+    pendingRegistrationsTitle: 'בקשות הרשמה ממתינות',
+    approveRegistration: 'אשר',
+    rejectRegistration: 'דחה',
+    confirmRejectRegistration: 'לדחות ולמחוק את בקשת ההרשמה הזו?',
+    registrationRejected: 'הבקשה נדחתה',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
     emailConfig: 'הגדרות הפצת דוחות ומיילים',
@@ -392,6 +397,11 @@ const TRANSLATIONS = {
     bigBusLabel: 'Big Bus',
     canSelfReportLabel: 'Authorized for self-service return report (driver link)',
     createUser: 'Create New User',
+    pendingRegistrationsTitle: 'Pending Registration Requests',
+    approveRegistration: 'Approve',
+    rejectRegistration: 'Reject',
+    confirmRejectRegistration: 'Reject and delete this registration request?',
+    registrationRejected: 'Request rejected',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
     emailConfig: 'Reports Distribution & Emails Settings',
@@ -938,6 +948,11 @@ export default function App() {
   const [newUserCanSelfReport, setNewUserCanSelfReport] = useState(false);
   const [loginCode, setLoginCode] = useState('');
   const [newUserCode, setNewUserCode] = useState('');
+  // Self-registration requests (…/join) awaiting admin approval.
+  const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
+  // Set while the Add User form is pre-filled from a pending registration -
+  // cleared (and that registration deleted) once the user is actually created.
+  const [approvingRegistrationId, setApprovingRegistrationId] = useState<string | null>(null);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [editUserName, setEditUserName] = useState('');
   const [editUserPhone, setEditUserPhone] = useState('');
@@ -1012,6 +1027,7 @@ export default function App() {
       setScans(dbService.getScans());
       setActiveLocations(dbService.getActiveLocations());
       setIsOffline(dbService.isOffline());
+      setPendingRegistrations(dbService.getPendingRegistrations());
     };
 
     handleUpdate();
@@ -2057,6 +2073,13 @@ export default function App() {
 
     triggerToast(t('userCreatedText', { name: newUserName }), 'success');
 
+    // If this Add User submission was pre-filled from a pending self-registration
+    // request, the request has now been turned into a real user - remove it.
+    if (approvingRegistrationId) {
+      dbService.deletePendingRegistration(approvingRegistrationId);
+      setApprovingRegistrationId(null);
+    }
+
     // Reset Form
     setNewUserName('');
     setNewUserPhone('');
@@ -2064,6 +2087,29 @@ export default function App() {
     setNewUserIsBigBus(false);
     setNewUserCanSelfReport(false);
     setNewUserCapacity(15);
+  };
+
+  // Pre-fills the Add User form from a pending self-registration request, so
+  // the admin only needs to pick a login code and click Create.
+  const handleApproveRegistrationClick = (reg: PendingRegistration) => {
+    setNewUserName(reg.name);
+    setNewUserPhone(reg.phone);
+    setNewUserRole(reg.role);
+    if (reg.role === 'driver') {
+      setNewUserCapacity(reg.capacity || 15);
+      setNewUserIsBigBus(reg.isBigBus || false);
+    }
+    setNewUserCode('');
+    setApprovingRegistrationId(reg.id);
+    document.getElementById('add-user-form-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleRejectRegistration = (id: string) => {
+    if (window.confirm(t('confirmRejectRegistration'))) {
+      dbService.deletePendingRegistration(id);
+      if (approvingRegistrationId === id) setApprovingRegistrationId(null);
+      triggerToast(t('registrationRejected'), 'success');
+    }
   };
 
   const handleDeleteUser = (userId: string) => {
@@ -5417,12 +5463,45 @@ export default function App() {
                     
                     {/* Add user form & Reset Data column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                      <div className="card">
+                      {pendingRegistrations.length > 0 && (
+                        <div className="card" style={{ border: '1px solid rgba(226, 176, 78, 0.3)', background: 'rgba(226, 176, 78, 0.03)' }}>
+                          <h3 className="card-title">
+                            <UserCheck size={16} color="var(--accent)" />
+                            {t('pendingRegistrationsTitle')} ({pendingRegistrations.length})
+                          </h3>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {pendingRegistrations.map(reg => (
+                              <div key={reg.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 14px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+                                  <div>
+                                    <strong style={{ color: '#fff', fontSize: '14px', display: 'block' }}>{reg.name}</strong>
+                                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                      {reg.phone} · {reg.role === 'driver' ? t('roleDriver') : t('roleDispatcher')}
+                                      {reg.role === 'driver' && reg.capacity ? ` · ${reg.capacity} ${t('capacityLabel')}` : ''}
+                                      {reg.role === 'driver' && reg.isBigBus ? ` · ${t('bigBusLabel')}` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <button type="button" onClick={() => handleApproveRegistrationClick(reg)} className="btn btn-primary" style={{ flex: 1, padding: '7px', fontSize: '12px' }}>
+                                    {t('approveRegistration')}
+                                  </button>
+                                  <button type="button" onClick={() => handleRejectRegistration(reg.id)} className="btn btn-secondary" style={{ flex: 1, padding: '7px', fontSize: '12px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+                                    {t('rejectRegistration')}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="card" id="add-user-form-card">
                         <h3 className="card-title">
                           <Plus size={16} color="var(--accent)" />
                           {t('addUser')}
                         </h3>
-                        
+
                         <form onSubmit={handleCreateUser}>
                           <div className="form-group">
                             <label className="form-label">{t('userName')}</label>
