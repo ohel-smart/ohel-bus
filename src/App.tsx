@@ -2200,7 +2200,7 @@ export default function App() {
       // path as any other error below.
       await Promise.race([
         dbService.fetchDataFromSheets(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('fetchDataFromSheets timed out')), 60000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('fetchDataFromSheets timed out')), 10000))
       ]);
       if (dbService.getUsers().some(u => u.code === cleanCode)) {
         triggerToast(t('codeDuplicate'), 'danger');

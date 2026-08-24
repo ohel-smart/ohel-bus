@@ -545,6 +545,16 @@ class DBService {
     // No-op - active driver ETA is managed at scan time (dead code path, kept for API compatibility)
   }
 
+  public async resetTrips() {
+    await authReady;
+    const scansSnap = await getDocs(collection(firestore, 'scans'));
+    await Promise.all(scansSnap.docs.map(d => deleteDoc(d.ref)));
+
+    localStorage.setItem('tp_scans', JSON.stringify([]));
+    this.scansCache = [];
+    this.notify();
+  }
+
   // --- Global Settings ---
   public getConfig(): GlobalConfig {
     return this.configCache;
