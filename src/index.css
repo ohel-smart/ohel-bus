@@ -665,7 +665,7 @@ body {
     height: 68px;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     align-items: center;
     z-index: 2000;
     padding-bottom: env(safe-area-inset-bottom);
