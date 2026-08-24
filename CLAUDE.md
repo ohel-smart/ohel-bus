@@ -72,6 +72,14 @@ It is **not** invoked by Vercel Cron and **deliberately not** invoked by the Wha
 
 The endpoint isn't behind a real secret — it accepts any caller whose `user-agent` includes `vercel-cron` (no `CRON_SECRET` env var is configured). This is publicly visible in this repo's source, so treat it as a soft gate, not real authentication.
 
+### Self-registration (`/join`) + admin approval
+
+`src/RegisterRequest.tsx` is a public, unauthenticated form (reached via `/join?role=driver` or `/join?role=dispatcher` — two links meant to be shared separately, each locking the role and defaulting the page language driver→English/dispatcher→Hebrew; bare `/join` falls back to a role picker). Submitting writes a `pending_registrations` Firestore doc (via `dbService.submitRegistration`) and calls `api/registration-notify.js` to email the manager — it does **not** create a real `User`. The registrant picks their own login code (7+ chars, must contain a letter, checked for uniqueness against both `users` and other pending requests) but can **not** set "big bus" — only an admin can, when approving or editing.
+
+An admin sees pending requests in an auto-popping modal (opens whenever `pendingRegistrations.length > 0` and the admin hasn't already dismissed those specific ids this session — see the `showPendingRegModal`/`dismissedRegIdsRef` effect in `App.tsx`) and in a card in the Users tab; both render the same `PendingRegistrationCard` component, which supports approving as-is, editing the fields first, or rejecting.
+
+**Approval itself is deliberately server-side**, not a direct client Firestore write: `handleApproveRegistration` POSTs to `api/approve-registration.js`, which does the create-user + delete-pending-request as one atomic Firestore batch via `firebase-admin`. This used to be two sequential client-side Firestore calls (even guarded by a client-side timeout) — see PITFALLS.md's "client-side setTimeout safety-net" entry for why that failed under real conditions (a backgrounded tab throttles the JS timer the timeout itself depends on) and why moving the actual writes server-side, not just guarding them more carefully, was the real fix.
+
 ### Security-sensitive spots
 
 - `escHtml()`/`csvCell()` helpers near the top of `App.tsx` neutralize HTML injection and CSV-formula injection (`=+-@` prefix) for any admin-entered free text (driver/dispatcher names) that gets interpolated into a print-window HTML string or a CSV cell. Any new export/report code that interpolates user-entered strings should reuse these, not `${value}` directly.
