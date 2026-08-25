@@ -2157,36 +2157,39 @@ export default function App() {
     }
 
     const cleanCode = newUserCode.trim();
-    const id = 'usr_' + Math.random().toString(36).substr(2, 9);
-    const roleSuffix = newUserRole === 'driver' ? ' (נהג)' : newUserRole === 'dispatcher' ? ' (סדרן)' : newUserRole === 'screen' ? ' (מסך)' : ' (מנהל)';
 
+    // Done server-side (api/save-user.js), not as direct client Firestore
+    // calls - a fresh-read-then-write pattern like this one was proven to
+    // hang indefinitely with zero feedback whenever the browser tab loses
+    // timer/network priority (backgrounded, screen locked). See PITFALLS.md.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      // Re-fetch right before checking, instead of trusting the local `users`
-      // state (which can lag behind real Firestore data) - a false "code
-      // already taken" here would block a real creation, and skipping the
-      // check entirely could silently let a real duplicate through.
-      await dbService.fetchDataFromSheets();
-      if (dbService.getUsers().some(u => u.code === cleanCode)) {
-        triggerToast(t('codeDuplicate'), 'danger');
+      const resp = await fetch('/api/save-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          name: newUserName,
+          phone: newUserPhone,
+          role: newUserRole,
+          code: cleanCode,
+          capacity: newUserRole === 'driver' ? newUserCapacity : undefined,
+          isBigBus: newUserRole === 'driver' ? newUserIsBigBus : undefined,
+          canSelfReport: newUserRole === 'driver' ? newUserCanSelfReport : undefined
+        })
+      });
+      await resp.json();
+      if (!resp.ok) {
+        triggerToast(resp.status === 409 ? t('codeDuplicate') : t('saveUserFailed'), 'danger');
         return;
       }
-
-      await dbService.saveUser({
-        id,
-        name: newUserName + roleSuffix,
-        phone: newUserPhone,
-        role: newUserRole,
-        code: cleanCode,
-        capacity: newUserRole === 'driver' ? newUserCapacity : undefined,
-        isBigBus: newUserRole === 'driver' ? newUserIsBigBus : undefined,
-        canSelfReport: newUserRole === 'driver' ? newUserCanSelfReport : undefined,
-        createdAt: new Date().toISOString()
-      });
-
       triggerToast(t('userCreatedText', { name: newUserName }), 'success');
     } catch (e) {
       triggerToast(t('saveUserFailed'), 'danger');
       return;
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     // Reset Form
@@ -2323,18 +2326,33 @@ export default function App() {
       canSelfReport: editUserRole === 'driver' ? editUserCanSelfReport : undefined
     };
 
+    // Done server-side (api/save-user.js) - see handleCreateUser above and
+    // PITFALLS.md for why the previous client-side fetch-then-write pattern
+    // (reproduced live, even on a simple admin-code edit) wasn't reliable.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      // Re-fetch right before checking, instead of trusting the local `users`
-      // state (which can lag behind real Firestore data) - a false "code
-      // already taken" here used to block legitimate edits, including simply
-      // changing the admin's own login code.
-      await dbService.fetchDataFromSheets();
-      if (dbService.getUsers().some(u => u.code === cleanCode && u.id !== selectedUserForEdit.id)) {
-        triggerToast(t('codeDuplicate'), 'danger');
+      const resp = await fetch('/api/save-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          userId: selectedUserForEdit.id,
+          name: editUserName,
+          phone: editUserPhone,
+          role: editUserRole,
+          code: cleanCode,
+          capacity: editUserRole === 'driver' ? editUserCapacity : undefined,
+          isBigBus: editUserRole === 'driver' ? editUserIsBigBus : undefined,
+          canSelfReport: editUserRole === 'driver' ? editUserCanSelfReport : undefined
+        })
+      });
+      await resp.json();
+      if (!resp.ok) {
+        triggerToast(resp.status === 409 ? t('codeDuplicate') : t('saveUserFailed'), 'danger');
         return;
       }
 
-      await dbService.saveUser(updatedUser);
       triggerToast(lang === 'he' ? `המשתמש ${editUserName} עודכן בהצלחה` : `User ${editUserName} updated successfully`, 'success');
 
       if (currentUser && currentUser.id === selectedUserForEdit.id) {
@@ -2345,6 +2363,8 @@ export default function App() {
       setSelectedUserForEdit(null);
     } catch (e) {
       triggerToast(t('saveUserFailed'), 'danger');
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
