@@ -915,11 +915,11 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
 // external api.qrserver.com image API this used to use) so the brand mark
 // can be drawn in the center. Uses error-correction level "H" (~30% of the
 // code can be damaged/obscured and still scan correctly) specifically because
-// of that overlay - the wordmark here covers ~10% of the code's area, well
-// inside that budget, is a standard technique and doesn't hurt scannability.
-// The logo is scaled to its own aspect ratio (a wide wordmark) rather than
-// squeezed into a square, so it stays a thin centered band that doesn't reach
-// toward the finder-pattern squares in the QR's corners.
+// of that overlay - well under that budget even before accounting for the
+// ink-hugging mask below, and a standard technique that doesn't hurt
+// scannability. The logo is scaled to its own aspect ratio (a wide wordmark)
+// rather than squeezed into a square, so it stays a thin centered band that
+// doesn't reach toward the finder-pattern squares in the QR's corners.
 function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -942,19 +942,35 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
         const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
         const logoW = Math.round(size * 0.62);
         const logoH = Math.round(logoW / aspect);
-        const x = (size - logoW) / 2;
-        const y = (size - logoH) / 2;
-        const pad = 6, r = 8;
-        const bx = x - pad, by = y - pad, bw = logoW + pad * 2, bh = logoH + pad * 2;
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.moveTo(bx + r, by);
-        ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
-        ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
-        ctx.arcTo(bx, by + bh, bx, by, r);
-        ctx.arcTo(bx, by, bx + bw, by, r);
-        ctx.closePath();
-        ctx.fill();
+        const x = Math.round((size - logoW) / 2);
+        const y = Math.round((size - logoH) / 2);
+
+        // A plain bounding-box rectangle wastes a lot of this wordmark's own
+        // box - it's mostly transparent above "SMART" (short letters sitting
+        // under the tall "OHEL"). Instead, build a backing that hugs the
+        // actual ink: draw the logo into an offscreen canvas, blur its alpha
+        // to dilate it a few px, then threshold back to fully opaque/
+        // transparent (so no half-gray edge pixels a QR decoder could
+        // misread) - the result is a soft halo shaped like the letters
+        // themselves, covering noticeably less of the QR than a rectangle.
+        const dilate = Math.max(3, Math.round(size * 0.02));
+        const off = document.createElement('canvas');
+        off.width = logoW + dilate * 4;
+        off.height = logoH + dilate * 4;
+        const octx = off.getContext('2d');
+        if (octx) {
+          octx.filter = `blur(${dilate}px)`;
+          octx.drawImage(logoImg, dilate * 2, dilate * 2, logoW, logoH);
+          octx.filter = 'none';
+          const maskData = octx.getImageData(0, 0, off.width, off.height);
+          const d = maskData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] > 20) { d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = 255; }
+            else d[i + 3] = 0;
+          }
+          octx.putImageData(maskData, 0, 0);
+          ctx.drawImage(off, x - dilate * 2, y - dilate * 2);
+        }
         ctx.drawImage(logoImg, x, y, logoW, logoH);
       };
       logoImg.src = logoDark;
