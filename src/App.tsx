@@ -254,6 +254,7 @@ const TRANSLATIONS = {
     driverRole: 'נהג',
     screenRole: 'מסך',
     seatsCountText: '{count} מושבים',
+    downloadQr: 'הורד QR',
     updateEmailButton: 'עדכן מייל',
     emailReportSimulatorTitle: 'סימולטור שליחת דוחות במייל:',
     showDailyReportButton: 'הצג דו"ח יומי (00:00)',
@@ -533,6 +534,7 @@ const TRANSLATIONS = {
     driverRole: 'Driver',
     screenRole: 'Screen',
     seatsCountText: '{count} seats',
+    downloadQr: 'Download QR',
     updateEmailButton: 'Update Email',
     emailReportSimulatorTitle: 'Email Reports Simulator:',
     showDailyReportButton: 'Show Daily Report (00:00)',
@@ -911,19 +913,64 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
   );
 }
 
-// A driver's personal scan QR code, generated client-side (not via the
+// Draws a QR code plus the centered Ohel Smart wordmark onto `canvas` at
+// `pixelSize` actual pixels (the caller decides that - see the two callers
+// below for why it differs between on-screen display and file download).
+// Uses error-correction level "H" (~30% of the code can be damaged/obscured
+// and still scan correctly) specifically because of the logo overlay - well
+// under that budget, and a standard technique that doesn't hurt scannability.
+// The logo is scaled to its own aspect ratio (a wide wordmark) rather than
+// squeezed into a square, so it stays a thin centered band that doesn't reach
+// toward the finder-pattern squares in the QR's corners. Backing is a plain
+// rounded rectangle - an ink-hugging mask was tried and rejected (looked
+// messy), and a clean per-word split isn't possible from this asset: "DAILY"
+// sits inside the counter of the "E" and "L" overlaps into where "SMART"
+// starts, so OHEL/SMART aren't two separable regions of the image.
+async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize: number, isCancelled?: () => boolean) {
+  await QRCode.toCanvas(canvas, data, {
+    errorCorrectionLevel: 'H',
+    width: pixelSize,
+    margin: 1,
+  });
+  if (isCancelled?.()) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  await new Promise<void>((resolve) => {
+    const logoImg = new Image();
+    logoImg.onload = () => {
+      if (isCancelled?.()) { resolve(); return; }
+      const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
+      const logoW = Math.round(pixelSize * 0.62);
+      const logoH = Math.round(logoW / aspect);
+      const x = Math.round((pixelSize - logoW) / 2);
+      const y = Math.round((pixelSize - logoH) / 2);
+      const pad = Math.round(pixelSize * 0.033), r = Math.round(pixelSize * 0.044);
+      const bx = x - pad, by = y - pad, bw = logoW + pad * 2, bh = logoH + pad * 2;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(bx + r, by);
+      ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
+      ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
+      ctx.arcTo(bx, by + bh, bx, by, r);
+      ctx.arcTo(bx, by, bx + bw, by, r);
+      ctx.closePath();
+      ctx.fill();
+      ctx.drawImage(logoImg, x, y, logoW, logoH);
+      resolve();
+    };
+    logoImg.onerror = () => resolve();
+    logoImg.src = logoDark;
+  });
+}
+
+// A driver's personal scan QR code, rendered client-side (not via the
 // external api.qrserver.com image API this used to use) so the brand mark
-// can be drawn in the center. Uses error-correction level "H" (~30% of the
-// code can be damaged/obscured and still scan correctly) specifically because
-// of that overlay - well under that budget, and a standard technique that
-// doesn't hurt scannability. The logo is scaled to its own aspect ratio (a
-// wide wordmark) rather than squeezed into a square, so it stays a thin
-// centered band that doesn't reach toward the finder-pattern squares in the
-// QR's corners. Backing is a plain rounded rectangle - an ink-hugging mask
-// was tried and rejected (looked messy), and a clean per-word split isn't
-// possible from this asset: "DAILY" sits inside the counter of the "E" and
-// "L" overlaps into where "SMART" starts, so OHEL/SMART aren't two separable
-// regions of the image.
+// can be drawn in the center. Renders at `size * devicePixelRatio` actual
+// pixels but displays at `size` CSS px - without this, the canvas's own
+// pixels get stretched across multiple physical pixels on any retina/phone
+// screen (devicePixelRatio > 1), which is what was making the logo look soft
+// - a plain <img> doesn't have this problem, but a canvas's intrinsic
+// resolution and display size are independent and both need setting.
 function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -931,43 +978,54 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let cancelled = false;
+    const dpr = window.devicePixelRatio || 1;
+    const pixelSize = Math.round(size * dpr);
+    canvas.width = pixelSize;
+    canvas.height = pixelSize;
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
 
-    QRCode.toCanvas(canvas, data, {
-      errorCorrectionLevel: 'H',
-      width: size,
-      margin: 1,
-    }).then(() => {
-      if (cancelled) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const logoImg = new Image();
-      logoImg.onload = () => {
-        if (cancelled) return;
-        const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
-        const logoW = Math.round(size * 0.62);
-        const logoH = Math.round(logoW / aspect);
-        const x = Math.round((size - logoW) / 2);
-        const y = Math.round((size - logoH) / 2);
-        const pad = 6, r = 8;
-        const bx = x - pad, by = y - pad, bw = logoW + pad * 2, bh = logoH + pad * 2;
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.moveTo(bx + r, by);
-        ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
-        ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
-        ctx.arcTo(bx, by + bh, bx, by, r);
-        ctx.arcTo(bx, by, bx + bw, by, r);
-        ctx.closePath();
-        ctx.fill();
-        ctx.drawImage(logoImg, x, y, logoW, logoH);
-      };
-      logoImg.src = logoDark;
-    }).catch(() => { /* leave a plain, logo-less canvas on any generation error */ });
+    drawQrWithLogo(canvas, data, pixelSize, () => cancelled)
+      .catch(() => { /* leave a plain, logo-less canvas on any generation error */ });
 
     return () => { cancelled = true; };
   }, [data, size]);
 
-  return <canvas ref={canvasRef} width={size} height={size} style={{ display: 'block' }} />;
+  return <canvas ref={canvasRef} style={{ display: 'block' }} />;
+}
+
+// Renders a driver's QR (at a generous fixed resolution, independent of any
+// on-screen canvas) plus their name printed underneath, and triggers a PNG
+// download - used by the admin's "download QR" button in the Users tab so a
+// manager can print/share an individual driver's code without that driver
+// having to be logged in themselves.
+async function downloadDriverQr(driverId: string, driverName: string) {
+  const qrPixelSize = 640;
+  const labelHeight = 72;
+  const qrCanvas = document.createElement('canvas');
+  const data = `${window.location.protocol}//${window.location.host}/?driverId=${driverId}`;
+  await drawQrWithLogo(qrCanvas, data, qrPixelSize);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = qrPixelSize;
+  canvas.height = qrPixelSize + labelHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(qrCanvas, 0, 0);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '600 26px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(driverName, canvas.width / 2, qrPixelSize + labelHeight / 2);
+
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `qr-${driverName.replace(/[^\p{L}\p{N}]+/gu, '-')}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 export default function App() {
@@ -5962,15 +6020,25 @@ export default function App() {
                                 </td>
                                 <td style={{ textAlign: 'center' }}>
                                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                    <button 
-                                      onClick={() => handleEditUserClick(u)} 
-                                      className="btn btn-secondary" 
-                                      style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                                    {u.role === 'driver' && (
+                                      <button
+                                        onClick={() => downloadDriverQr(u.id, u.name)}
+                                        className="btn btn-secondary"
+                                        title={t('downloadQr')}
+                                        style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                      >
+                                        <QrCode size={11} />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleEditUserClick(u)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
                                     >
                                       <Edit size={11} />
                                       {t('edit')}
                                     </button>
-                                    <button 
+                                    <button
                                       onClick={() => handleDeleteUser(u.id)} 
                                       className="btn btn-danger" 
                                       style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
@@ -6017,19 +6085,29 @@ export default function App() {
                             </div>
 
                             <div style={{ display: 'flex', gap: '10px', marginTop: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                              {u.role === 'driver' && (
+                                <button
+                                  onClick={() => downloadDriverQr(u.id, u.name)}
+                                  className="btn btn-secondary"
+                                  style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }}
+                                >
+                                  <QrCode size={14} />
+                                  {t('downloadQr')}
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleEditUserClick(u)}
-                                className="btn btn-secondary" 
-                                style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }} 
+                                className="btn btn-secondary"
+                                style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }}
                               >
                                 <Edit size={14} />
                                 {t('edit')}
                               </button>
-                              <button 
-                                onClick={() => handleDeleteUser(u.id)} 
-                                className="btn btn-danger" 
-                                style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }} 
-                                disabled={u.id === 'usr_admin'} 
+                              <button
+                                onClick={() => handleDeleteUser(u.id)}
+                                className="btn btn-danger"
+                                style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }}
+                                disabled={u.id === 'usr_admin'}
                               >
                                 <Trash size={14} />
                                 {t('delete')}
