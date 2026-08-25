@@ -912,14 +912,14 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
 }
 
 // A driver's personal scan QR code, generated client-side (not via the
-// external api.qrserver.com image API this used to use) so a small brand mark
+// external api.qrserver.com image API this used to use) so the brand mark
 // can be drawn in the center. Uses error-correction level "H" (~30% of the
 // code can be damaged/obscured and still scan correctly) specifically because
-// of that overlay - a logo covering ~20% of the code's area, well inside that
-// budget, is a standard technique and doesn't hurt scannability. The mark
-// itself is /favicon.svg (a simple gold "O" on navy) rather than the full
-// wordmark logo - src/assets/logo.png is a ~4:1 wide wordmark that would be
-// illegible squeezed into a small square in the middle of a QR code.
+// of that overlay - the wordmark here covers ~10% of the code's area, well
+// inside that budget, is a standard technique and doesn't hurt scannability.
+// The logo is scaled to its own aspect ratio (a wide wordmark) rather than
+// squeezed into a square, so it stays a thin centered band that doesn't reach
+// toward the finder-pattern squares in the QR's corners.
 function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -939,11 +939,13 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
       const logoImg = new Image();
       logoImg.onload = () => {
         if (cancelled) return;
-        const logoSize = Math.round(size * 0.2);
-        const x = (size - logoSize) / 2;
-        const y = (size - logoSize) / 2;
-        const pad = 5, r = 8;
-        const bx = x - pad, by = y - pad, bw = logoSize + pad * 2, bh = logoSize + pad * 2;
+        const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
+        const logoW = Math.round(size * 0.62);
+        const logoH = Math.round(logoW / aspect);
+        const x = (size - logoW) / 2;
+        const y = (size - logoH) / 2;
+        const pad = 6, r = 8;
+        const bx = x - pad, by = y - pad, bw = logoW + pad * 2, bh = logoH + pad * 2;
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.moveTo(bx + r, by);
@@ -953,9 +955,9 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
         ctx.arcTo(bx, by, bx + bw, by, r);
         ctx.closePath();
         ctx.fill();
-        ctx.drawImage(logoImg, x, y, logoSize, logoSize);
+        ctx.drawImage(logoImg, x, y, logoW, logoH);
       };
-      logoImg.src = '/favicon.svg';
+      logoImg.src = logoDark;
     }).catch(() => { /* leave a plain, logo-less canvas on any generation error */ });
 
     return () => { cancelled = true; };
