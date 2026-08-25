@@ -986,6 +986,17 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
     canvas.style.height = `${size}px`;
 
     drawQrWithLogo(canvas, data, pixelSize, () => cancelled)
+      .then(() => {
+        if (cancelled) return;
+        // The qrcode package's own canvas renderer sets canvas.style.width/
+        // height to match the pixel size it was given (see node_modules/
+        // qrcode/lib/renderer/canvas.js) - it runs after the lines above and
+        // clobbers them, which is what was making this render sharp but at
+        // pixelSize CSS px (e.g. 360) instead of the intended `size` (180).
+        // Reassert the real display size now that it's had its say.
+        canvas.style.width = `${size}px`;
+        canvas.style.height = `${size}px`;
+      })
       .catch(() => { /* leave a plain, logo-less canvas on any generation error */ });
 
     return () => { cancelled = true; };
