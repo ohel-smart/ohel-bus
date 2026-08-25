@@ -15,6 +15,7 @@ import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr, getDa
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
 const tdCentral: CSSProperties = { padding: '8px 12px', whiteSpace: 'nowrap' };
 import { Html5Qrcode } from 'html5-qrcode';
+import QRCode from 'qrcode';
 import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
 import './App.css';
@@ -908,6 +909,59 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
       </div>
     </div>
   );
+}
+
+// A driver's personal scan QR code, generated client-side (not via the
+// external api.qrserver.com image API this used to use) so a small brand mark
+// can be drawn in the center. Uses error-correction level "H" (~30% of the
+// code can be damaged/obscured and still scan correctly) specifically because
+// of that overlay - a logo covering ~20% of the code's area, well inside that
+// budget, is a standard technique and doesn't hurt scannability. The mark
+// itself is /favicon.svg (a simple gold "O" on navy) rather than the full
+// wordmark logo - src/assets/logo.png is a ~4:1 wide wordmark that would be
+// illegible squeezed into a small square in the middle of a QR code.
+function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let cancelled = false;
+
+    QRCode.toCanvas(canvas, data, {
+      errorCorrectionLevel: 'H',
+      width: size,
+      margin: 1,
+    }).then(() => {
+      if (cancelled) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const logoImg = new Image();
+      logoImg.onload = () => {
+        if (cancelled) return;
+        const logoSize = Math.round(size * 0.2);
+        const x = (size - logoSize) / 2;
+        const y = (size - logoSize) / 2;
+        const pad = 5, r = 8;
+        const bx = x - pad, by = y - pad, bw = logoSize + pad * 2, bh = logoSize + pad * 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(bx + r, by);
+        ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
+        ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
+        ctx.arcTo(bx, by + bh, bx, by, r);
+        ctx.arcTo(bx, by, bx + bw, by, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.drawImage(logoImg, x, y, logoSize, logoSize);
+      };
+      logoImg.src = '/favicon.svg';
+    }).catch(() => { /* leave a plain, logo-less canvas on any generation error */ });
+
+    return () => { cancelled = true; };
+  }, [data, size]);
+
+  return <canvas ref={canvasRef} width={size} height={size} style={{ display: 'block' }} />;
 }
 
 export default function App() {
@@ -4003,10 +4057,9 @@ export default function App() {
                       
                       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', display: 'inline-block', marginBottom: '20px' }}>
                         <div style={{ border: '2px solid #000', padding: '4px' }}>
-                          <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.protocol}//${window.location.host}/?driverId=${currentUser.id}`)}`} 
-                            alt="Driver QR Code" 
-                            style={{ display: 'block' }}
+                          <QrCodeWithLogo
+                            data={`${window.location.protocol}//${window.location.host}/?driverId=${currentUser.id}`}
+                            size={180}
                           />
                         </div>
                       </div>
