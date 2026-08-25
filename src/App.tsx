@@ -1010,7 +1010,11 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
 // download - used by the admin's "download QR" button in the Users tab so a
 // manager can print/share an individual driver's code without that driver
 // having to be logged in themselves.
-async function downloadDriverQr(driverId: string, driverName: string) {
+async function downloadDriverQr(driverId: string, driverNameRaw: string) {
+  // Stored names carry a role suffix (" (נהג)") added at approval/save time -
+  // strip it for display here, same as every other place in this file that
+  // shows a driver's name to a human (search ' (נהג)' for the rest).
+  const driverName = driverNameRaw.replace(' (נהג)', '');
   // 1000px, not the on-screen 180 - this is meant to be printed, and the
   // qrcode library renders straight from the QR's module grid (vector-exact,
   // no upscaling blur) so there's no real cost to asking for more pixels.
