@@ -1011,8 +1011,11 @@ function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
 // manager can print/share an individual driver's code without that driver
 // having to be logged in themselves.
 async function downloadDriverQr(driverId: string, driverName: string) {
-  const qrPixelSize = 640;
-  const labelHeight = 72;
+  // 1000px, not the on-screen 180 - this is meant to be printed, and the
+  // qrcode library renders straight from the QR's module grid (vector-exact,
+  // no upscaling blur) so there's no real cost to asking for more pixels.
+  const qrPixelSize = 1000;
+  const labelHeight = Math.round(qrPixelSize * 0.11);
   const qrCanvas = document.createElement('canvas');
   const data = `${window.location.protocol}//${window.location.host}/?driverId=${driverId}`;
   await drawQrWithLogo(qrCanvas, data, qrPixelSize);
@@ -1026,17 +1029,38 @@ async function downloadDriverQr(driverId: string, driverName: string) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(qrCanvas, 0, 0);
   ctx.fillStyle = '#0f172a';
-  ctx.font = '600 26px Arial, sans-serif';
+  ctx.font = `600 ${Math.round(qrPixelSize * 0.04)}px Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(driverName, canvas.width / 2, qrPixelSize + labelHeight / 2);
 
+  const filename = `qr-${driverName.replace(/[^\p{L}\p{N}]+/gu, '-')}.png`;
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return;
+
+  // The <a download> attribute is unreliable on mobile Safari for data:/blob:
+  // URLs - tapping it just opens the image instead of saving a file, which is
+  // what made this "not really work" for the admin testing on a phone. Prefer
+  // the native share sheet (its own "Save Image" always works there) and only
+  // fall back to a direct download link on browsers where that isn't offered.
+  const file = new File([blob], filename, { type: 'image/png' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: driverName });
+      return;
+    } catch {
+      // user cancelled the share sheet, or share failed - fall through to a direct download
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = canvas.toDataURL('image/png');
-  a.download = `qr-${driverName.replace(/[^\p{L}\p{N}]+/gu, '-')}.png`;
+  a.href = url;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 export default function App() {
