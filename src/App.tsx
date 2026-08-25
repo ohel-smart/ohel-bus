@@ -132,6 +132,7 @@ const TRANSLATIONS = {
     registrationRejected: 'הבקשה נדחתה',
     approveRegistrationFailed: 'האישור נכשל (בעיית רשת?) - הבקשה נשארה ברשימה, נסה שוב',
     rejectRegistrationFailed: 'הדחייה נכשלה (בעיית רשת?), נסה שוב',
+    saveUserFailed: 'השמירה נכשלה (בעיית רשת?), נסה שוב',
     usersListTitle: 'סגל סדרנים ונהגים במערכת',
     delete: 'מחק',
     emailConfig: 'הגדרות הפצת דוחות ומיילים',
@@ -410,6 +411,7 @@ const TRANSLATIONS = {
     registrationRejected: 'Request rejected',
     approveRegistrationFailed: 'Approval failed (network issue?) - the request is still in the list, try again',
     rejectRegistrationFailed: 'Rejection failed (network issue?), try again',
+    saveUserFailed: 'Save failed (network issue?), try again',
     usersListTitle: 'Staff & Drivers in the System',
     delete: 'Delete',
     emailConfig: 'Reports Distribution & Emails Settings',
@@ -2145,7 +2147,7 @@ export default function App() {
     triggerToast(t('bulkScansDeleted', { count: ids.size }), 'success');
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     // A screen isn't a real staff member, so the "phone" field (repurposed as a
     // free-text screen location note) isn't required for that role.
@@ -2155,27 +2157,37 @@ export default function App() {
     }
 
     const cleanCode = newUserCode.trim();
-    if (users.some(u => u.code === cleanCode)) {
-      triggerToast(t('codeDuplicate'), 'danger');
-      return;
-    }
-
     const id = 'usr_' + Math.random().toString(36).substr(2, 9);
     const roleSuffix = newUserRole === 'driver' ? ' (נהג)' : newUserRole === 'dispatcher' ? ' (סדרן)' : newUserRole === 'screen' ? ' (מסך)' : ' (מנהל)';
 
-    dbService.saveUser({
-      id,
-      name: newUserName + roleSuffix,
-      phone: newUserPhone,
-      role: newUserRole,
-      code: cleanCode,
-      capacity: newUserRole === 'driver' ? newUserCapacity : undefined,
-      isBigBus: newUserRole === 'driver' ? newUserIsBigBus : undefined,
-      canSelfReport: newUserRole === 'driver' ? newUserCanSelfReport : undefined,
-      createdAt: new Date().toISOString()
-    });
+    try {
+      // Re-fetch right before checking, instead of trusting the local `users`
+      // state (which can lag behind real Firestore data) - a false "code
+      // already taken" here would block a real creation, and skipping the
+      // check entirely could silently let a real duplicate through.
+      await dbService.fetchDataFromSheets();
+      if (dbService.getUsers().some(u => u.code === cleanCode)) {
+        triggerToast(t('codeDuplicate'), 'danger');
+        return;
+      }
 
-    triggerToast(t('userCreatedText', { name: newUserName }), 'success');
+      await dbService.saveUser({
+        id,
+        name: newUserName + roleSuffix,
+        phone: newUserPhone,
+        role: newUserRole,
+        code: cleanCode,
+        capacity: newUserRole === 'driver' ? newUserCapacity : undefined,
+        isBigBus: newUserRole === 'driver' ? newUserIsBigBus : undefined,
+        canSelfReport: newUserRole === 'driver' ? newUserCanSelfReport : undefined,
+        createdAt: new Date().toISOString()
+      });
+
+      triggerToast(t('userCreatedText', { name: newUserName }), 'success');
+    } catch (e) {
+      triggerToast(t('saveUserFailed'), 'danger');
+      return;
+    }
 
     // Reset Form
     setNewUserName('');
@@ -2285,7 +2297,7 @@ export default function App() {
     setEditUserCanSelfReport(user.canSelfReport || false);
   };
 
-  const handleSaveEditUser = (e: React.FormEvent) => {
+  const handleSaveEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserForEdit) return;
     if (!editUserName || !editUserCode || (editUserRole !== 'screen' && !editUserPhone)) {
@@ -2294,11 +2306,6 @@ export default function App() {
     }
 
     const cleanCode = editUserCode.trim();
-    if (users.some(u => u.code === cleanCode && u.id !== selectedUserForEdit.id)) {
-      triggerToast(t('codeDuplicate'), 'danger');
-      return;
-    }
-
     let roleSuffix = '';
     if (editUserRole === 'driver') roleSuffix = ' (נהג)';
     else if (editUserRole === 'dispatcher') roleSuffix = ' (סדרן)';
@@ -2316,15 +2323,29 @@ export default function App() {
       canSelfReport: editUserRole === 'driver' ? editUserCanSelfReport : undefined
     };
 
-    dbService.saveUser(updatedUser);
-    triggerToast(lang === 'he' ? `המשתמש ${editUserName} עודכן בהצלחה` : `User ${editUserName} updated successfully`, 'success');
-    
-    if (currentUser && currentUser.id === selectedUserForEdit.id) {
-      localStorage.setItem('tp_current_user', JSON.stringify(updatedUser));
-      setCurrentUser(updatedUser);
+    try {
+      // Re-fetch right before checking, instead of trusting the local `users`
+      // state (which can lag behind real Firestore data) - a false "code
+      // already taken" here used to block legitimate edits, including simply
+      // changing the admin's own login code.
+      await dbService.fetchDataFromSheets();
+      if (dbService.getUsers().some(u => u.code === cleanCode && u.id !== selectedUserForEdit.id)) {
+        triggerToast(t('codeDuplicate'), 'danger');
+        return;
+      }
+
+      await dbService.saveUser(updatedUser);
+      triggerToast(lang === 'he' ? `המשתמש ${editUserName} עודכן בהצלחה` : `User ${editUserName} updated successfully`, 'success');
+
+      if (currentUser && currentUser.id === selectedUserForEdit.id) {
+        localStorage.setItem('tp_current_user', JSON.stringify(updatedUser));
+        setCurrentUser(updatedUser);
+      }
+
+      setSelectedUserForEdit(null);
+    } catch (e) {
+      triggerToast(t('saveUserFailed'), 'danger');
     }
-    
-    setSelectedUserForEdit(null);
   };
 
   const handleSaveConfig = () => {
