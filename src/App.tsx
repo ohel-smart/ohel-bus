@@ -1995,17 +1995,6 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, logicalToday]);
 
-  // Dispatcher's Arrivals tab: the last 2 hours of departures, regardless of
-  // logical-day boundary (a scan just before an Erev Shabbat early cutover
-  // should still show up), recomputed every tick of currentLiveTime so a bus
-  // that departed just over 2 hours ago actually drops off the list.
-  const recentScans = useMemo(() => {
-    const twoHoursAgo = currentLiveTime.getTime() - 2 * 60 * 60 * 1000;
-    return scans
-      .filter(s => new Date(s.scannedAt).getTime() >= twoHoursAgo)
-      .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
-  }, [scans, currentLiveTime]);
-
   const activeDriversToday = useMemo(() => {
     return activeLocations.filter(loc => 
       loc.role === 'driver' && 
@@ -3658,25 +3647,25 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Last 2 Hours: Departures + Arrival Times */}
+                    {/* Today's Departures + Arrival Times */}
                     <div className="card" style={{ padding: '24px', textAlign: lang === 'he' ? 'right' : 'left' }}>
                       <h3 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, color: '#fff' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Clock size={18} color="var(--accent)" />
-                          <span>{lang === 'he' ? 'אוטובוסים - שעתיים אחרונות' : 'Buses - Last 2 Hours'}</span>
+                          <span>{lang === 'he' ? 'לו"ז יציאות להיום' : "Today's Departures"}</span>
                         </div>
                         <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                          {recentScans.length}
+                          {todayScans.length}
                         </span>
                       </h3>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-                        {recentScans.length === 0 ? (
+                        {todayScans.length === 0 ? (
                           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                            {lang === 'he' ? 'אין נסיעות בשעתיים האחרונות' : 'No departures in the last 2 hours'}
+                            {lang === 'he' ? 'אין נסיעות היום' : 'No departures today'}
                           </div>
                         ) : (
-                          recentScans.map(scan => (
+                          todayScans.map(scan => (
                             <div
                               key={scan.id}
                               style={{
