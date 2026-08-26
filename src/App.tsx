@@ -4196,7 +4196,6 @@ export default function App() {
                               </p>
                               <input
                                 type="text"
-                                inputMode="numeric"
                                 className="form-input"
                                 value={noPhoneCode}
                                 onChange={(e) => setNoPhoneCode(e.target.value)}
