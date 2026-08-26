@@ -259,35 +259,6 @@ class DBService {
     this.listeners.forEach(cb => cb());
   }
 
-  // --- Online/Offline Handling ---
-  public isOffline(): boolean {
-    return localStorage.getItem('tp_is_offline') === 'true';
-  }
-
-  public setOfflineStatus(offline: boolean) {
-    localStorage.setItem('tp_is_offline', String(offline));
-    if (!offline) {
-      this.syncOfflineScans();
-    }
-    this.notify();
-  }
-
-  private async syncOfflineScans() {
-    const offlineScans: Scan[] = JSON.parse(localStorage.getItem('tp_offline_scans') || '[]');
-    if (offlineScans.length > 0) {
-      for (const scan of offlineScans) {
-        await this.writeScan(scan);
-      }
-      localStorage.setItem('tp_offline_scans', JSON.stringify([]));
-      this.notify();
-    }
-  }
-
-  public getOfflineScansCount(): number {
-    const offlineScans: Scan[] = JSON.parse(localStorage.getItem('tp_offline_scans') || '[]');
-    return offlineScans.length;
-  }
-
   public loginWithCode(code: string): User | null {
     return this.usersCache.find(u => u.code === code) || null;
   }
@@ -413,21 +384,15 @@ class DBService {
       expectedArrivalTime
     };
 
-    if (this.isOffline()) {
-      const offlineScans: Scan[] = JSON.parse(localStorage.getItem('tp_offline_scans') || '[]');
-      offlineScans.push(newScan);
-      localStorage.setItem('tp_offline_scans', JSON.stringify(offlineScans));
-    } else {
-      this.scansCache = [...this.scansCache, newScan];
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
-      this.notify();
-      // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
-      // fails (e.g. a dropped connection right at scan time) rather than seeing a
-      // false "success" while the ride silently never reaches Firestore or the
-      // WhatsApp group. The local cache write above already happened, so the scan
-      // still shows in this dispatcher's own view even if the sync below fails.
-      await this.writeScan(newScan);
-    }
+    this.scansCache = [...this.scansCache, newScan];
+    localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+    this.notify();
+    // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
+    // fails (e.g. a dropped connection right at scan time) rather than seeing a
+    // false "success" while the ride silently never reaches Firestore or the
+    // WhatsApp group. The local cache write above already happened, so the scan
+    // still shows in this dispatcher's own view even if the sync below fails.
+    await this.writeScan(newScan);
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection, etaMinutes);

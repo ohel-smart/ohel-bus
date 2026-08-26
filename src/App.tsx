@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import confetti from 'canvas-confetti';
 import { 
-  MapPin, Users, Calendar, WifiOff, QrCode, LogOut,
+  MapPin, Users, Calendar, QrCode, LogOut,
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
@@ -158,8 +158,6 @@ const TRANSLATIONS = {
     screenCodeLoginRejected: 'קוד זה מיועד למסך תצוגה בלבד ואינו מקנה גישה למערכת הניהול.',
     enterPasscode: 'נא להזין קוד כניסה',
     logoutSuccess: 'התנתקת מהמערכת בהצלחה',
-    offlineNotice: 'המכשיר עבר למצב אופליין (ללא קליטה). סריקות יישמרו מקומית.',
-    onlineNotice: 'החיבור חזר! כל הסריקות שנעשו אופליין סונכרנו בהצלחה לענן.',
     selectDriverError: 'נא לבחור נהג לסריקה',
     passengersError: 'נא להזין מספר נוסעים תקין',
     scanSuccess: 'הסריקה בוצעה בהצלחה ע"י {dispatcher} עבור הנהג {driver}',
@@ -199,10 +197,6 @@ const TRANSLATIONS = {
     near770: 'קרוב ל-770',
     nearOhel: 'קרוב לאוהל',
     realGps: 'GPS אמיתי',
-    signal: 'קליטה:',
-    offline: 'מנותק',
-    online: 'מחובר',
-    offlineActiveWarning: 'מצב אופליין פעיל! הסריקות יישמרו מקומית ({count} ממתינים)',
     backToAutoGps: 'חזור לזיהוי GPS אוטומטי ({loc})',
     saveAndSendScan: 'שמור ושלח סריקה',
     myScansTodayTitle: 'הסריקות שביצעת היום',
@@ -438,8 +432,6 @@ const TRANSLATIONS = {
     screenCodeLoginRejected: 'This code is for the display board only and does not grant access to the management system.',
     enterPasscode: 'Please enter login code',
     logoutSuccess: 'Logged out successfully',
-    offlineNotice: 'Device is offline (no signal). Scans will be saved locally.',
-    onlineNotice: 'Connection restored! All offline scans successfully synced to cloud.',
     selectDriverError: 'Please select a driver for scanning',
     passengersError: 'Please enter a valid passenger count',
     scanSuccess: 'Scan recorded successfully by {dispatcher} for driver {driver}',
@@ -479,10 +471,6 @@ const TRANSLATIONS = {
     near770: 'Near 770',
     nearOhel: 'Near Ohel',
     realGps: 'Real GPS',
-    signal: 'Signal:',
-    offline: 'Offline',
-    online: 'Online',
-    offlineActiveWarning: 'Offline mode active! Scans saved locally ({count} pending)',
     backToAutoGps: 'Back to Auto GPS detection ({loc})',
     saveAndSendScan: 'Save & Send Scan',
     myScansTodayTitle: 'Your Scans Today',
@@ -1107,7 +1095,6 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [activeLocations, setActiveLocations] = useState<ActiveLocation[]>([]);
-  const [isOffline, setIsOffline] = useState(false);
   const [currentLiveTime, setCurrentLiveTime] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -1275,7 +1262,6 @@ export default function App() {
       setUsers(dbService.getUsers());
       setScans(dbService.getScans());
       setActiveLocations(dbService.getActiveLocations());
-      setIsOffline(dbService.isOffline());
       setPendingRegistrations(dbService.getPendingRegistrations());
     };
 
@@ -2187,17 +2173,6 @@ export default function App() {
       setIsLoggingOut(false);
       triggerToast(t('logoutSuccess'), 'success');
     }, 30);
-  };
-
-  const handleOfflineToggle = () => {
-    const newOffline = !isOffline;
-    dbService.setOfflineStatus(newOffline);
-    if (newOffline) {
-      triggerToast(t('offlineNotice'), 'danger');
-    } else {
-      triggerToast(t('onlineNotice'), 'success');
-      confetti({ particleCount: 80, spread: 60, origin: { y: 0.8 } });
-    }
   };
 
 
@@ -3404,41 +3379,30 @@ export default function App() {
                 </div>
               </div>
 
-              {/* GPS & Network Simulator panel for Dispatcher Testing */}
+              {/* GPS Simulator panel for Dispatcher Testing */}
               <div style={{ padding: '8px 16px', background: 'rgba(255, 255, 255, 0.02)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>{t('dispatcherGps')}</span>
-                  <button 
+                  <button
                     onClick={() => setGpsSource('770')}
-                    className={`btn`} 
+                    className={`btn`}
                     style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '4px', background: gpsSource === '770' ? 'var(--accent)' : 'rgba(255,255,255,0.05)', color: gpsSource === '770' ? '#000' : '#fff' }}
                   >
                     {t('near770')}
                   </button>
-                  <button 
+                  <button
                     onClick={() => setGpsSource('ohel')}
                     className={`btn`}
                     style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '4px', background: gpsSource === 'ohel' ? 'var(--info)' : 'rgba(255,255,255,0.05)', color: gpsSource === 'ohel' ? '#fff' : '#fff' }}
                   >
                     {t('nearOhel')}
                   </button>
-                  <button 
+                  <button
                     onClick={() => setGpsSource('real')}
                     className={`btn`}
                     style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '4px', background: gpsSource === 'real' ? 'var(--success)' : 'rgba(255,255,255,0.05)', color: gpsSource === 'real' ? '#000' : '#fff' }}
                   >
                     {t('realGps')}
-                  </button>
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{t('signal')}</span>
-                  <button 
-                    onClick={handleOfflineToggle}
-                    className="btn" 
-                    style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '4px', background: isOffline ? 'var(--danger-bg)' : 'var(--success-bg)', color: isOffline ? '#fca5a5' : '#a7f3d0', border: isOffline ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(16,185,129,0.2)' }}
-                  >
-                    {isOffline ? t('offline') : t('online')}
                   </button>
                 </div>
               </div>
@@ -3450,13 +3414,6 @@ export default function App() {
                       <QrCode size={18} color="var(--accent)" />
                       {t('registerTrip')}
                     </h3>
-
-                    {isOffline && (
-                      <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: '#fca5a5', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <WifiOff size={15} />
-                        <span>{t('offlineActiveWarning', { count: dbService.getOfflineScansCount() })}</span>
-                      </div>
-                    )}
 
                     {/* In-app Camera Scanner UI component */}
                     <div style={{ marginBottom: '20px' }}>
