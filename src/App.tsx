@@ -1161,8 +1161,9 @@ export default function App() {
   // silent between tap and the success/error toast.
   const [isSavingScan, setIsSavingScan] = useState(false);
 
-  // Simulation GPS overrides for dispatcher
-  const [gpsSource, setGpsSource] = useState<'real' | '770' | 'ohel'>('770');
+  // Simulation GPS overrides for dispatcher - defaults to the dispatcher's
+  // actual device location rather than a simulated fixed point.
+  const [gpsSource, setGpsSource] = useState<'real' | '770' | 'ohel'>('real');
 
   // Scanner Form state
   const [selectedDriverId, setSelectedDriverId] = useState('');
