@@ -1995,6 +1995,17 @@ export default function App() {
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
   }, [scans, logicalToday]);
 
+  // Dispatcher's Arrivals tab: the last 2 hours of departures, regardless of
+  // logical-day boundary (a scan just before an Erev Shabbat early cutover
+  // should still show up), recomputed every tick of currentLiveTime so a bus
+  // that departed just over 2 hours ago actually drops off the list.
+  const recentScans = useMemo(() => {
+    const twoHoursAgo = currentLiveTime.getTime() - 2 * 60 * 60 * 1000;
+    return scans
+      .filter(s => new Date(s.scannedAt).getTime() >= twoHoursAgo)
+      .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
+  }, [scans, currentLiveTime]);
+
   const activeDriversToday = useMemo(() => {
     return activeLocations.filter(loc => 
       loc.role === 'driver' && 
@@ -3647,56 +3658,61 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Today's Departures Schedule */}
+                    {/* Last 2 Hours: Departures + Arrival Times */}
                     <div className="card" style={{ padding: '24px', textAlign: lang === 'he' ? 'right' : 'left' }}>
                       <h3 className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0, color: '#fff' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Clock size={18} color="var(--accent)" />
-                          <span>{lang === 'he' ? 'לו"ז יציאות להיום' : "Today's Departures"}</span>
+                          <span>{lang === 'he' ? 'אוטובוסים - שעתיים אחרונות' : 'Buses - Last 2 Hours'}</span>
                         </div>
                         <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                          {todayScans.length}
+                          {recentScans.length}
                         </span>
                       </h3>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
-                        {todayScans.length === 0 ? (
+                        {recentScans.length === 0 ? (
                           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                            {lang === 'he' ? 'אין נסיעות היום' : 'No departures today'}
+                            {lang === 'he' ? 'אין נסיעות בשעתיים האחרונות' : 'No departures in the last 2 hours'}
                           </div>
                         ) : (
-                          todayScans.map(scan => (
-                            <div 
-                              key={scan.id} 
-                              style={{ 
-                                background: 'rgba(255, 255, 255, 0.02)', 
-                                padding: '12px 14px', 
-                                borderRadius: '8px', 
-                                border: '1px solid var(--border-color)', 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'center' 
+                          recentScans.map(scan => (
+                            <div
+                              key={scan.id}
+                              style={{
+                                background: 'rgba(255, 255, 255, 0.02)',
+                                padding: '12px 14px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-color)',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
                               }}
                             >
                               <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                                   <strong style={{ color: '#fff', fontSize: '14px' }}>{scan.driverName.replace(' (נהג)', '')}</strong>
-                                  <span 
-                                    style={{ 
-                                      fontSize: '10px', 
-                                      fontWeight: 'bold', 
-                                      padding: '2px 6px', 
-                                      borderRadius: '4px', 
+                                  <span
+                                    style={{
+                                      fontSize: '10px',
+                                      fontWeight: 'bold',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
                                       background: scan.departureLocation === '770' ? 'rgba(226, 176, 78, 0.15)' : 'rgba(6, 182, 212, 0.15)',
                                       color: scan.departureLocation === '770' ? 'var(--accent)' : 'var(--accent-route-ohel)',
                                       border: scan.departureLocation === '770' ? '1px solid rgba(226, 176, 78, 0.2)' : '1px solid rgba(6, 182, 212, 0.2)'
                                     }}
                                   >
-                                    {scan.departureLocation === '770' ? (lang === 'he' ? 'מ-770' : 'From 770') : (lang === 'he' ? 'מהאוהל' : 'From Ohel')}
+                                    {scan.departureLocation === '770' ? (lang === 'he' ? 'מ-770 לאוהל' : 'From 770 to Ohel') : (lang === 'he' ? 'מהאוהל ל-770' : 'From Ohel to 770')}
                                   </span>
                                 </div>
                                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                   {lang === 'he' ? 'יציאה בשעה' : 'Departure time'}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span style={{ display: 'block', fontSize: '11px', color: scan.actualArrivalTime ? '#4ade80' : 'var(--text-secondary)', marginTop: '2px' }}>
+                                  {scan.actualArrivalTime
+                                    ? `${lang === 'he' ? 'הגיע בשעה' : 'Arrived at'}: ${new Date(scan.actualArrivalTime).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`
+                                    : `${lang === 'he' ? 'צפוי להגיע' : 'Expected'}: ${scan.expectedArrivalTime || (lang === 'he' ? 'מחשב...' : 'calc...')}`}
                                 </span>
                               </div>
                               <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
