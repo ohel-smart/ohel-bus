@@ -159,6 +159,7 @@ const TRANSLATIONS = {
     enterPasscode: 'נא להזין קוד כניסה',
     logoutSuccess: 'התנתקת מהמערכת בהצלחה',
     selectDriverError: 'נא לבחור נהג לסריקה',
+    driverScanBlocked: '{name} עדיין בנסיעה - אפשר לסרוק שוב בעוד כ-{minutes} דקות',
     passengersError: 'נא להזין מספר נוסעים תקין',
     scanSuccess: 'הסריקה בוצעה בהצלחה ע"י {dispatcher} עבור הנהג {driver}',
     statusUpdated: 'הסטטוס שלך עודכן ל: {status}',
@@ -433,6 +434,7 @@ const TRANSLATIONS = {
     enterPasscode: 'Please enter login code',
     logoutSuccess: 'Logged out successfully',
     selectDriverError: 'Please select a driver for scanning',
+    driverScanBlocked: '{name} is still on a trip - can be scanned again in about {minutes} min',
     passengersError: 'Please enter a valid passenger count',
     scanSuccess: 'Scan recorded successfully by {dispatcher} for driver {driver}',
     statusUpdated: 'Your status has been updated to: {status}',
@@ -1287,6 +1289,24 @@ export default function App() {
     };
   }, []);
 
+  // A driver who's still mid-trip (more than 5 minutes from their expected
+  // arrival) can't be scanned again - guards against an accidental double-scan
+  // creating two simultaneous "active" trips for the same driver, which would
+  // confuse every view that derives a driver's status from their single latest
+  // scan (getActiveLocations() etc). Returns null if scanning is allowed, or
+  // the driver's remaining minutes if it's blocked.
+  const getDriverScanBlockMinutes = (driverId: string): number | null => {
+    const driverScans = scans
+      .filter(s => s.driverId === driverId)
+      .sort((a, b) => dbService.parseScannedAt(b.scannedAt, b.logicalDate).getTime() - dbService.parseScannedAt(a.scannedAt, a.logicalDate).getTime());
+    const latestScan = driverScans[0];
+    if (!latestScan || latestScan.actualArrivalTime) return null;
+    const startTime = dbService.parseScannedAt(latestScan.scannedAt, latestScan.logicalDate).getTime();
+    const duration = latestScan.etaMinutes || 25;
+    const remainingMinutes = Math.round((startTime + duration * 60000 - currentLiveTime.getTime()) / 60000);
+    return remainingMinutes > 5 ? remainingMinutes : null;
+  };
+
   // Auto-pop the pending-registrations modal for the admin whenever there's at
   // least one request that hasn't already been shown-and-dismissed this
   // session - covers both "just opened the app" and "a new one arrived live".
@@ -1311,10 +1331,15 @@ export default function App() {
     if (driverIdParam) {
       const matched = users.find(u => u.id === driverIdParam && u.role === 'driver');
       if (matched) {
-        setScannerModalDriver(matched);
-        setScannerModalPassengers(0);
-        setActiveTab('scan');
-        triggerToast(t('externalQrSuccess'), 'success');
+        const blockedMinutes = getDriverScanBlockMinutes(matched.id);
+        if (blockedMinutes !== null) {
+          triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
+        } else {
+          setScannerModalDriver(matched);
+          setScannerModalPassengers(0);
+          setActiveTab('scan');
+          triggerToast(t('externalQrSuccess'), 'success');
+        }
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
@@ -1342,11 +1367,16 @@ export default function App() {
 
       if (matchedDriver) {
         const targetDriver = matchedDriver;
-        
-        // Open the passenger modal overlay instantly (synchronously)!
-        setScannerModalDriver(targetDriver);
-        setScannerModalPassengers(0);
-        
+        const blockedMinutes = getDriverScanBlockMinutes(targetDriver.id);
+
+        // Open the passenger modal overlay instantly (synchronously)! - unless
+        // this driver is still mid-trip, in which case just stop the camera and
+        // explain why below instead of letting a double-scan through.
+        if (blockedMinutes === null) {
+          setScannerModalDriver(targetDriver);
+          setScannerModalPassengers(0);
+        }
+
         // Stop the camera asynchronously in the background
         if (html5QrCode.isScanning) {
           html5QrCode.stop().then(() => {
@@ -1359,7 +1389,12 @@ export default function App() {
         } else {
           setShowCameraScanner(false);
         }
-        triggerToast(t('qrSuccess'), 'success');
+
+        if (blockedMinutes !== null) {
+          triggerToast(t('driverScanBlocked', { name: targetDriver.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
+        } else {
+          triggerToast(t('qrSuccess'), 'success');
+        }
       } else {
         triggerToast(t('qrInvalid'), 'danger');
       }
@@ -3456,9 +3491,14 @@ export default function App() {
                             if (drvId) {
                               const matched = users.find(u => u.id === drvId && u.role === 'driver');
                               if (matched) {
-                                setScannerModalDriver(matched);
-                                setScannerModalPassengers(0);
+                                const blockedMinutes = getDriverScanBlockMinutes(matched.id);
                                 setSelectedDriverId('');
+                                if (blockedMinutes !== null) {
+                                  triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
+                                } else {
+                                  setScannerModalDriver(matched);
+                                  setScannerModalPassengers(0);
+                                }
                               }
                             }
                           }}
@@ -4235,6 +4275,14 @@ export default function App() {
                                   onClick={async () => {
                                     if (noPhonePassengers <= 0) {
                                       triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+                                      return;
+                                    }
+                                    const blockedMinutes = getDriverScanBlockMinutes(currentUser.id);
+                                    if (blockedMinutes !== null) {
+                                      triggerToast(t('driverScanBlocked', { name: currentUser.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
+                                      setNoPhoneShowForm(false);
+                                      setNoPhoneDispatcher(null);
+                                      setNoPhonePassengers(0);
                                       return;
                                     }
                                     const disp = noPhoneDispatcher;
@@ -6621,6 +6669,16 @@ export default function App() {
                     onClick={async () => {
                       if (scannerModalPassengers <= 0) {
                         triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+                        return;
+                      }
+                      // Re-checked here too (not just when the modal opened) in case
+                      // the driver's status changed while this dispatcher was still
+                      // filling in the passenger count.
+                      const stillBlockedMinutes = scannerModalDriver ? getDriverScanBlockMinutes(scannerModalDriver.id) : null;
+                      if (stillBlockedMinutes !== null && scannerModalDriver) {
+                        triggerToast(t('driverScanBlocked', { name: scannerModalDriver.name.replace(' (נהג)', ''), minutes: stillBlockedMinutes }), 'danger');
+                        setScannerModalDriver(null);
+                        setScannerModalPassengers(0);
                         return;
                       }
 
