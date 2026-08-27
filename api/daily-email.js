@@ -41,6 +41,13 @@ function nyDateStr(d) {
   return `${g('year')}-${g('month')}-${g('day')}`;
 }
 
+function prevDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
 // The UTC instant for a given HH:MM wall-clock moment in New York on `dateStr`.
 function nyTimeUTC(dateStr, hour, minute) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -98,17 +105,35 @@ export default async function handler(req, res) {
   const db = getDb();
   if (!db) return res.status(500).json({ error: 'FIREBASE_KEY not configured' });
 
-  const target = nyDateStr(new Date());
-  const triggerMoment = getTodaysTriggerMoment(target);
-  if (Date.now() < triggerMoment.getTime()) {
-    return res.status(200).json({ ok: true, skipped: true, reason: 'not yet time', date: target, triggerMoment: triggerMoment.toISOString() });
-  }
-
-  // Guards against sending the same day's summary twice from repeated pings.
   const stateRef = db.collection('bot_state').doc('daily_email');
   const stateSnap = await stateRef.get();
-  if (stateSnap.exists && stateSnap.data().lastEmailDate === target) {
-    return res.status(200).json({ ok: true, skipped: true, reason: 'already sent for this date', date: target });
+  const lastSent = stateSnap.exists ? stateSnap.data().lastEmailDate : null;
+
+  const today = nyDateStr(new Date());
+  const yesterday = prevDateStr(today);
+
+  // Yesterday's own trigger moment necessarily already passed - it was up to a
+  // full day ago. If it was never sent, catch up on it now, whatever time it
+  // happens to be. This is the actual fix: the old version only compared
+  // `now` against *today's* freshly-recomputed trigger moment, which gave a
+  // real send window of about ONE MINUTE per day (between 23:59 NY and the
+  // midnight rollover a minute later, after which `target` silently became
+  // tomorrow's date and that day's email was skipped forever). GitHub
+  // Actions' cron pings routinely land 30-90+ minutes apart on this repo
+  // (not the configured 10 - see workflow comment), so that one-minute
+  // window was being missed almost every night.
+  let target;
+  if (lastSent !== yesterday) {
+    target = yesterday;
+  } else {
+    const triggerMoment = getTodaysTriggerMoment(today);
+    if (Date.now() < triggerMoment.getTime()) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'not yet time', date: today, triggerMoment: triggerMoment.toISOString() });
+    }
+    if (lastSent === today) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'already sent for this date', date: today });
+    }
+    target = today;
   }
 
   let dayScans = [];
