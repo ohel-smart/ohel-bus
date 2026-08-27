@@ -3551,7 +3551,7 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.expectedArrivalTime || (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime ? (lang === 'he' ? `בערך ${arr.expectedArrivalTime}` : `approx. ${arr.expectedArrivalTime}`) : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -3594,7 +3594,7 @@ export default function App() {
                                         animation: 'pulse 2s infinite'
                                       }}
                                     >
-                                      {arr.expectedArrivalTime || (lang === 'he' ? 'מחשב...' : 'calc...')}
+                                      {arr.expectedArrivalTime ? (lang === 'he' ? `בערך ${arr.expectedArrivalTime}` : `approx. ${arr.expectedArrivalTime}`) : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                     </span>
                                   </div>
                                 </div>
@@ -3659,7 +3659,7 @@ export default function App() {
                                 <span style={{ display: 'block', fontSize: '11px', color: scan.actualArrivalTime ? '#4ade80' : 'var(--text-secondary)', marginTop: '2px' }}>
                                   {scan.actualArrivalTime
                                     ? `${lang === 'he' ? 'הגיע בשעה' : 'Arrived at'}: ${new Date(scan.actualArrivalTime).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`
-                                    : `${lang === 'he' ? 'צפוי להגיע' : 'Expected'}: ${scan.expectedArrivalTime || (lang === 'he' ? 'מחשב...' : 'calc...')}`}
+                                    : `${lang === 'he' ? 'צפוי להגיע' : 'Expected'}: ${scan.expectedArrivalTime ? (lang === 'he' ? `בערך ${scan.expectedArrivalTime}` : `approx. ${scan.expectedArrivalTime}`) : (lang === 'he' ? 'מחשב...' : 'calc...')}`}
                                 </span>
                               </div>
                               <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
@@ -4004,7 +4004,7 @@ export default function App() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '22px' }}>
                         <div style={{ background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '14px 10px' }}>
                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
-                            {lang === 'he' ? 'שעת הגעה צפויה' : 'Expected Arrival'}
+                            {lang === 'he' ? 'שעת הגעה צפויה (בערך)' : 'Expected Arrival (approx.)'}
                           </span>
                           <strong style={{ fontSize: '26px', color: '#fff', display: 'block', fontFamily: 'monospace', lineHeight: 1.1 }}>
                             {expectedTimeStr}
@@ -4499,7 +4499,7 @@ export default function App() {
                                     }}
                                   >
                                     {arr.expectedArrivalTime
-                                      ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
+                                      ? (lang === 'he' ? `עוד בערך ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in approx. ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
                                       : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
@@ -4543,7 +4543,7 @@ export default function App() {
                                     }}
                                   >
                                     {arr.expectedArrivalTime
-                                      ? (lang === 'he' ? `עוד ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
+                                      ? (lang === 'he' ? `עוד בערך ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} דק'` : `in approx. ${Math.max(0, Math.round((arr.arrivalTimeMs - currentLiveTime.getTime()) / 60000))} min`)
                                       : (lang === 'he' ? 'מחשב...' : 'calc...')}
                                   </span>
                                 </div>
@@ -4809,7 +4809,7 @@ export default function App() {
                                         {lang === 'he' ? `זמן נסיעה נותר: כ-${drv.etaMinutes || 25} דקות` : `Remaining: ~${drv.etaMinutes || 25} min`}
                                       </span>
                                       <span style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                        {lang === 'he' ? `(הגעה צפויה ב-${drv.expectedArrivalTime || '--:--'})` : `(Expected: ${drv.expectedArrivalTime || '--:--'})`}
+                                        {lang === 'he' ? `(הגעה צפויה בערך ב-${drv.expectedArrivalTime || '--:--'})` : `(Expected: approx. ${drv.expectedArrivalTime || '--:--'})`}
                                       </span>
                                     </div>
                                   ) : (
