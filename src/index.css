@@ -733,7 +733,42 @@ body {
   .mobile-scans-cards {
     display: flex !important;
   }
-  
+
+  .desktop-attendance-table {
+    display: none !important;
+  }
+
+  .mobile-attendance-cards {
+    display: flex !important;
+  }
+
+  /* Filter toolbars (History/Master Table/Situation tabs): each control used
+     a fixed pixel width, which wrapped unevenly on a narrow screen - an empty
+     date input with nothing to distinguish it, a <select> truncating its own
+     label mid-word. Stack them as clean full-width rows instead. Checkboxes
+     are excluded so "show big buses only" doesn't balloon to full width. */
+  .filter-toolbar,
+  .filter-toolbar-group {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .filter-toolbar > *:not(input[type="checkbox"]),
+  .filter-toolbar-group > *:not(input[type="checkbox"]) {
+    width: 100% !important;
+    margin-inline-start: 0 !important;
+  }
+
+  /* Situation tab's timeframe buttons: a clean 2x2 grid instead of wrapping
+     unevenly across the row. */
+  .timeframe-toggle {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    width: 100% !important;
+  }
+  .timeframe-toggle > button {
+    width: 100% !important;
+  }
+
   .live-map-card {
     height: 300px !important;
   }
@@ -744,6 +779,14 @@ body {
 }
 
 .mobile-scans-cards {
+  display: none;
+}
+
+.desktop-attendance-table {
+  display: block;
+}
+
+.mobile-attendance-cards {
   display: none;
 }
 

@@ -4937,13 +4937,13 @@ export default function App() {
                     </div>
 
                     {/* Filter + date range + per-driver PDF toolbar */}
-                    <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
+                    <div className="card filter-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
                         <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                         {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
                       </label>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
                         <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'מתאריך' : 'From'}</span>
                         <input
                           type="date" value={centralDateFrom} onChange={e => setCentralDateFrom(e.target.value)}
@@ -4961,7 +4961,7 @@ export default function App() {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
                         <select
                           value={centralMonthFilter}
                           onChange={e => setCentralMonthFilter(e.target.value)}
@@ -5042,7 +5042,7 @@ export default function App() {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginInlineStart: 'auto', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginInlineStart: 'auto', flexWrap: 'wrap' }}>
                         <select
                           value={selectedDriverForPdf}
                           onChange={e => setSelectedDriverForPdf(e.target.value)}
@@ -5166,7 +5166,7 @@ export default function App() {
                       </div>
 
                       {/* Timeframe Selector Button Group */}
-                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '4px', gap: '4px', flexWrap: 'wrap' }}>
+                      <div className="timeframe-toggle" style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '4px', gap: '4px', flexWrap: 'wrap' }}>
                         <button
                           onClick={() => setSituationTimeframe('today')}
                           className={`btn ${situationTimeframe === 'today' ? 'btn-primary' : 'btn-secondary'}`}
@@ -5501,7 +5501,7 @@ export default function App() {
                       </div>
 
                       {/* Filters */}
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar" style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button
                           onClick={handleExportScansToCsv}
                           className="btn btn-secondary"
@@ -5511,11 +5511,11 @@ export default function App() {
                           {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
                         </button>
 
-                        <div style={{ position: 'relative' }}>
+                        <div className="filter-toolbar-group" style={{ position: 'relative' }}>
                           <Search size={14} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                          <input 
-                            type="text" 
-                            className="form-input" 
+                          <input
+                            type="text"
+                            className="form-input"
                             style={{ width: '220px', paddingRight: '36px', height: '38px', fontSize: '13px' }}
                             value={searchText}
                             onChange={(e) => setSearchText(e.target.value)}
@@ -5794,7 +5794,7 @@ export default function App() {
                         {t('dispatcherAttendanceHeader')}
                       </h3>
                       
-                      <div className="table-container">
+                      <div className="desktop-attendance-table table-container">
                         <table className="tp-table">
                           <thead>
                             <tr>
@@ -5827,6 +5827,42 @@ export default function App() {
                             )}
                           </tbody>
                         </table>
+                      </div>
+
+                      {/* Mobile Attendance Card List */}
+                      <div className="mobile-attendance-cards" style={{ flexDirection: 'column', gap: '12px' }}>
+                        {attendanceData.length === 0 ? (
+                          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            {t('noAttendanceData')}
+                          </div>
+                        ) : (
+                          attendanceData.map((row, idx) => (
+                            <div key={idx} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '14px', borderRadius: '10px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                <strong style={{ fontSize: '14px', color: '#fff' }}>{row.name}</strong>
+                                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{row.date}</span>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
+                                <div>
+                                  <span style={{ color: 'var(--text-secondary)', display: 'block' }}>{t('firstScanIn')}</span>
+                                  <strong style={{ color: '#fff' }}>{row.first}</strong>
+                                </div>
+                                <div>
+                                  <span style={{ color: 'var(--text-secondary)', display: 'block' }}>{t('lastScanOut')}</span>
+                                  <strong style={{ color: '#fff' }}>{row.last}</strong>
+                                </div>
+                                <div>
+                                  <span style={{ color: 'var(--text-secondary)', display: 'block' }}>{t('totalHoursCalculated')}</span>
+                                  <strong style={{ color: 'var(--success)' }}>{row.hours}</strong>
+                                </div>
+                                <div>
+                                  <span style={{ color: 'var(--text-secondary)', display: 'block' }}>{t('tripsScannedCount')}</span>
+                                  <strong style={{ color: '#fff' }}>{t('tripsCountText', { count: row.count })}</strong>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
 
