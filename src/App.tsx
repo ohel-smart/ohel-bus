@@ -903,6 +903,14 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
   );
 }
 
+// A driver's QR is meant to be printed and scanned with any plain camera
+// app, so it must always resolve to the real production site - never
+// whichever origin happened to be open when it was generated. Using
+// window.location.host here once meant a QR downloaded while testing
+// against a local dev server (localhost:5173 etc.) permanently baked
+// that localhost URL into the printed code.
+const PRODUCTION_ORIGIN = 'https://ohel-bus.vercel.app';
+
 // Draws a QR code plus the centered Ohel Smart wordmark onto `canvas` at
 // `pixelSize` actual pixels (the caller decides that - see the two callers
 // below for why it differs between on-screen display and file download).
@@ -930,16 +938,7 @@ async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize
     logoImg.onload = () => {
       if (isCancelled?.()) { resolve(); return; }
       const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
-      // 35%, not the original 62% - measured empirically (OpenCV's
-      // QRCodeDetector against a simulated print-then-photograph pipeline:
-      // downscale, slight blur, JPEG compression) that 62% width (~10% of
-      // the code's area) reliably failed to decode under realistic
-      // real-world conditions once quality dropped even moderately, while
-      // 35% (~3% area) kept decoding through much harsher degradation.
-      // Level-H error correction tolerates ~30% damage in theory, but that
-      // budget also has to absorb ordinary print/camera degradation, not
-      // just the logo - a smaller logo leaves real margin for that.
-      const logoW = Math.round(pixelSize * 0.35);
+      const logoW = Math.round(pixelSize * 0.62);
       const logoH = Math.round(logoW / aspect);
       const x = Math.round((pixelSize - logoW) / 2);
       const y = Math.round((pixelSize - logoH) / 2);
@@ -1020,7 +1019,7 @@ async function downloadDriverQr(driverId: string, driverNameRaw: string) {
   const qrPixelSize = 1000;
   const labelHeight = Math.round(qrPixelSize * 0.11);
   const qrCanvas = document.createElement('canvas');
-  const data = `${window.location.protocol}//${window.location.host}/?driverId=${driverId}`;
+  const data = `${PRODUCTION_ORIGIN}/?driverId=${driverId}`;
   await drawQrWithLogo(qrCanvas, data, qrPixelSize);
 
   const canvas = document.createElement('canvas');
@@ -4192,7 +4191,7 @@ export default function App() {
                       <div style={{ background: '#fff', padding: '14px', borderRadius: '12px', display: 'inline-block', marginBottom: '20px' }}>
                         <div style={{ border: '2px solid #000', padding: '4px' }}>
                           <QrCodeWithLogo
-                            data={`${window.location.protocol}//${window.location.host}/?driverId=${currentUser.id}`}
+                            data={`${PRODUCTION_ORIGIN}/?driverId=${currentUser.id}`}
                             size={180}
                           />
                         </div>
