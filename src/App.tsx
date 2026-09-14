@@ -5,11 +5,11 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, X
+  ChevronDown, ChevronRight, ChevronLeft, X
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
-import { getWeeklyParsha, getHebrewDate, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
+import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
@@ -836,6 +836,129 @@ const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en')
     </div>`;
   }).join('');
 };
+
+// A native <input type="date"> only ever shows the OS's own Gregorian picker -
+// there's no way to add Hebrew dates to it. This is a from-scratch calendar
+// popover instead: every day cell shows both its Gregorian day number and its
+// Hebrew day-of-month numeral (via getHebrewDayLabel), so a date can be picked
+// with the Hebrew calendar visible the whole time (e.g. spotting a Yom Tov
+// while choosing a report range). `value`/`onChange` use the same 'YYYY-MM-DD'
+// string format as the native input it replaces, so callers don't change.
+function HebrewDatePicker({ value, onChange, lang, placeholder }: {
+  value: string;
+  onChange: (v: string) => void;
+  lang: 'he' | 'en';
+  placeholder: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewMonth, setViewMonth] = useState(() => {
+    const d = value ? new Date(value + 'T12:00:00') : new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [isOpen]);
+
+  const openPicker = () => {
+    const d = value ? new Date(value + 'T12:00:00') : new Date();
+    setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setIsOpen(true);
+  };
+
+  // Built from local Y/M/D parts, not toISOString() (UTC) - this must match
+  // the local calendar day shown in the grid, not shift near midnight.
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const year = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leadingBlanks = new Date(year, month, 1).getDay(); // 0=Sun, matches the week starting Sunday below
+
+  const weekdayLabels = lang === 'he' ? ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const monthLabel = viewMonth.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' });
+  const todayStr = ymd(new Date());
+  // RTL: "next month" is visually on the LEFT, so the chevrons swap.
+  const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
+  const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
+
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d, 12));
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={() => (isOpen ? setIsOpen(false) : openPicker())}
+        style={{
+          padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)',
+          background: 'var(--bg-primary, #0d0d0d)', color: value ? '#fff' : 'var(--text-secondary)',
+          fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '120px'
+        }}
+      >
+        <Calendar size={14} />
+        {value ? new Date(value + 'T12:00:00').toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : placeholder}
+      </button>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', [lang === 'he' ? 'right' : 'left']: 0, zIndex: 50,
+          background: 'var(--bg-secondary, #161616)', border: '1px solid var(--border-color)', borderRadius: '12px',
+          padding: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', width: '280px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <button type="button" onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
+              <PrevIcon size={16} />
+            </button>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{monthLabel}</span>
+            <button type="button" onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
+              <NextIcon size={16} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
+            {weekdayLabels.map((w, i) => (
+              <div key={i} style={{ textAlign: 'center', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+            {cells.map((cellDate, i) => {
+              if (!cellDate) return <div key={i} />;
+              const cellStr = ymd(cellDate);
+              const isSelected = cellStr === value;
+              const isToday = cellStr === todayStr;
+              return (
+                <button
+                  type="button"
+                  key={i}
+                  onClick={() => { onChange(cellStr); setIsOpen(false); }}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    padding: '4px 0', borderRadius: '6px',
+                    border: isToday && !isSelected ? '1px solid var(--accent)' : '1px solid transparent',
+                    background: isSelected ? 'var(--accent)' : 'transparent',
+                    color: isSelected ? '#000' : '#fff', cursor: 'pointer', fontSize: '12px'
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>{cellDate.getDate()}</span>
+                  <span style={{ fontSize: '9px', opacity: 0.7 }}>{getHebrewDayLabel(cellDate)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // One pending self-registration request, with inline Approve / Edit-then-approve
 // / Reject actions. Reused by both the admin's auto-popup modal and the
@@ -5011,14 +5134,14 @@ export default function App() {
 
                       <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
                         <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'מתאריך' : 'From'}</span>
-                        <input
-                          type="date" value={centralDateFrom} onChange={e => setCentralDateFrom(e.target.value)}
-                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        <HebrewDatePicker
+                          value={centralDateFrom} onChange={setCentralDateFrom} lang={lang}
+                          placeholder={lang === 'he' ? 'בחר תאריך' : 'Pick a date'}
                         />
                         <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עד תאריך' : 'To'}</span>
-                        <input
-                          type="date" value={centralDateTo} onChange={e => setCentralDateTo(e.target.value)}
-                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                        <HebrewDatePicker
+                          value={centralDateTo} onChange={setCentralDateTo} lang={lang}
+                          placeholder={lang === 'he' ? 'בחר תאריך' : 'Pick a date'}
                         />
                         {(centralDateFrom || centralDateTo) && (
                           <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>

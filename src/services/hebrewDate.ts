@@ -1,6 +1,6 @@
 // Hebrew-date + weekly-parsha helpers for the central summary table.
 // Uses @hebcal/core (diaspora / chutz-la'aretz reading cycle).
-import { HDate, HebrewCalendar } from '@hebcal/core';
+import { HDate, HebrewCalendar, gematriya } from '@hebcal/core';
 
 // Remove Hebrew niqqud / cantillation so names render cleanly in a table.
 function stripNiqqud(s: string): string {
@@ -125,6 +125,14 @@ export function getHebrewYearMonth(date: Date): { year: number; monthKey: string
 export function renderHebrewYear(year: number): string {
   try { return stripNiqqud(new HDate(1, 1, year).renderGematriya()).split(' ').pop() || String(year); }
   catch { return String(year); }
+}
+
+/** Just the Hebrew day-of-month as a gematriya numeral, e.g. "ג׳" - for a compact
+ *  per-cell label in a calendar grid, where the full getHebrewDate() string
+ *  (day + month + year) would be too long to repeat ~30 times. */
+export function getHebrewDayLabel(date: Date): string {
+  try { return gematriya(new HDate(date).getDate()); }
+  catch { return ''; }
 }
 
 /** Exact "HH:MM" (24h) in the given timezone. */
