@@ -42,12 +42,29 @@ export default async function handler(req, res) {
   const code = String(body.code || '').trim();
   const capacity = Number.isFinite(body.capacity) ? body.capacity : undefined;
   const isBigBus = !!body.isBigBus;
+  const adminCode = String(body.adminCode || '').trim();
 
   if (!pendingId || !name || !phone || !role || !code) {
     return res.status(400).json({ error: 'missing required fields (pendingId, name, phone, role, code)' });
   }
+  if (!adminCode) {
+    return res.status(401).json({ error: 'missing adminCode' });
+  }
 
   try {
+    // This endpoint mints a real account server-side, so it must independently
+    // re-check the caller is actually an admin - the client-side UI only
+    // *showing* this action to an admin (and hiding e.g. the isBigBus field
+    // on the public self-registration form) isn't real access control, since
+    // this URL itself has always been reachable directly by anyone who knows
+    // (or, since pending_registrations is publicly readable so a registrant
+    // can trivially read their own doc back, learns) a pendingId.
+    const adminSnap = await db.collection('users').where('code', '==', adminCode).limit(1).get();
+    const adminDoc = adminSnap.docs[0]?.data();
+    if (!adminDoc || adminDoc.role !== 'admin') {
+      return res.status(403).json({ error: 'not authorized' });
+    }
+
     const pendingRef = db.collection('pending_registrations').doc(pendingId);
     const pendingSnap = await pendingRef.get();
     if (!pendingSnap.exists) {

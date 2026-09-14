@@ -39,14 +39,29 @@ export default async function handler(req, res) {
   const capacity = Number.isFinite(body.capacity) ? body.capacity : undefined;
   const isBigBus = !!body.isBigBus;
   const canSelfReport = !!body.canSelfReport;
+  const adminCode = String(body.adminCode || '').trim();
 
   // A screen isn't a real staff member - "phone" is a free-text location note
   // there instead, so it isn't required (mirrors the client-side rule).
   if (!name || !code || !role || (role !== 'screen' && !phone)) {
     return res.status(400).json({ error: 'missing required fields (name, phone, role, code)' });
   }
+  if (!adminCode) {
+    return res.status(401).json({ error: 'missing adminCode' });
+  }
 
   try {
+    // This endpoint can create/overwrite ANY user, including minting a new
+    // admin account or changing an existing user's role/login code - it must
+    // independently verify the caller is really an admin, not rely on the
+    // Users-tab UI only being shown to admins client-side (this URL itself
+    // has always been reachable directly by anyone, admin panel or not).
+    const adminSnap = await db.collection('users').where('code', '==', adminCode).limit(1).get();
+    const adminDoc = adminSnap.docs[0]?.data();
+    if (!adminDoc || adminDoc.role !== 'admin') {
+      return res.status(403).json({ error: 'not authorized' });
+    }
+
     const dupSnap = await db.collection('users').where('code', '==', code).limit(2).get();
     const hasConflict = dupSnap.docs.some(d => d.id !== userId);
     if (hasConflict) {

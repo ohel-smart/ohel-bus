@@ -360,7 +360,10 @@ class DBService {
   public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity' | 'isBigBus'>) {
     const usersList = this.getUsers();
     const driver = usersList.find(u => u.id === scanData.driverId);
-    const capacity = driver?.capacity || 15;
+    // ?? not || - a driver's capacity can be deliberately 0 (a placeholder
+    // account whose real seat count the manager hasn't filled in yet), and
+    // that must NOT silently fall back to 15 the way `0 || 15` would.
+    const capacity = driver?.capacity ?? 15;
     const isBigBus = driver?.isBigBus ?? false;
     const remainingSeats = Math.max(0, capacity - scanData.passengersCount);
 

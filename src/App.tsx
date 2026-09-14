@@ -729,8 +729,8 @@ interface DayHourBreakdown {
 // chronologically.
 //
 // NOTE: a lucide icon named `Map` is imported at module scope elsewhere in this file and
-// shadows the built-in Map constructor (see the identical note near `logicalDateToParsha`
-// around line 1219), so this uses plain nested objects/records instead of Map/Set.
+// shadows the built-in Map constructor (see the identical note near `scanIdToParsha`),
+// so this uses plain nested objects/records instead of Map/Set.
 const computeHourlyBreakdown = (scannedAtTimes: string[], locale: string): DayHourBreakdown[] => {
   if (scannedAtTimes.length === 0) return [];
 
@@ -850,7 +850,7 @@ function PendingRegistrationCard({ reg, t, onApprove, onReject }: {
   const [name, setName] = useState(reg.name);
   const [phone, setPhone] = useState(reg.phone);
   const [code, setCode] = useState(reg.code);
-  const [capacity, setCapacity] = useState(reg.capacity || 15);
+  const [capacity, setCapacity] = useState(reg.capacity ?? 15);
   const [isBigBus, setIsBigBus] = useState(reg.isBigBus || false);
 
   const submitFieldStyle: CSSProperties = { fontSize: '13px', padding: '7px 10px' };
@@ -1343,7 +1343,10 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const driverIdParam = params.get('driverId');
     if (driverIdParam) {
-      localStorage.setItem('tp_pending_driver_id', driverIdParam);
+      // Stored with a timestamp (not just the bare id) so the consuming
+      // effect below can tell "still waiting to match" apart from "this
+      // scan is old" - see that effect for why both cases matter.
+      localStorage.setItem('tp_pending_driver_id', JSON.stringify({ driverId: driverIdParam, ts: Date.now() }));
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -1354,21 +1357,42 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'dispatcher' || users.length === 0) return;
 
-    const driverIdParam = localStorage.getItem('tp_pending_driver_id');
-    if (!driverIdParam) return;
-    localStorage.removeItem('tp_pending_driver_id');
+    const raw = localStorage.getItem('tp_pending_driver_id');
+    if (!raw) return;
+    let pending: { driverId: string; ts: number } | null = null;
+    try { pending = JSON.parse(raw); } catch { /* legacy plain-string value from before this format existed */ }
+    if (!pending || !pending.driverId) { localStorage.removeItem('tp_pending_driver_id'); return; }
 
-    const matched = users.find(u => u.id === driverIdParam && u.role === 'driver');
-    if (matched) {
-      const blockedMinutes = getDriverScanBlockMinutes(matched.id);
-      if (blockedMinutes !== null) {
-        triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
-      } else {
-        setScannerModalDriver(matched);
-        setScannerModalPassengers(0);
-        setActiveTab('scan');
-        triggerToast(t('externalQrSuccess'), 'success');
-      }
+    // A pending id older than this was left behind by some earlier, unrelated
+    // scan that was never consumed (e.g. the person who scanned it never
+    // logged in as a dispatcher that session) - firing it now, at whatever
+    // unrelated later moment a dispatcher happens to log in, would silently
+    // pop the scan modal for the wrong driver. Give up on it instead.
+    const PENDING_EXPIRY_MS = 10 * 60 * 1000;
+    if (Date.now() - pending.ts > PENDING_EXPIRY_MS) {
+      localStorage.removeItem('tp_pending_driver_id');
+      return;
+    }
+
+    const matched = users.find(u => u.id === pending!.driverId && u.role === 'driver');
+    if (!matched) {
+      // `users` may still be the locally-cached list from before login,
+      // not yet the authoritative Firestore snapshot - don't give up on the
+      // first miss. Leave the pending id in place; this effect re-runs
+      // every time `users` updates, and will retry until it matches or
+      // the expiry above kicks in.
+      return;
+    }
+
+    localStorage.removeItem('tp_pending_driver_id');
+    const blockedMinutes = getDriverScanBlockMinutes(matched.id);
+    if (blockedMinutes !== null) {
+      triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
+    } else {
+      setScannerModalDriver(matched);
+      setScannerModalPassengers(0);
+      setActiveTab('scan');
+      triggerToast(t('externalQrSuccess'), 'success');
     }
   }, [currentUser, users]);
 
@@ -1623,16 +1647,19 @@ export default function App() {
   }, [scans, situationTimeframe, situationStartDate, situationEndDate, logicalToday, currentLiveTime]);
 
   // --- Scans Filters for Dashboard ---
-  // Plain object of logicalDate -> parsha name, built once per distinct set of dates present in
-  // `scans` (getWeeklyParsha itself is memoized per-week internally, so this is just avoiding
-  // recomputing the whole distinct-date scan on every render). NOTE: a lucide icon named `Map`
-  // is imported at module scope and shadows the built-in Map constructor, so use a plain object.
-  const logicalDateToParsha = useMemo(() => {
+  // Plain object of scan id -> parsha name, keyed per SCAN (not per logicalDate/day) and
+  // computed from each scan's own real `scannedAt` timestamp. This must not be a day-level
+  // lookup keyed by a synthesized noon timestamp: getWeeklyParsha() rolls a Saturday scan
+  // into next week's parsha once it's 4pm+ NY time, so two scans sharing the same
+  // logicalDate (an ordinary Saturday) can legitimately land in two different parshas -
+  // a day-keyed dict can only hold one answer and would mismatch whichever row's on-screen
+  // display (already scan-time-accurate, see centralSummary below) disagreed with it.
+  // NOTE: a lucide icon named `Map` is imported at module scope and shadows the built-in
+  // Map constructor, so use a plain object rather than a real Map here.
+  const scanIdToParsha = useMemo(() => {
     const dict: Record<string, string> = {};
     for (const s of scans) {
-      if (!(s.logicalDate in dict)) {
-        dict[s.logicalDate] = getWeeklyParsha(new Date(s.logicalDate + 'T12:00:00'));
-      }
+      dict[s.id] = getWeeklyParsha(new Date(s.scannedAt));
     }
     return dict;
   }, [scans]);
@@ -1640,18 +1667,18 @@ export default function App() {
   // Distinct parsha names occurring in `scans`, ordered by chronological first-occurrence
   // (not alphabetical - Hebrew alphabetical order isn't meaningful for parsha order).
   const availableParshas = useMemo(() => {
-    const datesSorted = Object.keys(logicalDateToParsha).sort(); // YYYY-MM-DD sorts chronologically
+    const scansSorted = scans.slice().sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime());
     const seen = new Set<string>();
     const result: string[] = [];
-    for (const d of datesSorted) {
-      const p = logicalDateToParsha[d];
+    for (const s of scansSorted) {
+      const p = scanIdToParsha[s.id];
       if (p && !seen.has(p)) {
         seen.add(p);
         result.push(p);
       }
     }
     return result;
-  }, [logicalDateToParsha]);
+  }, [scans, scanIdToParsha]);
 
   // logicalDate -> { year, monthKey } in the HEBREW calendar - "month" filtering
   // in this app means Hebrew months, not Gregorian ones.
@@ -1839,12 +1866,12 @@ export default function App() {
         const ym = logicalDateToHebrewYM[s.logicalDate];
         const matchesMonth = monthFilter ? ym?.monthKey === monthFilter : true;
         const matchesYear = yearFilter ? String(ym?.year) === yearFilter : true;
-        const matchesParsha = parshaFilter ? logicalDateToParsha[s.logicalDate] === parshaFilter : true;
+        const matchesParsha = parshaFilter ? scanIdToParsha[s.id] === parshaFilter : true;
 
         return matchesSearch && matchesDate && matchesMonth && matchesYear && matchesParsha;
       })
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
-  }, [scans, searchText, dateFilter, monthFilter, yearFilter, parshaFilter, logicalDateToParsha, logicalDateToHebrewYM]);
+  }, [scans, searchText, dateFilter, monthFilter, yearFilter, parshaFilter, scanIdToParsha, logicalDateToHebrewYM]);
 
   // --- Central Summary (master table): one row per ride, grouped by day. ---
   // --- Outbound (הלוך) and return (חזור) are separate rows, each tagged ---
@@ -1874,7 +1901,7 @@ export default function App() {
       const ym = logicalDateToHebrewYM[s.logicalDate];
       if (centralMonthFilter && ym?.monthKey !== centralMonthFilter) continue;
       if (centralYearFilter && String(ym?.year) !== centralYearFilter) continue;
-      if (centralParshaFilter && logicalDateToParsha[s.logicalDate] !== centralParshaFilter) continue;
+      if (centralParshaFilter && scanIdToParsha[s.id] !== centralParshaFilter) continue;
       if (centralOriginFilter && s.departureLocation !== centralOriginFilter) continue;
       if (selectedDriverForPdf && (s.driverName || '').replace(' (נהג)', '') !== selectedDriverForPdf) continue;
       if (selectedDispatcherForPdf && (s.dispatcherName || '').replace(' (סדרן)', '') !== selectedDispatcherForPdf) continue;
@@ -1926,7 +1953,7 @@ export default function App() {
         rows,
       };
     }).filter(day => day.rows.length > 0);
-  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, selectedDriverForPdf, selectedDispatcherForPdf, logicalDateToParsha, logicalDateToHebrewYM, lang]);
+  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, selectedDriverForPdf, selectedDispatcherForPdf, scanIdToParsha, logicalDateToHebrewYM, lang]);
 
   // Flattened row ids across all day-groups currently shown, for "select all".
   const centralAllRowIds = useMemo(
@@ -1964,7 +1991,7 @@ export default function App() {
       const ym = logicalDateToHebrewYM[s.logicalDate];
       if (centralMonthFilter && ym?.monthKey !== centralMonthFilter) return false;
       if (centralYearFilter && String(ym?.year) !== centralYearFilter) return false;
-      if (centralParshaFilter && logicalDateToParsha[s.logicalDate] !== centralParshaFilter) return false;
+      if (centralParshaFilter && scanIdToParsha[s.id] !== centralParshaFilter) return false;
       if (centralOriginFilter && s.departureLocation !== centralOriginFilter) return false;
       if (centralBigBusOnly) {
         const bigBus = s.isBigBus ?? ((s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY);
@@ -2365,6 +2392,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
+          adminCode: currentUser?.code,
           name: newUserName,
           phone: newUserPhone,
           role: newUserRole,
@@ -2428,6 +2456,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
+          adminCode: currentUser?.code,
           pendingId: reg.id,
           name: cleanName,
           phone: cleanPhone,
@@ -2490,7 +2519,7 @@ export default function App() {
     setEditUserPhone(user.phone);
     setEditUserCode(user.code);
     setEditUserRole(user.role);
-    setEditUserCapacity(user.capacity || 15);
+    setEditUserCapacity(user.capacity ?? 15);
     setEditUserIsBigBus(user.isBigBus || false);
     setEditUserCanSelfReport(user.canSelfReport || false);
   };
@@ -2532,6 +2561,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
+          adminCode: currentUser?.code,
           userId: selectedUserForEdit.id,
           name: editUserName,
           phone: editUserPhone,
@@ -2590,10 +2620,10 @@ export default function App() {
         tableRows += `
           <tr style="border-bottom: 1px solid #e2e8f0;">
             <td style="padding: 10px; text-align: right;">${new Date(s.scannedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</td>
-            <td style="padding: 10px; text-align: right;">${s.driverName}</td>
+            <td style="padding: 10px; text-align: right;">${escHtml(s.driverName)}</td>
             <td style="padding: 10px; text-align: right;">${s.departureLocation === '770' ? '770 Eastern Parkway' : 'אוהל חב"ד'}</td>
             <td style="padding: 10px; text-align: center; font-weight: bold; color: #d97706;">${s.passengersCount}</td>
-            <td style="padding: 10px; text-align: right;">${s.dispatcherName}</td>
+            <td style="padding: 10px; text-align: right;">${escHtml(s.dispatcherName)}</td>
           </tr>
         `;
       });
@@ -2643,7 +2673,7 @@ export default function App() {
                 </tbody>
               </table>
               <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 11px; color: #94a3b8; text-align: center;">
-                נשלח אוטומטית ע"י מערכת אוהל בוס בענן. כתובת מנהל: ${reportEmail}
+                נשלח אוטומטית ע"י מערכת אוהל בוס בענן. כתובת מנהל: ${escHtml(reportEmail)}
               </div>
             </div>
           </div>
@@ -2674,7 +2704,7 @@ export default function App() {
                 ${date}<br/>
                 <span style="font-size: 11px; color: #64748b;">${formatHebrewAndGregorianDate(date).split(' (')[0]}</span>
               </td>
-              <td style="padding: 10px; text-align: right;"><b>${dispName}</b></td>
+              <td style="padding: 10px; text-align: right;"><b>${escHtml(dispName)}</b></td>
               <td style="padding: 10px; text-align: center;">${firstStr}</td>
               <td style="padding: 10px; text-align: center;">${lastStr}</td>
               <td style="padding: 10px; text-align: center; font-weight: bold; color: #10b981;">${diffHrs} שעות</td>
@@ -2719,7 +2749,7 @@ export default function App() {
               </div>
 
               <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 11px; color: #94a3b8; text-align: center;">
-                נשלח אוטומטית ע"י מערכת אוהל בוס בענן. כתובת מנהל: ${reportEmail}
+                נשלח אוטומטית ע"י מערכת אוהל בוס בענן. כתובת מנהל: ${escHtml(reportEmail)}
               </div>
             </div>
           </div>
@@ -3165,8 +3195,12 @@ export default function App() {
     const from = new Date(to);
     if (selfReportPeriod === 'week') from.setDate(from.getDate() - 7);
     else from.setMonth(from.getMonth() - 1);
-    const dateFrom = from.toISOString().split('T')[0];
-    const dateTo = to.toISOString().split('T')[0];
+    // logicalDate buckets by America/New_York day (not UTC) - using the raw
+    // UTC date here used to silently drop the oldest day of the window for
+    // anyone downloading roughly 8pm-midnight EDT, once the UTC date had
+    // already rolled to tomorrow while the NY logical date hadn't yet.
+    const dateFrom = dbService.getLogicalDate(from.toISOString());
+    const dateTo = dbService.getLogicalDate(to.toISOString());
 
     if (currentUser.role === 'driver') {
       handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo, lang: selfReportLang });
@@ -3176,7 +3210,12 @@ export default function App() {
   };
 
   const handleCopyReturnLink = () => {
-    const link = `${window.location.origin}/?report=return`;
+    // PRODUCTION_ORIGIN, not window.location.origin - this link gets pasted
+    // into the drivers' WhatsApp group and reused indefinitely, so it must
+    // not accidentally bake in a preview-deploy or localhost origin (the
+    // exact class of bug the driver QR codes had - see PRODUCTION_ORIGIN's
+    // own comment above).
+    const link = `${PRODUCTION_ORIGIN}/?report=return`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(link).then(
         () => triggerToast(lang === 'he' ? 'קישור הדיווח לנהגים הועתק!' : 'Driver report link copied!', 'success'),
@@ -6513,9 +6552,16 @@ export default function App() {
                       </div>
 
                       <div style={{ flex: 1, background: '#fff', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                        <iframe 
-                          srcDoc={emailPreviewHtml} 
-                          title="Email HTML Preview" 
+                        <iframe
+                          srcDoc={emailPreviewHtml}
+                          title="Email HTML Preview"
+                          // Defense in depth on top of escHtml() above: an
+                          // unsandboxed srcDoc iframe runs same-origin, so any
+                          // HTML that slipped through here anyway would have
+                          // full access to the app. sandbox="" with no tokens
+                          // blocks scripts/forms/top-navigation entirely,
+                          // which this static report preview never needs.
+                          sandbox=""
                           style={{ width: '100%', height: '100%', border: 'none' }}
                         />
                       </div>
@@ -6686,7 +6732,7 @@ export default function App() {
                 </div>
 
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '16px' }}>
-                  {lang === 'he' ? `נא להזין את מספר הנוסעים שעלו להסעה (קיבולת: ${scannerModalDriver.capacity || 15} מקומות):` : `Enter number of passengers (Capacity: ${scannerModalDriver.capacity || 15} seats):`}
+                  {lang === 'he' ? `נא להזין את מספר הנוסעים שעלו להסעה (קיבולת: ${scannerModalDriver.capacity ?? 15} מקומות):` : `Enter number of passengers (Capacity: ${scannerModalDriver.capacity ?? 15} seats):`}
                 </p>
 
                 {/* Quick Selection Buttons */}
