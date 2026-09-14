@@ -930,7 +930,16 @@ async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize
     logoImg.onload = () => {
       if (isCancelled?.()) { resolve(); return; }
       const aspect = logoImg.naturalWidth / logoImg.naturalHeight;
-      const logoW = Math.round(pixelSize * 0.62);
+      // 35%, not the original 62% - measured empirically (OpenCV's
+      // QRCodeDetector against a simulated print-then-photograph pipeline:
+      // downscale, slight blur, JPEG compression) that 62% width (~10% of
+      // the code's area) reliably failed to decode under realistic
+      // real-world conditions once quality dropped even moderately, while
+      // 35% (~3% area) kept decoding through much harsher degradation.
+      // Level-H error correction tolerates ~30% damage in theory, but that
+      // budget also has to absorb ordinary print/camera degradation, not
+      // just the logo - a smaller logo leaves real margin for that.
+      const logoW = Math.round(pixelSize * 0.35);
       const logoH = Math.round(logoW / aspect);
       const x = Math.round((pixelSize - logoW) / 2);
       const y = Math.round((pixelSize - logoH) / 2);
