@@ -616,7 +616,7 @@ class DBService {
     // fall back to the per-browser saved config key.
     const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || config.googleMapsApiKey || DEFAULT_GOOGLE_MAPS_API_KEY;
 
-    // 1. Google Routes API (v2) — live traffic-aware ETA, identical to what Google Maps shows.
+    // 1. Google Routes API (v2) — live traffic-aware ETA.
     if (apiKey) {
       try {
         const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
@@ -630,7 +630,15 @@ class DBService {
             origin: { location: { latLng: { latitude: lat, longitude: lng } } },
             destination: { location: { latLng: { latitude: destination.latitude, longitude: destination.longitude } } },
             travelMode: 'DRIVE',
-            routingPreference: 'TRAFFIC_AWARE'
+            // TRAFFIC_AWARE (the previous setting) is a low-latency mode that
+            // doesn't fully search for the best route under current traffic -
+            // confirmed live on the 770->Ohel direction: it returned a 28.7km,
+            // ~65min route, while TRAFFIC_AWARE_OPTIMAL (and Google Maps' own
+            // UI, checked side by side) found a genuinely different, shorter
+            // 20.7km, ~54min route instead. This isn't a timing/rounding gap -
+            // it's the wrong road. The extra latency of the "optimal" mode is
+            // a non-issue here since this runs once per scan, not in a loop.
+            routingPreference: 'TRAFFIC_AWARE_OPTIMAL'
           })
         });
         const data = await response.json();
