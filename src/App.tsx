@@ -1331,25 +1331,44 @@ export default function App() {
     setShowPendingRegModal(false);
   };
 
-  // Deep linking simulator URL query scanner
+  // A driver's printed QR encodes a plain URL (?driverId=...), meant to be
+  // opened by scanning with any camera app - not just this app's own
+  // in-app scanner. Grab that param the instant the page loads, regardless
+  // of login state, and stash it in localStorage: if the dispatcher scanned
+  // it before logging in, the browser shows the login screen first, and the
+  // *next* effect below (which needs a logged-in dispatcher) would otherwise
+  // never see the param if anything caused so much as one extra page load
+  // in between (e.g. the phone's browser reloading the tab, or the camera
+  // app opening a fresh tab from a previous one that already lost it).
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'dispatcher' || users.length === 0) return;
-    
     const params = new URLSearchParams(window.location.search);
     const driverIdParam = params.get('driverId');
     if (driverIdParam) {
-      const matched = users.find(u => u.id === driverIdParam && u.role === 'driver');
-      if (matched) {
-        const blockedMinutes = getDriverScanBlockMinutes(matched.id);
-        if (blockedMinutes !== null) {
-          triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
-        } else {
-          setScannerModalDriver(matched);
-          setScannerModalPassengers(0);
-          setActiveTab('scan');
-          triggerToast(t('externalQrSuccess'), 'success');
-        }
-        window.history.replaceState({}, document.title, window.location.pathname);
+      localStorage.setItem('tp_pending_driver_id', driverIdParam);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // Deep linking simulator URL query scanner - consumes whatever a scanned
+  // QR's driverId left in localStorage (see the effect above), once a
+  // dispatcher is actually logged in and the driver list has loaded.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'dispatcher' || users.length === 0) return;
+
+    const driverIdParam = localStorage.getItem('tp_pending_driver_id');
+    if (!driverIdParam) return;
+    localStorage.removeItem('tp_pending_driver_id');
+
+    const matched = users.find(u => u.id === driverIdParam && u.role === 'driver');
+    if (matched) {
+      const blockedMinutes = getDriverScanBlockMinutes(matched.id);
+      if (blockedMinutes !== null) {
+        triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
+      } else {
+        setScannerModalDriver(matched);
+        setScannerModalPassengers(0);
+        setActiveTab('scan');
+        triggerToast(t('externalQrSuccess'), 'success');
       }
     }
   }, [currentUser, users]);
