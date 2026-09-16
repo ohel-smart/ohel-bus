@@ -88,14 +88,18 @@ function getTodaysTriggerMoment(dateStr) {
 const esc = v => String(v ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 export default async function handler(req, res) {
-  // Only an automated trigger (our GitHub Actions pinger, or an explicit
-  // ?key=CRON_SECRET) may cause a send.
+  // Only an automated trigger may cause a send - either of two independent
+  // pingers, checked with OR (not one-or-the-other): the GitHub Actions
+  // pinger (still just a user-agent check, unchanged) and a Google Apps
+  // Script time-driven trigger added as a second, more reliable pinger
+  // (GitHub Actions' scheduled runs on this public repo land wildly
+  // irregularly in practice - confirmed live, sometimes 5+ hours apart).
+  // Apps Script's UrlFetchApp doesn't let a script override its own
+  // User-Agent header, so it authenticates via ?key=CRON_SECRET instead.
   const secret = process.env.CRON_SECRET;
   const auth = req.headers['authorization'] || '';
   const ua = req.headers['user-agent'] || '';
-  const allowed = secret
-    ? (auth === `Bearer ${secret}` || req.query.key === secret)
-    : ua.includes('vercel-cron');
+  const allowed = ua.includes('vercel-cron') || (!!secret && (auth === `Bearer ${secret}` || req.query.key === secret));
   if (!allowed) return res.status(403).json({ error: 'forbidden' });
 
   const apiKey = process.env.RESEND_API_KEY;
