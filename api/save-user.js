@@ -24,6 +24,36 @@ function getDb() {
 
 const ROLE_SUFFIX = { driver: ' (נהג)', dispatcher: ' (סדרן)', screen: ' (מסך)', admin: ' (מנהל)' };
 
+// Firestore batched writes cap at 500 operations - chunk defensively even
+// though this app's scan volume is nowhere near that per user.
+const BATCH_LIMIT = 500;
+
+async function renameUserAcrossScans(db, userId, newName) {
+  // `scans` is this app's own record; `daily_rides` is the WhatsApp bot's
+  // separate mirror (see whatsapp-bot/index.js upsertDailyRide) with its own
+  // field names for the same copied-at-scan-time name - both need the same
+  // backfill so the rename is visible everywhere (trip history/exports here,
+  // and the WhatsApp daily summary there).
+  const targets = [
+    { collection: 'scans', idField: 'driverId', nameField: 'driverName' },
+    { collection: 'scans', idField: 'dispatcherId', nameField: 'dispatcherName' },
+    { collection: 'daily_rides', idField: 'driverId', nameField: 'driver' },
+    { collection: 'daily_rides', idField: 'dispatcherId', nameField: 'dispatcher' }
+  ];
+
+  for (const { collection, idField, nameField } of targets) {
+    const snap = await db.collection(collection).where(idField, '==', userId).get();
+    if (snap.empty) continue;
+
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+      const batch = db.batch();
+      docs.slice(i, i + BATCH_LIMIT).forEach(d => batch.update(d.ref, { [nameField]: newName }));
+      await batch.commit();
+    }
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
 
@@ -89,7 +119,20 @@ export default async function handler(req, res) {
     if (userId) {
       // Editing: merge so createdAt (and any other field this endpoint
       // doesn't know about) on the existing doc is preserved.
+      const existingSnap = await db.collection('users').doc(userId).get();
+      const previousName = existingSnap.data()?.name;
+
       await db.collection('users').doc(userId).set(userDoc, { merge: true });
+
+      // A renamed driver/dispatcher should read with their new name
+      // everywhere, including already-scanned rides - per explicit request,
+      // not just in live views. Scan.driverName/dispatcherName are copied at
+      // scan-creation time (see src/services/db.ts), so they don't pick up a
+      // later rename on their own; backfill every scan that references this
+      // user's id.
+      if (previousName && previousName !== userDoc.name) {
+        await renameUserAcrossScans(db, userId, userDoc.name);
+      }
     } else {
       await db.collection('users').doc(id).set(userDoc);
     }
