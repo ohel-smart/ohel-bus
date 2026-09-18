@@ -6858,40 +6858,20 @@ export default function App() {
                   {lang === 'he' ? `נא להזין את מספר הנוסעים שעלו להסעה (קיבולת: ${scannerModalDriver.capacity ?? 15} מקומות):` : `Enter number of passengers (Capacity: ${scannerModalDriver.capacity ?? 15} seats):`}
                 </p>
 
-                {/* Quick Selection Buttons */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
-                  {[5, 10, 15, 20, 25, 30].map(val => (
-                    <button 
-                      key={val}
-                      type="button"
-                      onClick={() => setScannerModalPassengers(val)}
-                      className={`btn ${scannerModalPassengers === val ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ 
-                        fontSize: '14px', 
-                        padding: '12px 6px',
-                        background: scannerModalPassengers === val ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-                        color: scannerModalPassengers === val ? '#000' : '#fff',
-                        borderColor: scannerModalPassengers === val ? 'var(--accent)' : 'var(--border-color)',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom input */}
+                {/* Passenger count - typed in, no preset shortcuts (a tapped
+                    preset was too easy to leave un-reviewed/wrong per driver) */}
                 <div className="form-group" style={{ marginBottom: '24px' }}>
                   <label className="form-label" style={{ fontSize: '12px' }}>
-                    {lang === 'he' ? 'או הזן מספר אחר:' : 'Or enter custom amount:'}
+                    {lang === 'he' ? 'מספר נוסעים:' : 'Number of passengers:'}
                   </label>
-                  <input 
+                  <input
                     type="number"
                     className="form-input"
                     style={{ textAlign: 'center', fontSize: '20px', fontWeight: 'bold' }}
                     value={scannerModalPassengers === 0 ? '' : scannerModalPassengers}
                     onChange={(e) => setScannerModalPassengers(Math.max(0, parseInt(e.target.value) || 0))}
                     placeholder="0"
+                    autoFocus
                   />
                 </div>
 
