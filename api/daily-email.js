@@ -111,7 +111,7 @@ export default async function handler(req, res) {
 
   const stateRef = db.collection('bot_state').doc('daily_email');
   const stateSnap = await stateRef.get();
-  const lastSent = stateSnap.exists ? stateSnap.data().lastEmailDate : null;
+  const lastSent = (stateSnap.exists && stateSnap.data().lastEmailDate) || '';
 
   const today = nyDateStr(new Date());
   const yesterday = prevDateStr(today);
@@ -126,15 +126,23 @@ export default async function handler(req, res) {
   // Actions' cron pings routinely land 30-90+ minutes apart on this repo
   // (not the configured 10 - see workflow comment), so that one-minute
   // window was being missed almost every night.
+  // YYYY-MM-DD strings compare correctly as dates - use "<" (an actual gap),
+  // not "!==". Right after a successful send lastSent equals today, which is
+  // AHEAD of yesterday, not equal to it; "!==" misread that as an unsent gap
+  // and resent yesterday's email, flipping lastSent back and making both
+  // sends alternate/repeat on every ping for the rest of an Erev evening.
+  // Same bug, found and fixed the same way, in the two siblings that mirror
+  // this same logic: whatsapp-bot/index.js checkDailySummaryTrigger and the
+  // Apps Script checkAndSendDailyEmail (both fixed 2026-09-18/20).
   let target;
-  if (lastSent !== yesterday) {
+  if (lastSent < yesterday) {
     target = yesterday;
   } else {
     const triggerMoment = getTodaysTriggerMoment(today);
     if (Date.now() < triggerMoment.getTime()) {
       return res.status(200).json({ ok: true, skipped: true, reason: 'not yet time', date: today, triggerMoment: triggerMoment.toISOString() });
     }
-    if (lastSent === today) {
+    if (lastSent >= today) {
       return res.status(200).json({ ok: true, skipped: true, reason: 'already sent for this date', date: today });
     }
     target = today;
