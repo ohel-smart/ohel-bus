@@ -1,12 +1,21 @@
-// Emails the manager a daily rides summary via Resend, self-triggered - not
-// invoked by Vercel Cron (Hobby plan only allows once/day with up to ±59min of
-// imprecision - see https://vercel.com/docs/cron-jobs/usage-and-pricing) and
-// deliberately NOT invoked by the WhatsApp bot (separate repo) either, so this
-// stays independent of that service's uptime. Instead, a GitHub Actions
-// workflow (.github/workflows/daily-email-trigger.yml) pings this endpoint
-// every few minutes; the function itself decides whether "now" is actually
-// this day's trigger moment and no-ops otherwise. Reads ride data from
-// Firestore (same source the app uses).
+// RETIRED (2026-09-20): this Resend-based daily email has been replaced by a
+// self-contained Google Apps Script project ("Ohel Bus - Daily Email
+// Trigger") that reads the same Firestore data and sends via GmailApp
+// instead. The GitHub Actions workflow that used to ping this endpoint every
+// few minutes has been deleted, so nothing calls this handler anymore - it's
+// left in place only as dead code / a manual emergency fallback (hit the URL
+// by hand if the Apps Script trigger ever needs to be bypassed), not as part
+// of normal operation. Do NOT re-add an automatic pinger for this without
+// also re-solving the "two independent senders sharing one Firestore
+// last-sent marker with no transaction" race this coexistence used to have -
+// see git history around 2026-09-20 for the full incident (a comparison-
+// operator bug in this exact self-heal logic, duplicated across this file,
+// the WhatsApp bot, and the Apps Script, caused real duplicate-message spam
+// on Erev Shabbat before all three were fixed the same way).
+//
+// Original description, kept for reference: emails the manager a daily rides
+// summary via Resend. Reads ride data from Firestore (same source the app
+// uses).
 
 import { HDate, Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
