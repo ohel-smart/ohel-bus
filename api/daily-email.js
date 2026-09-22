@@ -228,7 +228,7 @@ export default async function handler(req, res) {
         <th style="padding:9px 10px;font-weight:600;text-align:right;">סדרן</th>
       </tr></thead><tbody>${rows}</tbody></table>` : `<p style="text-align:center;color:${MUTED};padding:20px;">לא היו נסיעות ביום זה.</p>`}
 
-    <p style="color:${MUTED};font-size:11px;text-align:center;margin-top:24px;">הופק אוטומטית ממערכת אוהל בוס</p>
+    <p style="color:${MUTED};font-size:11px;text-align:center;margin-top:24px;">הופק אוטומטית על ידי SBD בניית אתרים</p>
   </div>`;
 
   try {
