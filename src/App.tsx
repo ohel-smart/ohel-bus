@@ -3445,6 +3445,35 @@ export default function App() {
     triggerToast(lang === 'he' ? 'הטבלה המרכזית יוצאה לאקסל בהצלחה' : 'Central table exported to Excel', 'success');
   };
 
+  const handleExportHourlySummaryToCsv = () => {
+    const q = csvCell;
+    const colHeaders = [
+      'פרשת שבוע', 'תאריך עברי', 'יום', 'תאריך לועזי', 'שעה',
+      'אנשים מ-770', 'רגילים מ-770', 'גדולים מ-770', 'רגילים מהאוהל', 'גדולים מהאוהל'
+    ];
+    // hourlySummaryRows is already filtered by the tab's own date-range
+    // picker (hourlySummaryDateFrom/To), same as the central table's export.
+    const lines: string[] = [colHeaders.map(q).join(',')];
+    [...hourlySummaryRows].reverse().forEach(r => {
+      lines.push([
+        q(r.parsha), q(r.hebrewDate), q(r.dayOfWeek), q(r.dateStr), q(r.time),
+        q(r.people770), q(r.regular770), q(r.big770), q(r.regularOhel), q(r.bigOhel)
+      ].join(','));
+    });
+
+    const csvContent = "﻿" + lines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const rangeSuffix = (hourlySummaryDateFrom || hourlySummaryDateTo) ? `_${hourlySummaryDateFrom || 'start'}_to_${hourlySummaryDateTo || 'now'}` : `_${new Date().toISOString().split('T')[0]}`;
+    link.setAttribute("download", `hourly_summary${rangeSuffix}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerToast(lang === 'he' ? 'הסיכום לפי שעות יוצא לאקסל בהצלחה' : 'Hourly summary exported to Excel', 'success');
+  };
+
   // --- Per-driver detailed PDF report (via browser print -> "Save as PDF") ---
   // jsPDF's built-in fonts don't support Hebrew glyphs without embedding a custom
   // font, so a real browser print window is the reliable way to get correct
@@ -7414,6 +7443,10 @@ export default function App() {
                           {lang === 'he' ? 'נקה' : 'Clear'}
                         </button>
                       )}
+                      <button onClick={handleExportHourlySummaryToCsv} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', marginInlineStart: 'auto' }}>
+                        <Download size={15} />
+                        <span>{lang === 'he' ? 'הורדה לאקסל' : 'Export to Excel'}</span>
+                      </button>
                     </div>
 
                     <HourlySummaryTable rows={hourlySummaryRows} lang={lang} />
