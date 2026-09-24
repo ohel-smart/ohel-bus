@@ -992,20 +992,27 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
 
   const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
   const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
+  const weekdayLabels = lang === 'he' ? ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, -1))} className="btn btn-secondary" style={{ padding: '8px 14px' }}>
-          <PrevIcon size={20} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, -1))} className="btn btn-secondary" style={{ padding: '10px 18px' }}>
+          <PrevIcon size={24} />
         </button>
-        <span style={{ fontSize: '22px', fontWeight: 700, color: '#fff' }}>{monthLabel} {renderHebrewYear(viewYM.year)}</span>
-        <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, 1))} className="btn btn-secondary" style={{ padding: '8px 14px' }}>
-          <NextIcon size={20} />
+        <span style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>{monthLabel} {renderHebrewYear(viewYM.year)}</span>
+        <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, 1))} className="btn btn-secondary" style={{ padding: '10px 18px' }}>
+          <NextIcon size={24} />
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px', marginBottom: '10px' }}>
+        {weekdayLabels.map((w, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px' }}>
         {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
         {days.map(day => {
           const isHalf = selectedSet.has(day.ymd);
@@ -1021,17 +1028,17 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
                 : (lang === 'he' ? 'לחץ לעיגול חצי שעה ביום הזה' : 'Click to round this day to the half hour')}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                padding: '14px 4px', borderRadius: '10px', minHeight: '76px',
+                padding: '18px 4px', borderRadius: '12px', minHeight: '104px',
                 border: isToday && !isHalf ? '2px solid var(--accent)' : '1px solid transparent',
                 background: isHalf ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '2px'
+                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '4px'
               }}
             >
-              <span style={{ fontWeight: 700, fontSize: '20px' }}>{getHebrewDayLabel(day.gregDate)}</span>
-              <span style={{ fontSize: '11px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
+              <span style={{ fontWeight: 700, fontSize: '26px' }}>{getHebrewDayLabel(day.gregDate)}</span>
+              <span style={{ fontSize: '13px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
               {pax > 0 && (
                 <span style={{
-                  fontSize: '11px', fontWeight: 600, marginTop: '2px', padding: '1px 6px', borderRadius: '20px',
+                  fontSize: '12px', fontWeight: 600, marginTop: '2px', padding: '2px 8px', borderRadius: '20px',
                   background: isHalf ? 'rgba(0,0,0,0.2)' : 'rgba(226, 176, 78, 0.15)',
                   color: isHalf ? '#000' : 'var(--accent)'
                 }}>
@@ -2221,6 +2228,57 @@ export default function App() {
       return [...day.rows].reverse().map(r => ({ ...r, dateStr: day.dateStr, hebrewDate: day.hebrewDate, dayOfWeek }));
     });
   }, [centralSummary]);
+
+  // "Summary by half-hour" - a fully auto-computed, read-only rollup of every
+  // scan, grouped by (logicalDate, half-hour bucket). Always rounds to the
+  // half hour regardless of halfHourRoundingDates (that override only affects
+  // the central table's display) - this report's whole point is half-hour
+  // granularity. Recomputes automatically whenever `scans` changes, which
+  // dbService's Firestore listener already updates on every add/edit/delete.
+  const hourlySummaryRows = useMemo(() => {
+    interface HourlySummaryRow {
+      dateStr: string;
+      time: string;
+      parsha: string;
+      hebrewDate: string;
+      dayOfWeek: string;
+      people770: number;
+      regular770: number;
+      big770: number;
+      regularOhel: number;
+      bigOhel: number;
+    }
+    const groups: { [key: string]: HourlySummaryRow } = {};
+    for (const s of scans) {
+      if (!s.logicalDate) continue;
+      const when = new Date(s.scannedAt);
+      const time = roundToHalfHourStr(when);
+      const key = `${s.logicalDate}_${time}`;
+      if (!groups[key]) {
+        const dayDate = new Date(s.logicalDate + 'T12:00:00');
+        groups[key] = {
+          dateStr: s.logicalDate,
+          time,
+          parsha: getWeeklyParsha(when),
+          hebrewDate: getHebrewDate(dayDate),
+          dayOfWeek: getDayOfWeekHe(dayDate),
+          people770: 0, regular770: 0, big770: 0, regularOhel: 0, bigOhel: 0
+        };
+      }
+      const g = groups[key];
+      const bigBus = s.isBigBus ?? ((s.driverCapacity || 0) >= BIG_BUS_MIN_CAPACITY);
+      if (s.departureLocation === '770') {
+        g.people770 += (s.passengersCount || 0);
+        if (bigBus) g.big770 += 1; else g.regular770 += 1;
+      } else {
+        if (bigBus) g.bigOhel += 1; else g.regularOhel += 1;
+      }
+    }
+    return Object.values(groups).sort((a, b) => {
+      if (a.dateStr !== b.dateStr) return a.dateStr < b.dateStr ? 1 : -1; // newest date first
+      return a.time < b.time ? -1 : 1; // ascending time within a day
+    });
+  }, [scans]);
 
   // Applies the SAME filters currently active on the central table (date range,
   // Hebrew month/year, parsha, origin, big-bus-only) to an arbitrary scan list -
@@ -5261,19 +5319,27 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setActiveTab('users')}
-                    className={`sidebar-item ${activeTab === 'users' ? 'active' : ''}`}
-                  >
-                    <Users size={16} />
-                    <span>{t('usersManagement')}</span>
-                  </button>
-
-                  <button
                     onClick={() => setActiveTab('roundingCalendar')}
                     className={`sidebar-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
                   >
                     <Clock size={16} />
                     <span>{lang === 'he' ? 'לוח עיגול זמנים' : 'Rounding Calendar'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('hourlySummary')}
+                    className={`sidebar-item ${activeTab === 'hourlySummary' ? 'active' : ''}`}
+                  >
+                    <RefreshCw size={16} />
+                    <span>{lang === 'he' ? 'סיכום לפי שעות' : 'Hourly Summary'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('users')}
+                    className={`sidebar-item ${activeTab === 'users' ? 'active' : ''}`}
+                  >
+                    <Users size={16} />
+                    <span>{t('usersManagement')}</span>
                   </button>
 
                   {/* Settings button removed */}
@@ -7138,12 +7204,13 @@ export default function App() {
                 )}
 
                 {/* TAB 5: TIME-ROUNDING CALENDAR - its own dedicated tab (not
-                    inside Users) so the admin can view it full-size on its own. */}
+                    inside Users), rendered edge-to-edge with no card frame so
+                    the calendar itself has maximum room. */}
                 {activeTab === 'roundingCalendar' && (
-                  <div style={{ maxWidth: '700px', margin: '0 auto', width: '100%' }}>
-                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fff', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clock size={18} color="var(--accent)" />
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clock size={20} color="var(--accent)" />
                         {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}
                       </h3>
                       <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
@@ -7151,13 +7218,75 @@ export default function App() {
                           ? 'כברירת מחדל הזמנים בטבלה המרכזית מעוגלים לשעה עגולה. לחץ על יום כדי לסמן אותו לעיגול לחצי שעה במקום.'
                           : 'By default, times in the central table round to the nearest whole hour. Click a day to mark it for half-hour rounding instead.'}
                       </p>
-                      <HalfHourRoundingCalendar
-                        selectedDates={halfHourRoundingDates}
-                        onToggle={toggleHalfHourRoundingForDate}
-                        lang={lang}
-                        passengersByDate={passengersByDate}
-                      />
                     </div>
+                    <HalfHourRoundingCalendar
+                      selectedDates={halfHourRoundingDates}
+                      onToggle={toggleHalfHourRoundingForDate}
+                      lang={lang}
+                      passengersByDate={passengersByDate}
+                    />
+                  </div>
+                )}
+
+                {/* TAB 6: HOURLY SUMMARY - fully derived from `scans` (hourlySummaryRows),
+                    so any add/edit/delete on the scans table is reflected here on the
+                    next render with no separate sync step. Read-only, no driver names. */}
+                {activeTab === 'hourlySummary' && (
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <RefreshCw size={20} color="var(--accent)" />
+                        {lang === 'he' ? 'סיכום לפי שעות' : 'Hourly Summary'}
+                      </h3>
+                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                        {lang === 'he'
+                          ? 'מחושב אוטומטית מטבלת הסריקות - כל סריקה נספרת כאוטובוס אחד, מקובצת לפי תאריך וחצי שעה. לא ניתן לערוך כאן.'
+                          : 'Computed automatically from the scans table - each scan counts as one bus, grouped by date and half hour. Not editable here.'}
+                      </p>
+                    </div>
+
+                    {hourlySummaryRows.length === 0 ? (
+                      <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        {lang === 'he' ? 'אין עדיין נתונים' : 'No data yet'}
+                      </div>
+                    ) : (
+                      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                        <div className="table-container">
+                          <table className="tp-table">
+                            <thead>
+                              <tr>
+                                <th style={thCentral}>{lang === 'he' ? 'פרשת שבוע' : 'Parsha'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'תאריך עברי' : 'Hebrew Date'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'יום' : 'Day'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'תאריך לועזי' : 'Date'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'אנשים מ-770' : 'People from 770'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'רגילים מ-770' : 'Regular from 770'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'גדולים מ-770' : 'Big from 770'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'רגילים מהאוהל' : 'Regular from Ohel'}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'גדולים מהאוהל' : 'Big from Ohel'}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {hourlySummaryRows.map(r => (
+                                <tr key={`${r.dateStr}_${r.time}`} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                  <td style={tdCentral}>{r.parsha}</td>
+                                  <td style={tdCentral}>{r.hebrewDate}</td>
+                                  <td style={tdCentral}>{r.dayOfWeek}</td>
+                                  <td style={tdCentral}>{r.dateStr}</td>
+                                  <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
+                                  <td style={{ ...tdCentral, color: '#fff' }}>{r.people770}</td>
+                                  <td style={tdCentral}>{r.regular770}</td>
+                                  <td style={tdCentral}>{r.big770}</td>
+                                  <td style={tdCentral}>{r.regularOhel}</td>
+                                  <td style={tdCentral}>{r.bigOhel}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -7194,18 +7323,25 @@ export default function App() {
                   <span>{lang === 'he' ? 'טבלה' : 'Table'}</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('users')}
-                  className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}
-                >
-                  <Users size={18} />
-                  <span>{t('usersManagement')}</span>
-                </button>
-                <button
                   onClick={() => setActiveTab('roundingCalendar')}
                   className={`bottom-nav-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
                 >
                   <Clock size={18} />
                   <span>{lang === 'he' ? 'עיגול' : 'Rounding'}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('hourlySummary')}
+                  className={`bottom-nav-item ${activeTab === 'hourlySummary' ? 'active' : ''}`}
+                >
+                  <RefreshCw size={18} />
+                  <span>{lang === 'he' ? 'סיכום שעות' : 'Hourly'}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}
+                >
+                  <Users size={18} />
+                  <span>{t('usersManagement')}</span>
                 </button>
                 {/* Settings button removed */}
               </nav>
