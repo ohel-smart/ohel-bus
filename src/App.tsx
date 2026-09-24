@@ -2293,6 +2293,10 @@ export default function App() {
   const [centralParshaFilter, setCentralParshaFilter] = useState('');
   const [centralOriginFilter, setCentralOriginFilter] = useState<'' | DepartureLocation>('');
   const [centralSelectMode, setCentralSelectMode] = useState(false);
+  // Date-range filter for the Hourly Summary tab - independent of the central
+  // table's own filters, since it's a separate report.
+  const [hourlySummaryDateFrom, setHourlySummaryDateFrom] = useState('');
+  const [hourlySummaryDateTo, setHourlySummaryDateTo] = useState('');
   const [centralSelectedIds, setCentralSelectedIds] = useState<Set<string>>(new Set());
   // Also used to filter the central table itself, not just the PDF exports.
   const [selectedDriverForPdf, setSelectedDriverForPdf] = useState('');
@@ -2407,6 +2411,8 @@ export default function App() {
     const groups: { [key: string]: HourlySummaryRow } = {};
     for (const s of scans) {
       if (!s.logicalDate) continue;
+      if (hourlySummaryDateFrom && s.logicalDate < hourlySummaryDateFrom) continue;
+      if (hourlySummaryDateTo && s.logicalDate > hourlySummaryDateTo) continue;
       const when = new Date(s.scannedAt);
       const time = roundToHalfHourStr(when);
       const key = `${s.logicalDate}_${time}`;
@@ -2434,7 +2440,7 @@ export default function App() {
       if (a.dateStr !== b.dateStr) return a.dateStr < b.dateStr ? 1 : -1; // newest date first
       return a.time < b.time ? -1 : 1; // ascending time within a day
     });
-  }, [scans]);
+  }, [scans, hourlySummaryDateFrom, hourlySummaryDateTo]);
 
   // Applies the SAME filters currently active on the central table (date range,
   // Hebrew month/year, parsha, origin, big-bus-only) to an arbitrary scan list -
@@ -7393,6 +7399,21 @@ export default function App() {
                           ? 'מחושב אוטומטית מטבלת הסריקות - כל סריקה נספרת כאוטובוס אחד, מקובצת לפי תאריך וחצי שעה. לא ניתן לערוך כאן. סמן כמה תאים (לחיצה+גרירה, או Ctrl/Cmd+לחיצה) כדי לראות סה"כ, כמו באקסל.'
                           : 'Computed automatically from the scans table - each scan counts as one bus, grouped by date and half hour. Not editable here. Select cells (click+drag, or Ctrl/Cmd+click) to see a running total, like in Excel.'}
                       </p>
+                    </div>
+
+                    <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים' : 'Date range'}</span>
+                      <HebrewRangePicker
+                        fromValue={hourlySummaryDateFrom} toValue={hourlySummaryDateTo}
+                        onChange={(from, to) => { setHourlySummaryDateFrom(from); setHourlySummaryDateTo(to); }}
+                        lang={lang}
+                        placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
+                      />
+                      {(hourlySummaryDateFrom || hourlySummaryDateTo) && (
+                        <button onClick={() => { setHourlySummaryDateFrom(''); setHourlySummaryDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
+                          {lang === 'he' ? 'נקה' : 'Clear'}
+                        </button>
+                      )}
                     </div>
 
                     <HourlySummaryTable rows={hourlySummaryRows} lang={lang} />
