@@ -26,15 +26,17 @@ interface HourlySummaryRow {
   people770: number;
   regular770: number;
   big770: number;
+  peopleOhel: number;
   regularOhel: number;
   bigOhel: number;
 }
 
-type HourlySummaryNumericField = 'people770' | 'regular770' | 'big770' | 'regularOhel' | 'bigOhel';
+type HourlySummaryNumericField = 'people770' | 'regular770' | 'big770' | 'peopleOhel' | 'regularOhel' | 'bigOhel';
 const HOURLY_SUMMARY_NUMERIC_COLS: { key: HourlySummaryNumericField; label: { he: string; en: string } }[] = [
   { key: 'people770', label: { he: 'אנשים מ-770', en: 'People from 770' } },
   { key: 'regular770', label: { he: 'רגילים מ-770', en: 'Regular from 770' } },
   { key: 'big770', label: { he: 'גדולים מ-770', en: 'Big from 770' } },
+  { key: 'peopleOhel', label: { he: 'אנשים מהאוהל', en: 'People from Ohel' } },
   { key: 'regularOhel', label: { he: 'רגילים מהאוהל', en: 'Regular from Ohel' } },
   { key: 'bigOhel', label: { he: 'גדולים מהאוהל', en: 'Big from Ohel' } },
 ];
@@ -2424,7 +2426,7 @@ export default function App() {
           parsha: getWeeklyParsha(when),
           hebrewDate: getHebrewDate(dayDate),
           dayOfWeek: getDayOfWeekHe(dayDate),
-          people770: 0, regular770: 0, big770: 0, regularOhel: 0, bigOhel: 0
+          people770: 0, regular770: 0, big770: 0, peopleOhel: 0, regularOhel: 0, bigOhel: 0
         };
       }
       const g = groups[key];
@@ -2433,6 +2435,7 @@ export default function App() {
         g.people770 += (s.passengersCount || 0);
         if (bigBus) g.big770 += 1; else g.regular770 += 1;
       } else {
+        g.peopleOhel += (s.passengersCount || 0);
         if (bigBus) g.bigOhel += 1; else g.regularOhel += 1;
       }
     }
@@ -3449,7 +3452,7 @@ export default function App() {
     const q = csvCell;
     const colHeaders = [
       'פרשת שבוע', 'תאריך עברי', 'יום', 'תאריך לועזי', 'שעה',
-      'אנשים מ-770', 'רגילים מ-770', 'גדולים מ-770', 'רגילים מהאוהל', 'גדולים מהאוהל'
+      'אנשים מ-770', 'רגילים מ-770', 'גדולים מ-770', 'אנשים מהאוהל', 'רגילים מהאוהל', 'גדולים מהאוהל'
     ];
     // hourlySummaryRows is already filtered by the tab's own date-range
     // picker (hourlySummaryDateFrom/To), same as the central table's export.
@@ -3457,7 +3460,7 @@ export default function App() {
     [...hourlySummaryRows].reverse().forEach(r => {
       lines.push([
         q(r.parsha), q(r.hebrewDate), q(r.dayOfWeek), q(r.dateStr), q(r.time),
-        q(r.people770), q(r.regular770), q(r.big770), q(r.regularOhel), q(r.bigOhel)
+        q(r.people770), q(r.regular770), q(r.big770), q(r.peopleOhel), q(r.regularOhel), q(r.bigOhel)
       ].join(','));
     });
 
