@@ -972,78 +972,72 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
 
 // Admin-only calendar for marking specific days to round trip times to the
 // nearest HALF hour instead of the default whole hour (halfHourRoundingDates
-// in GlobalConfig). Always-open month grid (not a popup like HebrewDatePicker)
-// since it lives in its own card in the Users tab.
-function HalfHourRoundingCalendar({ selectedDates, onToggle, lang }: {
+// in GlobalConfig). Navigated by HEBREW month (like HebrewRangePicker) so it
+// matches how the org actually thinks about its schedule, and shows each
+// day's total passenger count (both directions) so the admin can see what
+// already happened before deciding whether to override that day's rounding.
+function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByDate }: {
   selectedDates: string[];
   onToggle: (dateStr: string) => void;
   lang: 'he' | 'en';
+  passengersByDate: { [date: string]: number };
 }) {
-  const [viewMonth, setViewMonth] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  const [viewYM, setViewYM] = useState(() => getHebrewYearMonth(new Date()));
 
-  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-  const year = viewMonth.getFullYear();
-  const month = viewMonth.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const leadingBlanks = new Date(year, month, 1).getDay();
-
-  const weekdayLabels = lang === 'he' ? ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-  const monthLabel = viewMonth.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' });
-  const todayStr = ymd(new Date());
+  const monthLabel = HEBREW_MONTH_OPTIONS.find(m => m.key === viewYM.monthKey)?.label || viewYM.monthKey;
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
   const selectedSet = new Set(selectedDates);
+  const days = useMemo(() => getHebrewMonthDays(viewYM.year, viewYM.monthKey), [viewYM.year, viewYM.monthKey]);
+  const leadingBlanks = days.length > 0 ? days[0].gregDate.getDay() : 0;
 
   const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
   const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
 
-  const cells: (Date | null)[] = [];
-  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d, 12));
-
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <button type="button" onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
-          <PrevIcon size={16} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, -1))} className="btn btn-secondary" style={{ padding: '8px 14px' }}>
+          <PrevIcon size={20} />
         </button>
-        <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>{monthLabel}</span>
-        <button type="button" onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
-          <NextIcon size={16} />
+        <span style={{ fontSize: '22px', fontWeight: 700, color: '#fff' }}>{monthLabel} {renderHebrewYear(viewYM.year)}</span>
+        <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, 1))} className="btn btn-secondary" style={{ padding: '8px 14px' }}>
+          <NextIcon size={20} />
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
-        {weekdayLabels.map((w, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-        {cells.map((cellDate, i) => {
-          if (!cellDate) return <div key={i} />;
-          const cellStr = ymd(cellDate);
-          const isHalf = selectedSet.has(cellStr);
-          const isToday = cellStr === todayStr;
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+        {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
+        {days.map(day => {
+          const isHalf = selectedSet.has(day.ymd);
+          const isToday = day.ymd === todayStr;
+          const pax = passengersByDate[day.ymd] || 0;
           return (
             <button
               type="button"
-              key={i}
-              onClick={() => onToggle(cellStr)}
+              key={day.hebrewDay}
+              onClick={() => onToggle(day.ymd)}
               title={isHalf
                 ? (lang === 'he' ? 'היום הזה מעוגל לחצי שעה - לחץ לביטול' : 'This day rounds to half hour - click to clear')
                 : (lang === 'he' ? 'לחץ לעיגול חצי שעה ביום הזה' : 'Click to round this day to the half hour')}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                padding: '6px 0', borderRadius: '6px',
-                border: isToday && !isHalf ? '1px solid var(--accent)' : '1px solid transparent',
+                padding: '14px 4px', borderRadius: '10px', minHeight: '76px',
+                border: isToday && !isHalf ? '2px solid var(--accent)' : '1px solid transparent',
                 background: isHalf ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '12px'
+                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '2px'
               }}
             >
-              <span style={{ fontWeight: 600 }}>{cellDate.getDate()}</span>
+              <span style={{ fontWeight: 700, fontSize: '20px' }}>{getHebrewDayLabel(day.gregDate)}</span>
+              <span style={{ fontSize: '11px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
+              {pax > 0 && (
+                <span style={{
+                  fontSize: '11px', fontWeight: 600, marginTop: '2px', padding: '1px 6px', borderRadius: '20px',
+                  background: isHalf ? 'rgba(0,0,0,0.2)' : 'rgba(226, 176, 78, 0.15)',
+                  color: isHalf ? '#000' : 'var(--accent)'
+                }}>
+                  {pax} {lang === 'he' ? 'נוסעים' : 'pax'}
+                </span>
+              )}
             </button>
           );
         })}
@@ -2132,6 +2126,15 @@ export default function App() {
   // Admin-set per-day override (persisted in Firestore settings, not local UI
   // state) - days NOT in this list round to the whole hour by default.
   const halfHourRoundingDates = dbService.getConfig().halfHourRoundingDates || [];
+
+  // Total passengers (both directions summed) per logicalDate - shown on the
+  // rounding calendar so the admin can see what already happened on a day
+  // before deciding whether to mark it for half-hour rounding.
+  const passengersByDate = useMemo(() => {
+    const map: { [date: string]: number } = {};
+    scans.forEach(s => { map[s.logicalDate] = (map[s.logicalDate] || 0) + (s.passengersCount || 0); });
+    return map;
+  }, [scans]);
 
   const centralSummary = useMemo(() => {
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
@@ -5265,6 +5268,14 @@ export default function App() {
                     <span>{t('usersManagement')}</span>
                   </button>
 
+                  <button
+                    onClick={() => setActiveTab('roundingCalendar')}
+                    className={`sidebar-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
+                  >
+                    <Clock size={16} />
+                    <span>{lang === 'he' ? 'לוח עיגול זמנים' : 'Rounding Calendar'}</span>
+                  </button>
+
                   {/* Settings button removed */}
                 </nav>
 
@@ -6780,24 +6791,6 @@ export default function App() {
                         </div>
                       </div>
                     )}
-
-                    {/* Half-hour rounding calendar - central table times default to
-                        whole-hour rounding; clicking a day here marks it to round to
-                        the half hour instead, persisted in GlobalConfig for everyone. */}
-                    <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Calendar size={16} color="var(--accent)" />
-                        {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}
-                      </h3>
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
-                        {lang === 'he'
-                          ? 'כברירת מחדל הזמנים בטבלה המרכזית מעוגלים לשעה עגולה. לחץ על יום כדי לסמן אותו לעיגול לחצי שעה במקום.'
-                          : 'By default, times in the central table round to the nearest whole hour. Click a day to mark it for half-hour rounding instead.'}
-                      </p>
-                      <div style={{ maxWidth: '320px' }}>
-                        <HalfHourRoundingCalendar selectedDates={halfHourRoundingDates} onToggle={toggleHalfHourRoundingForDate} lang={lang} />
-                      </div>
-                    </div>
                   </div>
                 )}
 
@@ -7144,6 +7137,30 @@ export default function App() {
                   </div>
                 )}
 
+                {/* TAB 5: TIME-ROUNDING CALENDAR - its own dedicated tab (not
+                    inside Users) so the admin can view it full-size on its own. */}
+                {activeTab === 'roundingCalendar' && (
+                  <div style={{ maxWidth: '700px', margin: '0 auto', width: '100%' }}>
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fff', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clock size={18} color="var(--accent)" />
+                        {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}
+                      </h3>
+                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                        {lang === 'he'
+                          ? 'כברירת מחדל הזמנים בטבלה המרכזית מעוגלים לשעה עגולה. לחץ על יום כדי לסמן אותו לעיגול לחצי שעה במקום.'
+                          : 'By default, times in the central table round to the nearest whole hour. Click a day to mark it for half-hour rounding instead.'}
+                      </p>
+                      <HalfHourRoundingCalendar
+                        selectedDates={halfHourRoundingDates}
+                        onToggle={toggleHalfHourRoundingForDate}
+                        lang={lang}
+                        passengersByDate={passengersByDate}
+                      />
+                    </div>
+                  </div>
+                )}
+
               </main>
 
               {/* MOBILE BOTTOM NAVIGATION */}
@@ -7182,6 +7199,13 @@ export default function App() {
                 >
                   <Users size={18} />
                   <span>{t('usersManagement')}</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('roundingCalendar')}
+                  className={`bottom-nav-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
+                >
+                  <Clock size={18} />
+                  <span>{lang === 'he' ? 'עיגול' : 'Rounding'}</span>
                 </button>
                 {/* Settings button removed */}
               </nav>
