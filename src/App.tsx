@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
-import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
+import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
@@ -97,6 +97,7 @@ const TRANSLATIONS = {
     clearParsha: 'נקה פרשה',
     originFilterLabel: 'כל נקודות המוצא',
     clearOrigin: 'נקה מוצא',
+    clearAllFilters: 'נקה את כל הסינונים',
     actions: 'פעולות',
     editScanTitle: 'עריכת פרטי נסיעה',
     save: 'שמור',
@@ -372,6 +373,7 @@ const TRANSLATIONS = {
     clearParsha: 'Clear Parsha',
     originFilterLabel: 'All Origins',
     clearOrigin: 'Clear Origin',
+    clearAllFilters: 'Clear all filters',
     actions: 'Actions',
     editScanTitle: 'Edit Trip Details',
     save: 'Save',
@@ -2013,6 +2015,10 @@ export default function App() {
   const [selectedDriverForPdf, setSelectedDriverForPdf] = useState('');
   const [selectedDispatcherForPdf, setSelectedDispatcherForPdf] = useState('');
 
+  // Admin-set per-day override (persisted in Firestore settings, not local UI
+  // state) - days NOT in this list round to the whole hour by default.
+  const halfHourRoundingDates = dbService.getConfig().halfHourRoundingDates || [];
+
   const centralSummary = useMemo(() => {
     // NOTE: a lucide icon named `Map` is imported at module scope and shadows the
     // built-in Map constructor here, so group with a plain object instead.
@@ -2050,8 +2056,10 @@ export default function App() {
             // Explicit origin -> destination, not just an abstract "outbound/return" label.
             routeLabel: isReturn ? 'אוהל ← 770' : '770 ← אוהל',
             routeLabelEn: isReturn ? 'Ohel -> 770' : '770 -> Ohel',
-            // Central summary always rounds to the nearest half hour, including today's rows.
-            time: roundToHalfHourStr(when),
+            // Central summary rounds to the nearest whole hour by default; an
+            // admin can flip a specific day to half-hour rounding instead
+            // (halfHourRoundingDates, set from this tab - see the toggle below).
+            time: halfHourRoundingDates.includes(dateStr) ? roundToHalfHourStr(when) : roundToHourStr(when),
             // Computed from this ride's own scan time, not the day's noon - a
             // Saturday-night ride is already in next week's parsha even though
             // the calendar day is still "Saturday".
@@ -2076,7 +2084,7 @@ export default function App() {
         rows,
       };
     }).filter(day => day.rows.length > 0);
-  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, selectedDriverForPdf, selectedDispatcherForPdf, scanIdToParsha, logicalDateToHebrewYM, lang]);
+  }, [scans, logicalToday, centralBigBusOnly, centralDateFrom, centralDateTo, centralMonthFilter, centralYearFilter, centralParshaFilter, centralOriginFilter, selectedDriverForPdf, selectedDispatcherForPdf, scanIdToParsha, logicalDateToHebrewYM, lang, halfHourRoundingDates]);
 
   // Flattened row ids across all day-groups currently shown, for "select all".
   const centralAllRowIds = useMemo(
@@ -2475,6 +2483,19 @@ export default function App() {
     dbService.updateScan(updated);
     setSelectedScanForEdit(null);
     triggerToast(t('scanUpdated'), 'success');
+  };
+
+  // Admin-only: flip a specific day between the default (whole-hour) rounding
+  // and half-hour rounding in the central summary. Persisted in Firestore
+  // settings (not local component state), so it applies for every viewer,
+  // not just this admin's own session.
+  const toggleHalfHourRoundingForDate = (dateStr: string) => {
+    const config = dbService.getConfig();
+    const current = config.halfHourRoundingDates || [];
+    const next = current.includes(dateStr)
+      ? current.filter(d => d !== dateStr)
+      : [...current, dateStr];
+    dbService.saveConfig({ ...config, halfHourRoundingDates: next });
   };
 
   const handleDeleteScan = (scanId: string) => {
@@ -5127,6 +5148,23 @@ export default function App() {
 
                     {/* Filter + date range + per-driver PDF toolbar */}
                     <div className="card filter-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
+                      {(centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) && (
+                        <button
+                          onClick={() => {
+                            setCentralBigBusOnly(false);
+                            setCentralDateFrom('');
+                            setCentralDateTo('');
+                            setCentralMonthFilter('');
+                            setCentralYearFilter('');
+                            setCentralParshaFilter('');
+                            setCentralOriginFilter('');
+                          }}
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}
+                        >
+                          {t('clearAllFilters')}
+                        </button>
+                      )}
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
                         <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                         {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
@@ -5305,7 +5343,25 @@ export default function App() {
                                   <td style={tdCentral}>{r.parsha}</td>
                                   <td style={tdCentral}>{r.hebrewDate}</td>
                                   <td style={tdCentral}>{r.dayOfWeek}</td>
-                                  <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
+                                  <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>
+                                    {r.time}
+                                    {currentUser.role === 'admin' && (
+                                      <button
+                                        onClick={() => toggleHalfHourRoundingForDate(r.dateStr)}
+                                        title={halfHourRoundingDates.includes(r.dateStr)
+                                          ? (lang === 'he' ? 'היום הזה מעוגל לחצי שעה - לחץ לעיגול שעתי רגיל' : 'This day rounds to half hour - click for regular hourly rounding')
+                                          : (lang === 'he' ? 'עגל את היום הזה לחצי שעה' : 'Round this day to the nearest half hour')}
+                                        style={{
+                                          marginInlineStart: '6px', border: 'none', cursor: 'pointer', borderRadius: '4px',
+                                          padding: '1px 5px', fontSize: '10px', fontFamily: 'inherit',
+                                          background: halfHourRoundingDates.includes(r.dateStr) ? 'var(--accent)' : 'rgba(255,255,255,0.08)',
+                                          color: halfHourRoundingDates.includes(r.dateStr) ? '#000' : 'var(--text-secondary)'
+                                        }}
+                                      >
+                                        ½{lang === 'he' ? 'שע' : 'hr'}
+                                      </button>
+                                    )}
+                                  </td>
                                   <td style={tdCentral}>{r.dateStr}</td>
                                   <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
                                   <td style={tdCentral}>{r.dispatcher}</td>

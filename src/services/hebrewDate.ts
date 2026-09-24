@@ -62,19 +62,30 @@ export function getHebrewDate(date: Date): string {
 }
 
 /**
- * Round a moment to the nearest half hour (:00 / :30) in the given timezone and
- * return "HH:MM" (24h). 12:05->12:00, 12:25->12:30, 12:55->13:00.
+ * Round a moment to the nearest `stepMinutes` in the given timezone and
+ * return "HH:MM" (24h). E.g. with stepMinutes=30: 12:05->12:00, 12:25->12:30,
+ * 12:55->13:00. With stepMinutes=60: 12:29->12:00, 12:31->13:00.
  */
-export function roundToHalfHourStr(date: Date, timeZone = 'America/New_York'): string {
+export function roundToStepStr(date: Date, stepMinutes: number, timeZone = 'America/New_York'): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false, timeZone
   }).formatToParts(date);
   const h = parseInt(parts.find(p => p.type === 'hour')!.value, 10);
   const m = parseInt(parts.find(p => p.type === 'minute')!.value, 10);
-  let total = Math.round((h * 60 + m) / 30) * 30;
+  let total = Math.round((h * 60 + m) / stepMinutes) * stepMinutes;
   total = ((total % 1440) + 1440) % 1440;
   const rh = Math.floor(total / 60), rm = total % 60;
   return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`;
+}
+
+/** Round a moment to the nearest half hour (:00 / :30). See roundToStepStr. */
+export function roundToHalfHourStr(date: Date, timeZone = 'America/New_York'): string {
+  return roundToStepStr(date, 30, timeZone);
+}
+
+/** Round a moment to the nearest whole hour (:00). See roundToStepStr. */
+export function roundToHourStr(date: Date, timeZone = 'America/New_York'): string {
+  return roundToStepStr(date, 60, timeZone);
 }
 
 /** Hebrew day-of-week name, e.g. "יום ראשון". */

@@ -66,6 +66,11 @@ export interface GlobalConfig {
   twilioAuthToken?: string;
   twilioFromNumber?: string;
   twilioRecipientSms?: string;
+  // logicalDate strings (YYYY-MM-DD) that should round trip times to the
+  // nearest HALF hour in the central summary, instead of the default whole
+  // hour - an admin-only per-day override, not a per-session UI toggle, so
+  // everyone viewing that day sees the same rounding.
+  halfHourRoundingDates?: string[];
 }
 
 // A driver/dispatcher self-registration request, awaiting admin approval
