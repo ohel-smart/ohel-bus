@@ -1209,7 +1209,7 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
                           boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : undefined
                         }}
                       >
-                        {r[col.key]}
+                        {r[col.key] || '-'}
                       </td>
                     );
                   })}
@@ -5776,7 +5776,7 @@ export default function App() {
                         )}
                       </div>
 
-                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap', marginInlineStart: 'auto' }}>
                         <select
                           value={centralMonthFilter}
                           onChange={e => setCentralMonthFilter(e.target.value)}
