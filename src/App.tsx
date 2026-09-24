@@ -5739,28 +5739,23 @@ export default function App() {
 
                     {/* Filter + date range + per-driver PDF toolbar */}
                     <div className="card filter-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
-                      {(() => {
-                        const anyCentralFilterActive = !!(centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter);
-                        return (
-                          // Always rendered (visibility-toggled, not conditionally mounted) so
-                          // its appearance/disappearance never shifts every control after it.
-                          <button
-                            onClick={() => {
-                              setCentralBigBusOnly(false);
-                              setCentralDateFrom('');
-                              setCentralDateTo('');
-                              setCentralMonthFilter('');
-                              setCentralYearFilter('');
-                              setCentralParshaFilter('');
-                              setCentralOriginFilter('');
-                            }}
-                            className="btn btn-secondary"
-                            style={{ padding: '8px 12px', fontSize: '12px', color: '#fff', visibility: anyCentralFilterActive ? 'visible' : 'hidden', pointerEvents: anyCentralFilterActive ? 'auto' : 'none' }}
-                          >
-                            {t('clearAllFilters')}
-                          </button>
-                        );
-                      })()}
+                      {(centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) && (
+                        <button
+                          onClick={() => {
+                            setCentralBigBusOnly(false);
+                            setCentralDateFrom('');
+                            setCentralDateTo('');
+                            setCentralMonthFilter('');
+                            setCentralYearFilter('');
+                            setCentralParshaFilter('');
+                            setCentralOriginFilter('');
+                          }}
+                          className="btn btn-secondary"
+                          style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}
+                        >
+                          {t('clearAllFilters')}
+                        </button>
+                      )}
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
                         <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                         {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
@@ -5774,13 +5769,11 @@ export default function App() {
                           lang={lang}
                           placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
                         />
-                        <button
-                          onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }}
-                          className="btn btn-secondary"
-                          style={{ padding: '8px 12px', fontSize: '12px', color: '#fff', visibility: (centralDateFrom || centralDateTo) ? 'visible' : 'hidden', pointerEvents: (centralDateFrom || centralDateTo) ? 'auto' : 'none' }}
-                        >
-                          {lang === 'he' ? 'נקה' : 'Clear'}
-                        </button>
+                        {(centralDateFrom || centralDateTo) && (
+                          <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
+                            {lang === 'he' ? 'נקה' : 'Clear'}
+                          </button>
+                        )}
                       </div>
 
                       <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
@@ -5788,37 +5781,41 @@ export default function App() {
                           value={centralMonthFilter}
                           onChange={e => setCentralMonthFilter(e.target.value)}
                           title={t('monthFilterLabel')}
-                          style={{ width: '130px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                         >
                           <option value="">{t('monthFilterLabel')}</option>
                           {HEBREW_MONTH_OPTIONS.map(m => (
                             <option key={m.key} value={m.key}>{m.label}</option>
                           ))}
                         </select>
-                        <button
-                          onClick={() => setCentralMonthFilter('')}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralMonthFilter ? 'visible' : 'hidden', pointerEvents: centralMonthFilter ? 'auto' : 'none' }}
-                        >
-                          {t('clearMonth')}
-                        </button>
+                        {centralMonthFilter && (
+                          <button
+                            onClick={() => setCentralMonthFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearMonth')}
+                          </button>
+                        )}
 
                         <select
                           value={centralYearFilter}
                           onChange={e => setCentralYearFilter(e.target.value)}
                           title={t('yearFilterLabel')}
-                          style={{ width: '110px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                         >
                           <option value="">{t('yearFilterLabel')}</option>
                           {availableHebrewYears.map(y => (
                             <option key={y} value={y}>{renderHebrewYear(y)}</option>
                           ))}
                         </select>
-                        <button
-                          onClick={() => setCentralYearFilter('')}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralYearFilter ? 'visible' : 'hidden', pointerEvents: centralYearFilter ? 'auto' : 'none' }}
-                        >
-                          {t('clearYear')}
-                        </button>
+                        {centralYearFilter && (
+                          <button
+                            onClick={() => setCentralYearFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearYear')}
+                          </button>
+                        )}
 
                         <select
                           className="form-input"
@@ -5831,12 +5828,14 @@ export default function App() {
                             <option key={p} value={p}>{p}</option>
                           ))}
                         </select>
-                        <button
-                          onClick={() => setCentralParshaFilter('')}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralParshaFilter ? 'visible' : 'hidden', pointerEvents: centralParshaFilter ? 'auto' : 'none' }}
-                        >
-                          {t('clearParsha')}
-                        </button>
+                        {centralParshaFilter && (
+                          <button
+                            onClick={() => setCentralParshaFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearParsha')}
+                          </button>
+                        )}
 
                         <select
                           className="form-input"
@@ -5848,12 +5847,14 @@ export default function App() {
                           <option value="770">{lang === 'he' ? '770 (קראון הייטס)' : '770 (Crown Heights)'}</option>
                           <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel'}</option>
                         </select>
-                        <button
-                          onClick={() => setCentralOriginFilter('')}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralOriginFilter ? 'visible' : 'hidden', pointerEvents: centralOriginFilter ? 'auto' : 'none' }}
-                        >
-                          {t('clearOrigin')}
-                        </button>
+                        {centralOriginFilter && (
+                          <button
+                            onClick={() => setCentralOriginFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          >
+                            {t('clearOrigin')}
+                          </button>
+                        )}
                       </div>
 
                       {currentUser.role === 'admin' && (
@@ -7440,13 +7441,11 @@ export default function App() {
                         lang={lang}
                         placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
                       />
-                      <button
-                        onClick={() => { setHourlySummaryDateFrom(''); setHourlySummaryDateTo(''); }}
-                        className="btn btn-secondary"
-                        style={{ padding: '8px 12px', fontSize: '12px', color: '#fff', visibility: (hourlySummaryDateFrom || hourlySummaryDateTo) ? 'visible' : 'hidden', pointerEvents: (hourlySummaryDateFrom || hourlySummaryDateTo) ? 'auto' : 'none' }}
-                      >
-                        {lang === 'he' ? 'נקה' : 'Clear'}
-                      </button>
+                      {(hourlySummaryDateFrom || hourlySummaryDateTo) && (
+                        <button onClick={() => { setHourlySummaryDateFrom(''); setHourlySummaryDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
+                          {lang === 'he' ? 'נקה' : 'Clear'}
+                        </button>
+                      )}
                       <button onClick={handleExportHourlySummaryToCsv} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', marginInlineStart: 'auto' }}>
                         <Download size={15} />
                         <span>{lang === 'he' ? 'הורדה לאקסל' : 'Export to Excel'}</span>
