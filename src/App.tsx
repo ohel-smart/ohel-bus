@@ -14,6 +14,30 @@ import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
 const tdCentral: CSSProperties = { padding: '8px 12px', whiteSpace: 'nowrap' };
+
+// One row of the "Hourly Summary" tab - all scans sharing a (logicalDate,
+// half-hour bucket), fully derived and read-only (see hourlySummaryRows).
+interface HourlySummaryRow {
+  dateStr: string;
+  time: string;
+  parsha: string;
+  hebrewDate: string;
+  dayOfWeek: string;
+  people770: number;
+  regular770: number;
+  big770: number;
+  regularOhel: number;
+  bigOhel: number;
+}
+
+type HourlySummaryNumericField = 'people770' | 'regular770' | 'big770' | 'regularOhel' | 'bigOhel';
+const HOURLY_SUMMARY_NUMERIC_COLS: { key: HourlySummaryNumericField; label: { he: string; en: string } }[] = [
+  { key: 'people770', label: { he: 'אנשים מ-770', en: 'People from 770' } },
+  { key: 'regular770', label: { he: 'רגילים מ-770', en: 'Regular from 770' } },
+  { key: 'big770', label: { he: 'גדולים מ-770', en: 'Big from 770' } },
+  { key: 'regularOhel', label: { he: 'רגילים מהאוהל', en: 'Regular from Ohel' } },
+  { key: 'bigOhel', label: { he: 'גדולים מהאוהל', en: 'Big from Ohel' } },
+];
 import { Html5Qrcode } from 'html5-qrcode';
 import QRCode from 'qrcode';
 import logo from './assets/logo.png';
@@ -989,30 +1013,38 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
   const selectedSet = new Set(selectedDates);
   const days = useMemo(() => getHebrewMonthDays(viewYM.year, viewYM.monthKey), [viewYM.year, viewYM.monthKey]);
   const leadingBlanks = days.length > 0 ? days[0].gregDate.getDay() : 0;
+  // Total riders (both directions, every trip) across the whole viewed month -
+  // shown in the header so the admin sees the month's overall volume at a glance.
+  const monthTotalPax = useMemo(() => days.reduce((sum, day) => sum + (passengersByDate[day.ymd] || 0), 0), [days, passengersByDate]);
 
   const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
   const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
   const weekdayLabels = lang === 'he' ? ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
         <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, -1))} className="btn btn-secondary" style={{ padding: '10px 18px' }}>
           <PrevIcon size={24} />
         </button>
-        <span style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>{monthLabel} {renderHebrewYear(viewYM.year)}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+          <span style={{ fontSize: '28px', fontWeight: 700, color: '#fff' }}>{monthLabel} {renderHebrewYear(viewYM.year)}</span>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent)' }}>
+            {lang === 'he' ? `סה"כ נוסעים החודש (הלוך וחזור): ${monthTotalPax}` : `Total riders this month (both ways): ${monthTotalPax}`}
+          </span>
+        </div>
         <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, 1))} className="btn btn-secondary" style={{ padding: '10px 18px' }}>
           <NextIcon size={24} />
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px', marginBottom: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', marginBottom: '8px' }}>
         {weekdayLabels.map((w, i) => (
           <div key={i} style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: '1fr', gap: '8px' }}>
         {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
         {days.map(day => {
           const isHalf = selectedSet.has(day.ymd);
@@ -1028,7 +1060,7 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
                 : (lang === 'he' ? 'לחץ לעיגול חצי שעה ביום הזה' : 'Click to round this day to the half hour')}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                padding: '18px 4px', borderRadius: '12px', minHeight: '104px',
+                width: '100%', height: '100%', padding: '4px', borderRadius: '12px',
                 border: isToday && !isHalf ? '2px solid var(--accent)' : '1px solid transparent',
                 background: isHalf ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
                 color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '4px'
@@ -1048,6 +1080,142 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// The "Hourly Summary" table's 5 numeric columns, spreadsheet-style: click a
+// cell to select it, click-and-drag to select a rectangular range (like
+// Excel), ctrl/cmd+click to add/remove a single cell without losing the rest
+// of the selection - a sticky bar shows the running sum of whatever's selected.
+function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'he' | 'en' }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragAnchor, setDragAnchor] = useState<{ row: number; col: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const onUp = () => setIsDragging(false);
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, [isDragging]);
+
+  const rectCells = (r0: number, c0: number, r1: number, c1: number) => {
+    const rowLo = Math.min(r0, r1), rowHi = Math.max(r0, r1);
+    const colLo = Math.min(c0, c1), colHi = Math.max(c0, c1);
+    const next = new Set<string>();
+    for (let r = rowLo; r <= rowHi; r++) {
+      for (let c = colLo; c <= colHi; c++) next.add(`${r}_${c}`);
+    }
+    return next;
+  };
+
+  const handleMouseDown = (rowIdx: number, colIdx: number, isModified: boolean) => {
+    if (isModified) {
+      const key = `${rowIdx}_${colIdx}`;
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        return next;
+      });
+      setDragAnchor(null);
+      return;
+    }
+    setDragAnchor({ row: rowIdx, col: colIdx });
+    setIsDragging(true);
+    setSelected(new Set([`${rowIdx}_${colIdx}`]));
+  };
+
+  const handleMouseEnter = (rowIdx: number, colIdx: number) => {
+    if (!isDragging || !dragAnchor) return;
+    setSelected(rectCells(dragAnchor.row, dragAnchor.col, rowIdx, colIdx));
+  };
+
+  const selectedSum = useMemo(() => {
+    let sum = 0;
+    selected.forEach(key => {
+      const [rowIdxStr, colIdxStr] = key.split('_');
+      const row = rows[Number(rowIdxStr)];
+      const col = HOURLY_SUMMARY_NUMERIC_COLS[Number(colIdxStr)];
+      if (row && col) sum += row[col.key] || 0;
+    });
+    return sum;
+  }, [selected, rows]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        {lang === 'he' ? 'אין עדיין נתונים' : 'No data yet'}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {selected.size > 0 && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: '16px',
+          background: 'var(--accent)', color: '#000', borderRadius: '10px', padding: '10px 16px', fontSize: '14px', fontWeight: 700
+        }}>
+          <span>{lang === 'he' ? `${selected.size} תאים נבחרו` : `${selected.size} cells selected`}</span>
+          <span>{lang === 'he' ? `סה"כ: ${selectedSum}` : `Total: ${selectedSum}`}</span>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="btn btn-secondary"
+            style={{ padding: '4px 10px', fontSize: '12px', marginInlineStart: 'auto' }}
+          >
+            {lang === 'he' ? 'נקה בחירה' : 'Clear selection'}
+          </button>
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-container">
+          <table className="tp-table" style={isDragging ? { userSelect: 'none' } : undefined}>
+            <thead>
+              <tr>
+                <th style={thCentral}>{lang === 'he' ? 'פרשת שבוע' : 'Parsha'}</th>
+                <th style={thCentral}>{lang === 'he' ? 'תאריך עברי' : 'Hebrew Date'}</th>
+                <th style={thCentral}>{lang === 'he' ? 'יום' : 'Day'}</th>
+                <th style={thCentral}>{lang === 'he' ? 'תאריך לועזי' : 'Date'}</th>
+                <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                {HOURLY_SUMMARY_NUMERIC_COLS.map(col => (
+                  <th key={col.key} style={thCentral}>{col.label[lang]}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, rowIdx) => (
+                <tr key={`${r.dateStr}_${r.time}`} style={{ borderTop: '1px solid var(--border-color)' }}>
+                  <td style={tdCentral}>{r.parsha}</td>
+                  <td style={tdCentral}>{r.hebrewDate}</td>
+                  <td style={tdCentral}>{r.dayOfWeek}</td>
+                  <td style={tdCentral}>{r.dateStr}</td>
+                  <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
+                  {HOURLY_SUMMARY_NUMERIC_COLS.map((col, colIdx) => {
+                    const isSelected = selected.has(`${rowIdx}_${colIdx}`);
+                    return (
+                      <td
+                        key={col.key}
+                        onMouseDown={(e) => { e.preventDefault(); handleMouseDown(rowIdx, colIdx, e.ctrlKey || e.metaKey); }}
+                        onMouseEnter={() => handleMouseEnter(rowIdx, colIdx)}
+                        style={{
+                          ...tdCentral, color: '#fff', cursor: 'cell',
+                          background: isSelected ? 'rgba(226, 176, 78, 0.35)' : undefined,
+                          boxShadow: isSelected ? 'inset 0 0 0 1px var(--accent)' : undefined
+                        }}
+                      >
+                        {r[col.key]}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -2236,18 +2404,6 @@ export default function App() {
   // granularity. Recomputes automatically whenever `scans` changes, which
   // dbService's Firestore listener already updates on every add/edit/delete.
   const hourlySummaryRows = useMemo(() => {
-    interface HourlySummaryRow {
-      dateStr: string;
-      time: string;
-      parsha: string;
-      hebrewDate: string;
-      dayOfWeek: string;
-      people770: number;
-      regular770: number;
-      big770: number;
-      regularOhel: number;
-      bigOhel: number;
-    }
     const groups: { [key: string]: HourlySummaryRow } = {};
     for (const s of scans) {
       if (!s.logicalDate) continue;
@@ -7204,21 +7360,15 @@ export default function App() {
                 )}
 
                 {/* TAB 5: TIME-ROUNDING CALENDAR - its own dedicated tab (not
-                    inside Users), rendered edge-to-edge with no card frame so
-                    the calendar itself has maximum room. */}
+                    inside Users), rendered edge-to-edge with no card frame,
+                    sized to exactly fill the viewport (no page scrolling) -
+                    64px = .desktop-content's own top+bottom padding. */}
                 {activeTab === 'roundingCalendar' && (
-                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div>
-                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clock size={20} color="var(--accent)" />
-                        {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}
-                      </h3>
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                        {lang === 'he'
-                          ? 'כברירת מחדל הזמנים בטבלה המרכזית מעוגלים לשעה עגולה. לחץ על יום כדי לסמן אותו לעיגול לחצי שעה במקום.'
-                          : 'By default, times in the central table round to the nearest whole hour. Click a day to mark it for half-hour rounding instead.'}
-                      </p>
-                    </div>
+                  <div style={{ width: '100%', height: 'calc(100vh - 64px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <Clock size={18} color="var(--accent)" />
+                      {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}
+                    </h3>
                     <HalfHourRoundingCalendar
                       selectedDates={halfHourRoundingDates}
                       onToggle={toggleHalfHourRoundingForDate}
@@ -7240,53 +7390,12 @@ export default function App() {
                       </h3>
                       <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
                         {lang === 'he'
-                          ? 'מחושב אוטומטית מטבלת הסריקות - כל סריקה נספרת כאוטובוס אחד, מקובצת לפי תאריך וחצי שעה. לא ניתן לערוך כאן.'
-                          : 'Computed automatically from the scans table - each scan counts as one bus, grouped by date and half hour. Not editable here.'}
+                          ? 'מחושב אוטומטית מטבלת הסריקות - כל סריקה נספרת כאוטובוס אחד, מקובצת לפי תאריך וחצי שעה. לא ניתן לערוך כאן. סמן כמה תאים (לחיצה+גרירה, או Ctrl/Cmd+לחיצה) כדי לראות סה"כ, כמו באקסל.'
+                          : 'Computed automatically from the scans table - each scan counts as one bus, grouped by date and half hour. Not editable here. Select cells (click+drag, or Ctrl/Cmd+click) to see a running total, like in Excel.'}
                       </p>
                     </div>
 
-                    {hourlySummaryRows.length === 0 ? (
-                      <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        {lang === 'he' ? 'אין עדיין נתונים' : 'No data yet'}
-                      </div>
-                    ) : (
-                      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                        <div className="table-container">
-                          <table className="tp-table">
-                            <thead>
-                              <tr>
-                                <th style={thCentral}>{lang === 'he' ? 'פרשת שבוע' : 'Parsha'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'תאריך עברי' : 'Hebrew Date'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'יום' : 'Day'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'תאריך לועזי' : 'Date'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'אנשים מ-770' : 'People from 770'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'רגילים מ-770' : 'Regular from 770'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'גדולים מ-770' : 'Big from 770'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'רגילים מהאוהל' : 'Regular from Ohel'}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'גדולים מהאוהל' : 'Big from Ohel'}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {hourlySummaryRows.map(r => (
-                                <tr key={`${r.dateStr}_${r.time}`} style={{ borderTop: '1px solid var(--border-color)' }}>
-                                  <td style={tdCentral}>{r.parsha}</td>
-                                  <td style={tdCentral}>{r.hebrewDate}</td>
-                                  <td style={tdCentral}>{r.dayOfWeek}</td>
-                                  <td style={tdCentral}>{r.dateStr}</td>
-                                  <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>{r.time}</td>
-                                  <td style={{ ...tdCentral, color: '#fff' }}>{r.people770}</td>
-                                  <td style={tdCentral}>{r.regular770}</td>
-                                  <td style={tdCentral}>{r.big770}</td>
-                                  <td style={tdCentral}>{r.regularOhel}</td>
-                                  <td style={tdCentral}>{r.bigOhel}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                    <HourlySummaryTable rows={hourlySummaryRows} lang={lang} />
                   </div>
                 )}
 
