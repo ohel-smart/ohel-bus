@@ -1638,7 +1638,8 @@ export default function App() {
 
   // Search & Filter state for Manager Dashboard
   const [searchText, setSearchText] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [dateFilterFrom, setDateFilterFrom] = useState('');
+  const [dateFilterTo, setDateFilterTo] = useState('');
   const [monthFilter, setMonthFilter] = useState(''); // Hebrew month key, e.g. "Elul"
   const [yearFilter, setYearFilter] = useState(''); // Hebrew year, e.g. "5786"
   const [parshaFilter, setParshaFilter] = useState(''); // weekly parsha name
@@ -2360,7 +2361,7 @@ export default function App() {
           s.dispatcherName.toLowerCase().includes(searchText.toLowerCase()) ||
           s.departureLocation.toLowerCase().includes(searchText.toLowerCase());
 
-        const matchesDate = dateFilter ? s.logicalDate === dateFilter : true;
+        const matchesDate = (!dateFilterFrom || s.logicalDate >= dateFilterFrom) && (!dateFilterTo || s.logicalDate <= dateFilterTo);
         const ym = logicalDateToHebrewYM[s.logicalDate];
         const matchesMonth = monthFilter ? ym?.monthKey === monthFilter : true;
         const matchesYear = yearFilter ? String(ym?.year) === yearFilter : true;
@@ -2369,7 +2370,7 @@ export default function App() {
         return matchesSearch && matchesDate && matchesMonth && matchesYear && matchesParsha;
       })
       .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
-  }, [scans, searchText, dateFilter, monthFilter, yearFilter, parshaFilter, scanIdToParsha, logicalDateToHebrewYM]);
+  }, [scans, searchText, dateFilterFrom, dateFilterTo, monthFilter, yearFilter, parshaFilter, scanIdToParsha, logicalDateToHebrewYM]);
 
   // --- Central Summary (master table): one row per ride, grouped by day. ---
   // --- Outbound (הלוך) and return (חזור) are separate rows, each tagged ---
@@ -5846,8 +5847,12 @@ export default function App() {
                     <div className="card filter-toolbar" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '14px 16px' }}>
                       {/* Row 1: quick filters - a fixed row boundary (not left to
                           flex-wrap to decide), so which controls land on which
-                          line never changes as filter state changes. */}
-                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'nowrap', overflowX: 'auto' }}>
+                          line never changes as filter state changes. No
+                          overflow-x here even as a safety valve - it would
+                          clip HebrewRangePicker's absolutely-positioned
+                          popup calendar, since an overflow:auto ancestor
+                          clips content that would otherwise escape it. */}
+                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'nowrap' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>
                           <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                           {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
@@ -6467,21 +6472,22 @@ export default function App() {
                           />
                         </div>
 
-                        <input
-                          type="date"
-                          className="form-input"
-                          style={{ width: '150px', height: '38px', fontSize: '13px' }}
-                          value={dateFilter}
-                          onChange={(e) => setDateFilter(e.target.value)}
-                        />
-                        {dateFilter && (
-                          <button
-                            onClick={() => setDateFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                          >
-                            {t('clearDate')}
-                          </button>
-                        )}
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <HebrewRangePicker
+                            fromValue={dateFilterFrom} toValue={dateFilterTo}
+                            onChange={(from, to) => { setDateFilterFrom(from); setDateFilterTo(to); }}
+                            lang={lang}
+                            placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
+                          />
+                          {(dateFilterFrom || dateFilterTo) && (
+                            <button
+                              onClick={() => { setDateFilterFrom(''); setDateFilterTo(''); }}
+                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                            >
+                              {t('clearDate')}
+                            </button>
+                          )}
+                        </div>
 
                         <select
                           className="form-input"
