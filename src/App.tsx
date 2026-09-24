@@ -1134,6 +1134,34 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
     setSelected(rectCells(dragAnchor.row, dragAnchor.col, rowIdx, colIdx));
   };
 
+  // Touch devices don't fire onMouseEnter per cell during a drag, so the
+  // mouse-based rectangle-select above doesn't reach them - instead, a plain
+  // tap toggles that one cell (add/remove), letting a phone build the same
+  // kind of multi-cell selection via several taps. A real scroll gesture
+  // (finger moved more than a few px) is left alone so the table still
+  // scrolls normally; preventDefault on the tap case suppresses the browser's
+  // synthetic mousedown/click that would otherwise fire right after and
+  // toggle the same cell a second time.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const handleTouchEnd = (rowIdx: number, colIdx: number, e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (Math.abs(t.clientX - start.x) > 10 || Math.abs(t.clientY - start.y) > 10) return;
+    e.preventDefault();
+    const key = `${rowIdx}_${colIdx}`;
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   const selectedSum = useMemo(() => {
     let sum = 0;
     selected.forEach(key => {
@@ -1203,6 +1231,8 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
                         key={col.key}
                         onMouseDown={(e) => { e.preventDefault(); handleMouseDown(rowIdx, colIdx, e.ctrlKey || e.metaKey); }}
                         onMouseEnter={() => handleMouseEnter(rowIdx, colIdx)}
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={(e) => handleTouchEnd(rowIdx, colIdx, e)}
                         style={{
                           ...tdCentral, color: '#fff', cursor: 'cell',
                           background: isSelected ? 'rgba(226, 176, 78, 0.35)' : undefined,
@@ -5739,23 +5769,6 @@ export default function App() {
 
                     {/* Filter + date range + per-driver PDF toolbar */}
                     <div className="card filter-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
-                      {(centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) && (
-                        <button
-                          onClick={() => {
-                            setCentralBigBusOnly(false);
-                            setCentralDateFrom('');
-                            setCentralDateTo('');
-                            setCentralMonthFilter('');
-                            setCentralYearFilter('');
-                            setCentralParshaFilter('');
-                            setCentralOriginFilter('');
-                          }}
-                          className="btn btn-secondary"
-                          style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}
-                        >
-                          {t('clearAllFilters')}
-                        </button>
-                      )}
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
                         <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                         {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
@@ -5891,6 +5904,25 @@ export default function App() {
                           <span>{lang === 'he' ? 'דו"ח PDF לסדרן' : 'Dispatcher PDF report'}</span>
                         </button>
                       </div>
+
+                      {/* Last in the row (small, out of the way) so its own
+                          appearing/disappearing never shifts any control before it. */}
+                      {(centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) && (
+                        <button
+                          onClick={() => {
+                            setCentralBigBusOnly(false);
+                            setCentralDateFrom('');
+                            setCentralDateTo('');
+                            setCentralMonthFilter('');
+                            setCentralYearFilter('');
+                            setCentralParshaFilter('');
+                            setCentralOriginFilter('');
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer', padding: '2px' }}
+                        >
+                          {t('clearAllFilters')}
+                        </button>
+                      )}
                     </div>
 
                     {centralFlatRows.length === 0 ? (
