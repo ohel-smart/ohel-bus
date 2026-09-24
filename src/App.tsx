@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
-import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
+import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
@@ -839,24 +839,26 @@ const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en')
   }).join('');
 };
 
-// A native <input type="date"> only ever shows the OS's own Gregorian picker -
-// there's no way to add Hebrew dates to it. This is a from-scratch calendar
-// popover instead: every day cell shows both its Gregorian day number and its
-// Hebrew day-of-month numeral (via getHebrewDayLabel), so a date can be picked
-// with the Hebrew calendar visible the whole time (e.g. spotting a Yom Tov
-// while choosing a report range). `value`/`onChange` use the same 'YYYY-MM-DD'
-// string format as the native input it replaces, so callers don't change.
-function HebrewDatePicker({ value, onChange, lang, placeholder }: {
-  value: string;
-  onChange: (v: string) => void;
+// Date-range picker navigated by HEBREW month (not Gregorian) - click once to
+// set the start day, click again to set the end day (in either order; the
+// earlier one becomes "from"). Values exchanged with the parent are still
+// Gregorian "YYYY-MM-DD" (matching Scan.logicalDate), since only the grid's
+// navigation/layout is Hebrew-calendar-based, not the stored filter values.
+function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: {
+  fromValue: string;
+  toValue: string;
+  onChange: (from: string, to: string) => void;
   lang: 'he' | 'en';
   placeholder: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [viewMonth, setViewMonth] = useState(() => {
-    const d = value ? new Date(value + 'T12:00:00') : new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+  const [viewYM, setViewYM] = useState(() => {
+    const base = fromValue ? new Date(fromValue + 'T12:00:00') : new Date();
+    return getHebrewYearMonth(base);
   });
+  // Set after the first click of a new selection; cleared once the second
+  // click completes the range (or when the picker is reopened fresh).
+  const [pendingStart, setPendingStart] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -869,30 +871,35 @@ function HebrewDatePicker({ value, onChange, lang, placeholder }: {
   }, [isOpen]);
 
   const openPicker = () => {
-    const d = value ? new Date(value + 'T12:00:00') : new Date();
-    setViewMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    const base = fromValue ? new Date(fromValue + 'T12:00:00') : new Date();
+    setViewYM(getHebrewYearMonth(base));
+    setPendingStart(null);
     setIsOpen(true);
   };
 
-  // Built from local Y/M/D parts, not toISOString() (UTC) - this must match
-  // the local calendar day shown in the grid, not shift near midnight.
-  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const monthLabel = HEBREW_MONTH_OPTIONS.find(m => m.key === viewYM.monthKey)?.label || viewYM.monthKey;
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const days = useMemo(() => getHebrewMonthDays(viewYM.year, viewYM.monthKey), [viewYM.year, viewYM.monthKey]);
+  const leadingBlanks = days.length > 0 ? days[0].gregDate.getDay() : 0;
 
-  const year = viewMonth.getFullYear();
-  const month = viewMonth.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const leadingBlanks = new Date(year, month, 1).getDay(); // 0=Sun, matches the week starting Sunday below
-
-  const weekdayLabels = lang === 'he' ? ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-  const monthLabel = viewMonth.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' });
-  const todayStr = ymd(new Date());
-  // RTL: "next month" is visually on the LEFT, so the chevrons swap.
   const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
   const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
 
-  const cells: (Date | null)[] = [];
-  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d, 12));
+  const handleDayClick = (ymd: string) => {
+    if (pendingStart === null) {
+      setPendingStart(ymd);
+      onChange(ymd, '');
+    } else {
+      if (ymd >= pendingStart) onChange(pendingStart, ymd);
+      else onChange(ymd, pendingStart);
+      setPendingStart(null);
+      setIsOpen(false);
+    }
+  };
+
+  const buttonLabel = fromValue || toValue
+    ? `${fromValue ? getHebrewDate(new Date(fromValue + 'T12:00:00')) : '…'} - ${toValue ? getHebrewDate(new Date(toValue + 'T12:00:00')) : '…'}`
+    : placeholder;
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
@@ -901,12 +908,12 @@ function HebrewDatePicker({ value, onChange, lang, placeholder }: {
         onClick={() => (isOpen ? setIsOpen(false) : openPicker())}
         style={{
           padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)',
-          background: 'var(--bg-primary, #0d0d0d)', color: value ? '#fff' : 'var(--text-secondary)',
-          fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '120px'
+          background: 'var(--bg-primary, #0d0d0d)', color: (fromValue || toValue) ? '#fff' : 'var(--text-secondary)',
+          fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '160px'
         }}
       >
         <Calendar size={14} />
-        {value ? new Date(value + 'T12:00:00').toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }) : placeholder}
+        {buttonLabel}
       </button>
 
       {isOpen && (
@@ -915,43 +922,44 @@ function HebrewDatePicker({ value, onChange, lang, placeholder }: {
           background: 'var(--bg-secondary, #161616)', border: '1px solid var(--border-color)', borderRadius: '12px',
           padding: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', width: '280px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <button type="button" onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, -1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
               <PrevIcon size={16} />
             </button>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{monthLabel}</span>
-            <button type="button" onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>{monthLabel} {renderHebrewYear(viewYM.year)}</span>
+            <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
               <NextIcon size={16} />
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
-            {weekdayLabels.map((w, i) => (
-              <div key={i} style={{ textAlign: 'center', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
-            ))}
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+            {pendingStart
+              ? (lang === 'he' ? 'בחר תאריך סיום' : 'Now pick the end date')
+              : (lang === 'he' ? 'בחר תאריך התחלה' : 'Pick the start date')}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
-            {cells.map((cellDate, i) => {
-              if (!cellDate) return <div key={i} />;
-              const cellStr = ymd(cellDate);
-              const isSelected = cellStr === value;
-              const isToday = cellStr === todayStr;
+            {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
+            {days.map(day => {
+              const isStart = day.ymd === (pendingStart ?? fromValue);
+              const isEnd = day.ymd === toValue && !pendingStart;
+              const inRange = !pendingStart && fromValue && toValue && day.ymd > fromValue && day.ymd < toValue;
+              const isToday = day.ymd === todayStr;
               return (
                 <button
                   type="button"
-                  key={i}
-                  onClick={() => { onChange(cellStr); setIsOpen(false); }}
+                  key={day.hebrewDay}
+                  onClick={() => handleDayClick(day.ymd)}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     padding: '4px 0', borderRadius: '6px',
-                    border: isToday && !isSelected ? '1px solid var(--accent)' : '1px solid transparent',
-                    background: isSelected ? 'var(--accent)' : 'transparent',
-                    color: isSelected ? '#000' : '#fff', cursor: 'pointer', fontSize: '12px'
+                    border: isToday && !isStart && !isEnd ? '1px solid var(--accent)' : '1px solid transparent',
+                    background: (isStart || isEnd) ? 'var(--accent)' : inRange ? 'rgba(226, 176, 78, 0.18)' : 'transparent',
+                    color: (isStart || isEnd) ? '#000' : '#fff', cursor: 'pointer', fontSize: '12px'
                   }}
                 >
-                  <span style={{ fontWeight: 600 }}>{cellDate.getDate()}</span>
-                  <span style={{ fontSize: '9px', opacity: 0.7 }}>{getHebrewDayLabel(cellDate)}</span>
+                  <span style={{ fontWeight: 600 }}>{getHebrewDayLabel(day.gregDate)}</span>
+                  <span style={{ fontSize: '9px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
                 </button>
               );
             })}
@@ -5483,15 +5491,12 @@ export default function App() {
                       </label>
 
                       <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'מתאריך' : 'From'}</span>
-                        <HebrewDatePicker
-                          value={centralDateFrom} onChange={setCentralDateFrom} lang={lang}
-                          placeholder={lang === 'he' ? 'בחר תאריך' : 'Pick a date'}
-                        />
-                        <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עד תאריך' : 'To'}</span>
-                        <HebrewDatePicker
-                          value={centralDateTo} onChange={setCentralDateTo} lang={lang}
-                          placeholder={lang === 'he' ? 'בחר תאריך' : 'Pick a date'}
+                        <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים' : 'Date range'}</span>
+                        <HebrewRangePicker
+                          fromValue={centralDateFrom} toValue={centralDateTo}
+                          onChange={(from, to) => { setCentralDateFrom(from); setCentralDateTo(to); }}
+                          lang={lang}
+                          placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
                         />
                         {(centralDateFrom || centralDateTo) && (
                           <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>

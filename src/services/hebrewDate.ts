@@ -132,6 +132,45 @@ export function getHebrewYearMonth(date: Date): { year: number; monthKey: string
   return result;
 }
 
+/** One day of a Hebrew month grid, paired with its corresponding Gregorian date. */
+export interface HebrewMonthGridDay {
+  gregDate: Date;
+  /** Gregorian date as "YYYY-MM-DD" (local Y/M/D parts, not UTC) - matches the
+   *  logicalDate string format used elsewhere for filtering scans by day. */
+  ymd: string;
+  hebrewDay: number;
+}
+
+/**
+ * Every day of the given Hebrew (year, monthKey), each carrying its Gregorian
+ * equivalent - for a Hebrew-calendar-navigable date-range picker where the
+ * grid is laid out by Hebrew month but the values filtered on are Gregorian
+ * logicalDate strings.
+ */
+export function getHebrewMonthDays(year: number, monthKey: string): HebrewMonthGridDay[] {
+  const days: HebrewMonthGridDay[] = [];
+  try {
+    const count = new HDate(1, monthKey, year).daysInMonth();
+    for (let d = 1; d <= count; d++) {
+      const g = new HDate(d, monthKey, year).greg();
+      const ymd = `${g.getFullYear()}-${String(g.getMonth() + 1).padStart(2, '0')}-${String(g.getDate()).padStart(2, '0')}`;
+      days.push({ gregDate: g, ymd, hebrewDay: d });
+    }
+  } catch { /* leave empty on any calendar error */ }
+  return days;
+}
+
+/** The Hebrew (year, monthKey) `delta` months away from the given one -
+ *  correctly crosses year boundaries and Adar I/II depending on leap years. */
+export function shiftHebrewMonth(year: number, monthKey: string, delta: number): { year: number; monthKey: string } {
+  try {
+    const hd = new HDate(1, monthKey, year).add(delta, 'month');
+    return { year: hd.getFullYear(), monthKey: hd.getMonthName() };
+  } catch {
+    return { year, monthKey };
+  }
+}
+
 /** Hebrew year in Gematriya, e.g. 5786 -> "תשפ״ו". */
 export function renderHebrewYear(year: number): string {
   try { return stripNiqqud(new HDate(1, 1, year).renderGematriya()).split(' ').pop() || String(year); }
