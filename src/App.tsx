@@ -5847,7 +5847,7 @@ export default function App() {
                       {/* Row 1: quick filters - a fixed row boundary (not left to
                           flex-wrap to decide), so which controls land on which
                           line never changes as filter state changes. */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
                           <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                           {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
@@ -5946,7 +5946,7 @@ export default function App() {
 
                       {/* Row 2: actions - always the second row, regardless of
                           what's selected above. */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         {currentUser.role === 'admin' && (
                           <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <Plus size={14} />
