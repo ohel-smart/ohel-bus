@@ -672,7 +672,10 @@ body {
   }
   
   .mobile-manager-nav {
-    display: grid !important;
+    /* Item count is dynamic (each admin picks up to 4 tabs, plus Users
+       Management always shown) - flex + equal-width items adapts to
+       however many there are, instead of a fixed grid column count. */
+    display: flex !important;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -680,10 +683,14 @@ body {
     height: 68px;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
-    grid-template-columns: repeat(7, 1fr);
     align-items: center;
     z-index: 2000;
     padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mobile-manager-nav .bottom-nav-item {
+    flex: 1;
+    min-width: 0;
   }
   
   /* Responsive Tables on Mobile */

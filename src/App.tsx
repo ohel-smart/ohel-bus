@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import confetti from 'canvas-confetti';
-import { 
+import {
   MapPin, Users, Calendar, QrCode, LogOut,
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X
+  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
@@ -14,6 +14,19 @@ import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
 const tdCentral: CSSProperties = { padding: '8px 12px', whiteSpace: 'nowrap' };
+
+// The admin dashboard's report tabs an admin can choose to show in their OWN
+// mobile bottom nav (User.mobileTabs) - "Users Management" itself is always
+// shown too (it's where this picker lives), so it's not one of the options.
+const MOBILE_TAB_OPTIONS: { key: string; icon: LucideIcon; label: { he: string; en: string } }[] = [
+  { key: 'dashboard', icon: MapPin, label: { he: 'מפת מעקב', en: 'Live Map' } },
+  { key: 'situation', icon: FileText, label: { he: 'ערכת מצב', en: 'Situation' } },
+  { key: 'history', icon: Calendar, label: { he: 'כלל הפעילות', en: 'Activity' } },
+  { key: 'central', icon: Table, label: { he: 'טבלה מרכזית', en: 'Master Table' } },
+  { key: 'roundingCalendar', icon: Clock, label: { he: 'לוח עיגול זמנים', en: 'Rounding Calendar' } },
+  { key: 'hourlySummary', icon: RefreshCw, label: { he: 'סיכום לפי שעות', en: 'Hourly Summary' } },
+];
+const DEFAULT_MOBILE_TABS = ['dashboard', 'situation', 'history', 'central'];
 
 // One row of the "Hourly Summary" tab - all scans sharing a (logicalDate,
 // half-hour bucket), fully derived and read-only (see hourlySummaryRows).
@@ -1135,24 +1148,57 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
   };
 
   // Touch devices don't fire onMouseEnter per cell during a drag, so the
-  // mouse-based rectangle-select above doesn't reach them - instead, a plain
-  // tap toggles that one cell (add/remove), letting a phone build the same
-  // kind of multi-cell selection via several taps. A real scroll gesture
-  // (finger moved more than a few px) is left alone so the table still
-  // scrolls normally; preventDefault on the tap case suppresses the browser's
-  // synthetic mousedown/click that would otherwise fire right after and
-  // toggle the same cell a second time.
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const handleTouchStart = (e: React.TouchEvent) => {
+  // mouse-based rectangle-select above doesn't reach them on its own. Instead:
+  // touchstart records an anchor cell; if the finger moves more than a few px
+  // before lifting, it's a real drag - elementFromPoint() finds whichever
+  // cell is currently under the finger (touch events keep targeting the
+  // element they started on, not whatever's under the finger now) and the
+  // same rectCells() used for mouse-drag selects everything between anchor
+  // and there, exactly like the desktop drag. A tap that never moves that
+  // much just toggles the one cell. The move handler is attached as a native
+  // (non-passive) listener via tableContainerRef - React's onTouchMove can't
+  // reliably preventDefault(), and without that the page would scroll AND
+  // select at the same time during a drag.
+  const touchAnchorRef = useRef<{ row: number; col: number; x: number; y: number } | null>(null);
+  const touchDraggingRef = useRef(false);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = (rowIdx: number, colIdx: number, e: React.TouchEvent) => {
     const t = e.touches[0];
-    touchStartRef.current = { x: t.clientX, y: t.clientY };
+    touchAnchorRef.current = { row: rowIdx, col: colIdx, x: t.clientX, y: t.clientY };
+    touchDraggingRef.current = false;
   };
+
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    const onTouchMove = (e: TouchEvent) => {
+      const anchor = touchAnchorRef.current;
+      if (!anchor) return;
+      const t = e.touches[0];
+      const dx = Math.abs(t.clientX - anchor.x), dy = Math.abs(t.clientY - anchor.y);
+      if (!touchDraggingRef.current) {
+        if (dx < 10 && dy < 10) return; // not yet a drag - let it scroll normally
+        touchDraggingRef.current = true;
+      }
+      e.preventDefault(); // now dragging to select - stop the page from also scrolling
+      const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+      const cellEl = el?.closest('[data-row-idx]') as HTMLElement | null;
+      if (!cellEl) return;
+      const r = Number(cellEl.dataset.rowIdx), c = Number(cellEl.dataset.colIdx);
+      setSelected(rectCells(anchor.row, anchor.col, r, c));
+    };
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => container.removeEventListener('touchmove', onTouchMove);
+  }, []);
+
   const handleTouchEnd = (rowIdx: number, colIdx: number, e: React.TouchEvent) => {
-    const start = touchStartRef.current;
-    touchStartRef.current = null;
-    if (!start) return;
-    const t = e.changedTouches[0];
-    if (Math.abs(t.clientX - start.x) > 10 || Math.abs(t.clientY - start.y) > 10) return;
+    const anchor = touchAnchorRef.current;
+    const wasDragging = touchDraggingRef.current;
+    touchAnchorRef.current = null;
+    touchDraggingRef.current = false;
+    if (!anchor) return;
+    if (wasDragging) return; // selection was already set live during the move
     e.preventDefault();
     const key = `${rowIdx}_${colIdx}`;
     setSelected(prev => {
@@ -1202,7 +1248,7 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
       )}
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
+        <div className="table-container" ref={tableContainerRef}>
           <table className="tp-table" style={isDragging ? { userSelect: 'none' } : undefined}>
             <thead>
               <tr>
@@ -1229,9 +1275,11 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
                     return (
                       <td
                         key={col.key}
+                        data-row-idx={rowIdx}
+                        data-col-idx={colIdx}
                         onMouseDown={(e) => { e.preventDefault(); handleMouseDown(rowIdx, colIdx, e.ctrlKey || e.metaKey); }}
                         onMouseEnter={() => handleMouseEnter(rowIdx, colIdx)}
-                        onTouchStart={handleTouchStart}
+                        onTouchStart={(e) => handleTouchStart(rowIdx, colIdx, e)}
                         onTouchEnd={(e) => handleTouchEnd(rowIdx, colIdx, e)}
                         style={{
                           ...tdCentral, color: '#fff', cursor: 'cell',
@@ -3075,6 +3123,23 @@ export default function App() {
       dbService.deleteUser(userId);
       triggerToast(t('userDeleted'), 'success');
     }
+  };
+
+  // The current admin's own choice of which report tabs show in THEIR mobile
+  // bottom nav (up to 4, besides Users Management, which is always shown) -
+  // a direct client-side write (dbService.saveUser), not the server-side
+  // /api/save-user flow, since this is a low-stakes personal UI preference,
+  // not an account-identity change that needs code-uniqueness validation.
+  const handleToggleMobileTab = (tabKey: string) => {
+    if (!currentUser) return;
+    const current = currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS;
+    const next = current.includes(tabKey)
+      ? current.filter(k => k !== tabKey)
+      : (current.length >= 4 ? current : [...current, tabKey]);
+    const updatedUser = { ...currentUser, mobileTabs: next };
+    setCurrentUser(updatedUser);
+    localStorage.setItem('tp_current_user', JSON.stringify(updatedUser));
+    dbService.saveUser(updatedUser);
   };
 
   const handleEditUserClick = (user: User) => {
@@ -5768,146 +5833,153 @@ export default function App() {
                     </div>
 
                     {/* Filter + date range + per-driver PDF toolbar */}
-                    <div className="card filter-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', padding: '14px 16px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
-                        {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
-                      </label>
+                    <div className="card filter-toolbar" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '14px 16px' }}>
+                      {/* Row 1: quick filters - a fixed row boundary (not left to
+                          flex-wrap to decide), so which controls land on which
+                          line never changes as filter state changes. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
+                          {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
+                        </label>
 
-                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים' : 'Date range'}</span>
-                        <HebrewRangePicker
-                          fromValue={centralDateFrom} toValue={centralDateTo}
-                          onChange={(from, to) => { setCentralDateFrom(from); setCentralDateTo(to); }}
-                          lang={lang}
-                          placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
-                        />
-                        {(centralDateFrom || centralDateTo) && (
-                          <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
-                            {lang === 'he' ? 'נקה' : 'Clear'}
-                          </button>
-                        )}
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים' : 'Date range'}</span>
+                          <HebrewRangePicker
+                            fromValue={centralDateFrom} toValue={centralDateTo}
+                            onChange={(from, to) => { setCentralDateFrom(from); setCentralDateTo(to); }}
+                            lang={lang}
+                            placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
+                          />
+                          {(centralDateFrom || centralDateTo) && (
+                            <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
+                              {lang === 'he' ? 'נקה' : 'Clear'}
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
+                          <select
+                            value={centralMonthFilter}
+                            onChange={e => setCentralMonthFilter(e.target.value)}
+                            title={t('monthFilterLabel')}
+                            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                          >
+                            <option value="">{t('monthFilterLabel')}</option>
+                            {HEBREW_MONTH_OPTIONS.map(m => (
+                              <option key={m.key} value={m.key}>{m.label}</option>
+                            ))}
+                          </select>
+                          {centralMonthFilter && (
+                            <button
+                              onClick={() => setCentralMonthFilter('')}
+                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                            >
+                              {t('clearMonth')}
+                            </button>
+                          )}
+
+                          <select
+                            value={centralYearFilter}
+                            onChange={e => setCentralYearFilter(e.target.value)}
+                            title={t('yearFilterLabel')}
+                            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                          >
+                            <option value="">{t('yearFilterLabel')}</option>
+                            {availableHebrewYears.map(y => (
+                              <option key={y} value={y}>{renderHebrewYear(y)}</option>
+                            ))}
+                          </select>
+                          {centralYearFilter && (
+                            <button
+                              onClick={() => setCentralYearFilter('')}
+                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                            >
+                              {t('clearYear')}
+                            </button>
+                          )}
+
+                          <select
+                            className="form-input"
+                            value={centralParshaFilter}
+                            onChange={e => setCentralParshaFilter(e.target.value)}
+                            style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                          >
+                            <option value="">{t('parshaFilterLabel')}</option>
+                            {availableParshas.map(p => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                          {centralParshaFilter && (
+                            <button
+                              onClick={() => setCentralParshaFilter('')}
+                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                            >
+                              {t('clearParsha')}
+                            </button>
+                          )}
+
+                          <select
+                            className="form-input"
+                            value={centralOriginFilter}
+                            onChange={e => setCentralOriginFilter(e.target.value as '' | DepartureLocation)}
+                            style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                          >
+                            <option value="">{t('originFilterLabel')}</option>
+                            <option value="770">{lang === 'he' ? '770 (קראון הייטס)' : '770 (Crown Heights)'}</option>
+                            <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel'}</option>
+                          </select>
+                          {centralOriginFilter && (
+                            <button
+                              onClick={() => setCentralOriginFilter('')}
+                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                            >
+                              {t('clearOrigin')}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap', marginInlineStart: 'auto' }}>
-                        <select
-                          value={centralMonthFilter}
-                          onChange={e => setCentralMonthFilter(e.target.value)}
-                          title={t('monthFilterLabel')}
-                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
-                        >
-                          <option value="">{t('monthFilterLabel')}</option>
-                          {HEBREW_MONTH_OPTIONS.map(m => (
-                            <option key={m.key} value={m.key}>{m.label}</option>
-                          ))}
-                        </select>
-                        {centralMonthFilter && (
-                          <button
-                            onClick={() => setCentralMonthFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                          >
-                            {t('clearMonth')}
+                      {/* Row 2: actions - always the second row, regardless of
+                          what's selected above. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        {currentUser.role === 'admin' && (
+                          <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Plus size={14} />
+                            {lang === 'he' ? 'הוסף הסעה' : 'Add ride'}
                           </button>
                         )}
 
-                        <select
-                          value={centralYearFilter}
-                          onChange={e => setCentralYearFilter(e.target.value)}
-                          title={t('yearFilterLabel')}
-                          style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
-                        >
-                          <option value="">{t('yearFilterLabel')}</option>
-                          {availableHebrewYears.map(y => (
-                            <option key={y} value={y}>{renderHebrewYear(y)}</option>
-                          ))}
-                        </select>
-                        {centralYearFilter && (
-                          <button
-                            onClick={() => setCentralYearFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <select
+                            value={selectedDriverForPdf}
+                            onChange={e => setSelectedDriverForPdf(e.target.value)}
+                            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
-                            {t('clearYear')}
+                            <option value="">{lang === 'he' ? 'בחר נהג...' : 'Select driver...'}</option>
+                            {driverNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                          <button onClick={() => handleExportDriverPdf()} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5 }}>
+                            <FileText size={15} />
+                            <span>{lang === 'he' ? 'דו"ח PDF לנהג' : 'Driver PDF report'}</span>
                           </button>
-                        )}
 
-                        <select
-                          className="form-input"
-                          value={centralParshaFilter}
-                          onChange={e => setCentralParshaFilter(e.target.value)}
-                          style={{ width: '160px', height: '38px', fontSize: '13px' }}
-                        >
-                          <option value="">{t('parshaFilterLabel')}</option>
-                          {availableParshas.map(p => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
-                        </select>
-                        {centralParshaFilter && (
-                          <button
-                            onClick={() => setCentralParshaFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
+                          <select
+                            value={selectedDispatcherForPdf}
+                            onChange={e => setSelectedDispatcherForPdf(e.target.value)}
+                            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
-                            {t('clearParsha')}
+                            <option value="">{lang === 'he' ? 'בחר סדרן...' : 'Select dispatcher...'}</option>
+                            {dispatcherNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                          <button onClick={() => handleExportDispatcherPdf()} disabled={!selectedDispatcherForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDispatcherForPdf ? 1 : 0.5 }}>
+                            <FileText size={15} />
+                            <span>{lang === 'he' ? 'דו"ח PDF לסדרן' : 'Dispatcher PDF report'}</span>
                           </button>
-                        )}
+                        </div>
 
-                        <select
-                          className="form-input"
-                          value={centralOriginFilter}
-                          onChange={e => setCentralOriginFilter(e.target.value as '' | DepartureLocation)}
-                          style={{ width: '160px', height: '38px', fontSize: '13px' }}
-                        >
-                          <option value="">{t('originFilterLabel')}</option>
-                          <option value="770">{lang === 'he' ? '770 (קראון הייטס)' : '770 (Crown Heights)'}</option>
-                          <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel'}</option>
-                        </select>
-                        {centralOriginFilter && (
-                          <button
-                            onClick={() => setCentralOriginFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                          >
-                            {t('clearOrigin')}
-                          </button>
-                        )}
-                      </div>
-
-                      {currentUser.role === 'admin' && (
-                        <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Plus size={14} />
-                          {lang === 'he' ? 'הוסף הסעה' : 'Add ride'}
-                        </button>
-                      )}
-
-                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginInlineStart: 'auto', flexWrap: 'wrap' }}>
-                        <select
-                          value={selectedDriverForPdf}
-                          onChange={e => setSelectedDriverForPdf(e.target.value)}
-                          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
-                        >
-                          <option value="">{lang === 'he' ? 'בחר נהג...' : 'Select driver...'}</option>
-                          {driverNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
-                        </select>
-                        <button onClick={() => handleExportDriverPdf()} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5 }}>
-                          <FileText size={15} />
-                          <span>{lang === 'he' ? 'דו"ח PDF לנהג' : 'Driver PDF report'}</span>
-                        </button>
-
-                        <select
-                          value={selectedDispatcherForPdf}
-                          onChange={e => setSelectedDispatcherForPdf(e.target.value)}
-                          style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
-                        >
-                          <option value="">{lang === 'he' ? 'בחר סדרן...' : 'Select dispatcher...'}</option>
-                          {dispatcherNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
-                        </select>
-                        <button onClick={() => handleExportDispatcherPdf()} disabled={!selectedDispatcherForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDispatcherForPdf ? 1 : 0.5 }}>
-                          <FileText size={15} />
-                          <span>{lang === 'he' ? 'דו"ח PDF לסדרן' : 'Dispatcher PDF report'}</span>
-                        </button>
-                      </div>
-
-                      {/* Last in the row (small, out of the way) so its own
-                          appearing/disappearing never shifts any control before it. */}
-                      {(centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) && (
+                        {/* Always rendered (visibility-toggled) at the fixed end
+                            of row 2, so nothing in row 2 shifts when it appears. */}
                         <button
                           onClick={() => {
                             setCentralBigBusOnly(false);
@@ -5918,11 +5990,15 @@ export default function App() {
                             setCentralParshaFilter('');
                             setCentralOriginFilter('');
                           }}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer', padding: '2px' }}
+                          style={{
+                            background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer', padding: '2px',
+                            marginInlineStart: 'auto',
+                            visibility: (centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) ? 'visible' : 'hidden'
+                          }}
                         >
                           {t('clearAllFilters')}
                         </button>
-                      )}
+                      </div>
                     </div>
 
                     {centralFlatRows.length === 0 ? (
@@ -7083,6 +7159,51 @@ export default function App() {
                         </div>
                       </div>
                     )}
+
+                    {/* Each admin's own choice of which 4 report tabs show in
+                        THEIR mobile bottom nav - Users Management itself is
+                        always shown, so it's not one of the 6 options here. */}
+                    <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Smartphone size={16} color="var(--accent)" />
+                        {lang === 'he' ? 'תצוגת תפריט בנייד (אישי)' : 'Mobile menu (personal)'}
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                        {lang === 'he'
+                          ? `בחר עד 4 קטגוריות שיוצגו בתפריט התחתון שלך בטלפון (ניהול משתמשים תמיד מוצג). נבחרו: ${(currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).length}/4.`
+                          : `Choose up to 4 categories to show in your own phone bottom nav (Users Management is always shown). Selected: ${(currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).length}/4.`}
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                        {MOBILE_TAB_OPTIONS.map(opt => {
+                          const activeMobileTabs = currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS;
+                          const isChecked = activeMobileTabs.includes(opt.key);
+                          const disabled = !isChecked && activeMobileTabs.length >= 4;
+                          const Icon = opt.icon;
+                          return (
+                            <label
+                              key={opt.key}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px',
+                                border: '1px solid var(--border-color)', fontSize: '13px',
+                                background: isChecked ? 'rgba(226, 176, 78, 0.12)' : 'transparent',
+                                color: disabled ? 'var(--text-secondary)' : '#fff',
+                                cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={disabled}
+                                onChange={() => handleToggleMobileTab(opt.key)}
+                                style={{ width: '15px', height: '15px' }}
+                              />
+                              <Icon size={14} color={isChecked ? 'var(--accent)' : undefined} />
+                              {opt.label[lang]}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -7490,50 +7611,24 @@ export default function App() {
 
               </main>
 
-              {/* MOBILE BOTTOM NAVIGATION */}
+              {/* MOBILE BOTTOM NAVIGATION - the admin's own chosen 4 tabs
+                  (Users tab picker), Users Management always shown last. */}
               <nav className="mobile-manager-nav">
-                <button 
-                  onClick={() => setActiveTab('dashboard')} 
-                  className={`bottom-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-                >
-                  <MapPin size={18} />
-                  <span>{t('managerDashboard')}</span>
-                </button>
-                <button 
-                  onClick={() => setActiveTab('situation')} 
-                  className={`bottom-nav-item ${activeTab === 'situation' ? 'active' : ''}`}
-                >
-                  <FileText size={18} />
-                  <span>{t('situationReport')}</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('history')}
-                  className={`bottom-nav-item ${activeTab === 'history' ? 'active' : ''}`}
-                >
-                  <Calendar size={18} />
-                  <span>{t('fleetActivity')}</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('central')}
-                  className={`bottom-nav-item ${activeTab === 'central' ? 'active' : ''}`}
-                >
-                  <Table size={18} />
-                  <span>{lang === 'he' ? 'טבלה' : 'Table'}</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('roundingCalendar')}
-                  className={`bottom-nav-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
-                >
-                  <Clock size={18} />
-                  <span>{lang === 'he' ? 'עיגול' : 'Rounding'}</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('hourlySummary')}
-                  className={`bottom-nav-item ${activeTab === 'hourlySummary' ? 'active' : ''}`}
-                >
-                  <RefreshCw size={18} />
-                  <span>{lang === 'he' ? 'סיכום שעות' : 'Hourly'}</span>
-                </button>
+                {MOBILE_TAB_OPTIONS
+                  .filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key))
+                  .map(opt => {
+                    const Icon = opt.icon;
+                    return (
+                      <button
+                        key={opt.key}
+                        onClick={() => setActiveTab(opt.key)}
+                        className={`bottom-nav-item ${activeTab === opt.key ? 'active' : ''}`}
+                      >
+                        <Icon size={18} />
+                        <span>{opt.label[lang]}</span>
+                      </button>
+                    );
+                  })}
                 <button
                   onClick={() => setActiveTab('users')}
                   className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}

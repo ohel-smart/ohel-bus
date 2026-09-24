@@ -20,6 +20,11 @@ export interface User {
   canSelfReport?: boolean; // Only for drivers - admin approval to use the self-report link (default: not approved)
   code: string;
   createdAt: string;
+  // Only for admins - which 4 of the admin dashboard's report tabs (besides
+  // Users Management, which is always shown) this admin wants in their own
+  // mobile bottom nav. Undefined/fewer-than-4 falls back to a default set -
+  // see MOBILE_TAB_OPTIONS/DEFAULT_MOBILE_TABS in App.tsx.
+  mobileTabs?: string[];
 }
 
 export interface Scan {
