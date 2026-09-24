@@ -1951,7 +1951,12 @@ export default function App() {
     };
   }, [showCameraScanner, users]);
 
-  // Set default tabs when user logs in
+  // Set default tabs when user logs in - keyed on id/role (not the whole
+  // currentUser object), since self-updates that keep the same identity
+  // (e.g. toggling mobileTabs, or editing your own profile) create a new
+  // currentUser object reference without being a real login. Depending on
+  // the whole object here used to fire this effect on every such update,
+  // yanking the admin back to the dashboard mid-edit.
   useEffect(() => {
     if (currentUser) {
       if (currentUser.role === 'admin') setActiveTab('dashboard');
@@ -1960,7 +1965,7 @@ export default function App() {
     } else {
       setActiveTab('');
     }
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.role]);
 
   // Watch position of dispatcher or driver
   useEffect(() => {
