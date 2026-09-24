@@ -5847,13 +5847,13 @@ export default function App() {
                       {/* Row 1: quick filters - a fixed row boundary (not left to
                           flex-wrap to decide), so which controls land on which
                           line never changes as filter state changes. */}
-                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer' }}>
+                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'nowrap', overflowX: 'auto' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>
                           <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                           {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
                         </label>
 
-                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexShrink: 0 }}>
                           <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים' : 'Date range'}</span>
                           <HebrewRangePicker
                             fromValue={centralDateFrom} toValue={centralDateTo}
@@ -5870,7 +5870,7 @@ export default function App() {
                           </button>
                         </div>
 
-                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'nowrap', flexShrink: 0 }}>
                           <select
                             value={centralMonthFilter}
                             onChange={e => setCentralMonthFilter(e.target.value)}
@@ -5946,15 +5946,15 @@ export default function App() {
 
                       {/* Row 2: actions - always the second row, regardless of
                           what's selected above. */}
-                      <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', overflowX: 'auto' }}>
                         {currentUser.role === 'admin' && (
-                          <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                             <Plus size={14} />
                             {lang === 'he' ? 'הוסף הסעה' : 'Add ride'}
                           </button>
                         )}
 
-                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0 }}>
                           <select
                             value={selectedDriverForPdf}
                             onChange={e => setSelectedDriverForPdf(e.target.value)}
@@ -5996,7 +5996,7 @@ export default function App() {
                           }}
                           style={{
                             background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer', padding: '2px',
-                            marginInlineStart: 'auto',
+                            marginInlineStart: 'auto', flexShrink: 0,
                             visibility: (centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) ? 'visible' : 'hidden'
                           }}
                         >

@@ -752,26 +752,40 @@ body {
   /* Filter toolbars (History/Master Table/Situation tabs): each control used
      a fixed pixel width, which wrapped unevenly on a narrow screen - an empty
      date input with nothing to distinguish it, a <select> truncating its own
-     label mid-word. Stack them as clean full-width rows instead. Checkboxes
-     are excluded so "show big buses only" doesn't balloon to full width. */
+     label mid-word. .filter-toolbar (the outer card) and .filter-toolbar-row
+     (the Master Table's two fixed desktop rows) stay a plain column so
+     things stack top to bottom; .filter-toolbar-group (the actual controls)
+     becomes a 2-column grid - "about two rectangles per row" - instead of
+     one-per-line. */
   .filter-toolbar,
-  .filter-toolbar-group {
+  .filter-toolbar-row {
     flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .filter-toolbar {
+    padding: 12px !important;
+  }
+  .filter-toolbar-group {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
     align-items: stretch !important;
     gap: 6px !important;
   }
-  .filter-toolbar {
-    gap: 10px !important;
-    padding: 12px !important;
-  }
   .filter-toolbar > *:not(input[type="checkbox"]),
+  .filter-toolbar-row > *:not(input[type="checkbox"]),
   .filter-toolbar-group > *:not(input[type="checkbox"]) {
     width: 100% !important;
     margin-inline-start: 0 !important;
   }
+  /* A lone trailing item in an odd-count group (e.g. the "clear all filters"
+     link) spans both columns instead of leaving one half-empty. */
+  .filter-toolbar-group > *:last-child:nth-child(odd) {
+    grid-column: 1 / -1 !important;
+  }
   /* Compact controls - the desktop sizing (generous padding/font-size meant
-     for a wide row of side-by-side controls) makes a single-column mobile
-     stack needlessly tall. */
+     for a wide row of side-by-side controls) makes each grid cell needlessly
+     tall. */
   .filter-toolbar select,
   .filter-toolbar-group select,
   .filter-toolbar .btn,
