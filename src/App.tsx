@@ -962,6 +962,88 @@ function HebrewDatePicker({ value, onChange, lang, placeholder }: {
   );
 }
 
+// Admin-only calendar for marking specific days to round trip times to the
+// nearest HALF hour instead of the default whole hour (halfHourRoundingDates
+// in GlobalConfig). Always-open month grid (not a popup like HebrewDatePicker)
+// since it lives in its own card in the Users tab.
+function HalfHourRoundingCalendar({ selectedDates, onToggle, lang }: {
+  selectedDates: string[];
+  onToggle: (dateStr: string) => void;
+  lang: 'he' | 'en';
+}) {
+  const [viewMonth, setViewMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const year = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leadingBlanks = new Date(year, month, 1).getDay();
+
+  const weekdayLabels = lang === 'he' ? ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const monthLabel = viewMonth.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' });
+  const todayStr = ymd(new Date());
+  const selectedSet = new Set(selectedDates);
+
+  const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
+  const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
+
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d, 12));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <button type="button" onClick={() => setViewMonth(new Date(year, month - 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
+          <PrevIcon size={16} />
+        </button>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>{monthLabel}</span>
+        <button type="button" onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
+          <NextIcon size={16} />
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
+        {weekdayLabels.map((w, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+        {cells.map((cellDate, i) => {
+          if (!cellDate) return <div key={i} />;
+          const cellStr = ymd(cellDate);
+          const isHalf = selectedSet.has(cellStr);
+          const isToday = cellStr === todayStr;
+          return (
+            <button
+              type="button"
+              key={i}
+              onClick={() => onToggle(cellStr)}
+              title={isHalf
+                ? (lang === 'he' ? 'היום הזה מעוגל לחצי שעה - לחץ לביטול' : 'This day rounds to half hour - click to clear')
+                : (lang === 'he' ? 'לחץ לעיגול חצי שעה ביום הזה' : 'Click to round this day to the half hour')}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                padding: '6px 0', borderRadius: '6px',
+                border: isToday && !isHalf ? '1px solid var(--accent)' : '1px solid transparent',
+                background: isHalf ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '12px'
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{cellDate.getDate()}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // One pending self-registration request, with inline Approve / Edit-then-approve
 // / Reject actions. Reused by both the admin's auto-popup modal and the
 // "Pending Registration Requests" card in the Users tab, so both stay in sync.
@@ -1301,6 +1383,18 @@ export default function App() {
   const [selectedScanForEdit, setSelectedScanForEdit] = useState<Scan | null>(null);
   const [editPassengersCount, setEditPassengersCount] = useState<number>(0);
   const [editDepartureLocation, setEditDepartureLocation] = useState<DepartureLocation>('770');
+  const [editDriverId, setEditDriverId] = useState('');
+  const [editDispatcherId, setEditDispatcherId] = useState('');
+  const [editScannedAtLocal, setEditScannedAtLocal] = useState(''); // datetime-local input value, browser-local time
+
+  // Admin-only "add a ride manually" modal (central tab) - a full record the
+  // dispatcher scan flow would normally create, entered by hand instead.
+  const [showAddRideModal, setShowAddRideModal] = useState(false);
+  const [addRideDriverId, setAddRideDriverId] = useState('');
+  const [addRideDispatcherId, setAddRideDispatcherId] = useState('');
+  const [addRidePassengers, setAddRidePassengers] = useState<number>(0);
+  const [addRideDepartureLocation, setAddRideDepartureLocation] = useState<DepartureLocation>('770');
+  const [addRideScannedAtLocal, setAddRideScannedAtLocal] = useState('');
 
   // Settings & Users Admin states
   const [reportEmail, setReportEmail] = useState('');
@@ -1675,6 +1769,18 @@ export default function App() {
   const driversList = useMemo(() => {
     return users.filter(u => u.role === 'driver');
   }, [users]);
+
+  // Dispatchers, for the edit/add-ride admin forms.
+  const dispatchersList = useMemo(() => {
+    return users.filter(u => u.role === 'dispatcher');
+  }, [users]);
+
+  // "2026-09-24T14:30" (local, for a datetime-local input) <-> ISO string.
+  const isoToLocalInput = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
   // Logical Today (01:00 AM reset rule)
   const logicalToday = useMemo(() => {
@@ -2471,14 +2577,31 @@ export default function App() {
     setSelectedScanForEdit(scan);
     setEditPassengersCount(scan.passengersCount);
     setEditDepartureLocation(scan.departureLocation);
+    setEditDriverId(scan.driverId);
+    setEditDispatcherId(scan.dispatcherId);
+    setEditScannedAtLocal(isoToLocalInput(scan.scannedAt));
   };
 
   const handleSaveEditScan = () => {
     if (!selectedScanForEdit) return;
-    const updated = {
+    const driver = driversList.find(d => d.id === editDriverId);
+    const dispatcher = dispatchersList.find(d => d.id === editDispatcherId);
+    const newScannedAt = editScannedAtLocal ? new Date(editScannedAtLocal).toISOString() : selectedScanForEdit.scannedAt;
+    const updated: Scan = {
       ...selectedScanForEdit,
       passengersCount: editPassengersCount,
-      departureLocation: editDepartureLocation
+      departureLocation: editDepartureLocation,
+      driverId: editDriverId,
+      driverName: driver?.name ?? selectedScanForEdit.driverName,
+      driverCapacity: driver?.capacity ?? selectedScanForEdit.driverCapacity,
+      isBigBus: driver?.isBigBus ?? selectedScanForEdit.isBigBus,
+      dispatcherId: editDispatcherId,
+      dispatcherName: dispatcher?.name ?? selectedScanForEdit.dispatcherName,
+      scannedAt: newScannedAt,
+      // Re-derive the day bucket - editing the time across a day boundary
+      // (including an Erev Shabbat/Yom Tov cutover) must move the row to the
+      // correct day, not leave it under the old logicalDate.
+      logicalDate: dbService.getLogicalDate(newScannedAt)
     };
     dbService.updateScan(updated);
     setSelectedScanForEdit(null);
@@ -2496,6 +2619,44 @@ export default function App() {
       ? current.filter(d => d !== dateStr)
       : [...current, dateStr];
     dbService.saveConfig({ ...config, halfHourRoundingDates: next });
+  };
+
+  const openAddRideModal = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setAddRideDriverId(driversList[0]?.id || '');
+    setAddRideDispatcherId(dispatchersList[0]?.id || '');
+    setAddRidePassengers(0);
+    setAddRideDepartureLocation('770');
+    setAddRideScannedAtLocal(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
+    setShowAddRideModal(true);
+  };
+
+  const handleCreateManualRide = async () => {
+    const driver = driversList.find(d => d.id === addRideDriverId);
+    const dispatcher = dispatchersList.find(d => d.id === addRideDispatcherId);
+    if (!driver || !dispatcher) {
+      triggerToast(lang === 'he' ? 'יש לבחור נהג וסדרן' : 'Pick a driver and dispatcher', 'danger');
+      return;
+    }
+    const scannedAt = addRideScannedAtLocal ? new Date(addRideScannedAtLocal).toISOString() : new Date().toISOString();
+    const loc = LOCATIONS[addRideDepartureLocation];
+    try {
+      await dbService.addScan({
+        dispatcherId: dispatcher.id,
+        dispatcherName: dispatcher.name,
+        driverId: driver.id,
+        driverName: driver.name,
+        passengersCount: addRidePassengers,
+        scannedAt,
+        location: { latitude: loc.latitude, longitude: loc.longitude },
+        departureLocation: addRideDepartureLocation
+      });
+      setShowAddRideModal(false);
+      triggerToast(lang === 'he' ? 'הנסיעה נוספה בהצלחה' : 'Ride added successfully', 'success');
+    } catch (e) {
+      triggerToast(lang === 'he' ? 'הוספת הנסיעה נכשלה' : 'Failed to add the ride', 'danger');
+    }
   };
 
   const handleDeleteScan = (scanId: string) => {
@@ -3460,6 +3621,157 @@ export default function App() {
           <div className="saving-spinner" />
         </div>
       )}
+
+      {/* Edit-scan and Add-ride modals - tab-independent, so they render
+          regardless of activeTab (previously nested only under the history
+          tab, which meant the edit/add-ride buttons in the central tab set
+          state correctly but the modal never appeared). */}
+      {/* EDIT MODAL DIALOG MOCK */}
+      {selectedScanForEdit && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
+          <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>{t('editTripTitle')}</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '20px' }}>
+              {t('editTripSubtitle', { driver: selectedScanForEdit.driverName })}
+              <br/>{t('editTripMeta', { dispatcher: selectedScanForEdit.dispatcherName, time: new Date(selectedScanForEdit.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US') })}
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'נהג' : 'Driver'}</label>
+              <select
+                className="form-input form-select"
+                value={editDriverId}
+                onChange={(e) => setEditDriverId(e.target.value)}
+              >
+                {driversList.map(d => (
+                  <option key={d.id} value={d.id}>{d.name.replace(' (נהג)', '')}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'סדרן' : 'Dispatcher'}</label>
+              <select
+                className="form-input form-select"
+                value={editDispatcherId}
+                onChange={(e) => setEditDispatcherId(e.target.value)}
+              >
+                {dispatchersList.map(d => (
+                  <option key={d.id} value={d.id}>{d.name.replace(' (סדרן)', '')}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
+              <input
+                type="datetime-local"
+                className="form-input"
+                value={editScannedAtLocal}
+                onChange={(e) => setEditScannedAtLocal(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('passengersCountLabel')}</label>
+              <input
+                type="number"
+                className="form-input"
+                value={editPassengersCount}
+                onChange={(e) => setEditPassengersCount(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('originHeader')}</label>
+              <select
+                className="form-input form-select"
+                value={editDepartureLocation}
+                onChange={(e) => setEditDepartureLocation(e.target.value as DepartureLocation)}
+              >
+                <option value="770">770 ({lang === 'he' ? 'קראון הייטס' : 'Crown Heights'})</option>
+                <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+              <button onClick={handleSaveEditScan} className="btn btn-primary" style={{ flex: 1 }}>{t('saveChanges')}</button>
+              <button onClick={() => setSelectedScanForEdit(null)} className="btn btn-secondary" style={{ flex: 1 }}>{t('cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD RIDE MODAL (admin-only, central tab) */}
+      {showAddRideModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
+          <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>
+              {lang === 'he' ? 'הוספת הסעה ידנית' : 'Add a ride manually'}
+            </h3>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'נהג' : 'Driver'}</label>
+              <select className="form-input form-select" value={addRideDriverId} onChange={(e) => setAddRideDriverId(e.target.value)}>
+                {driversList.length === 0 && <option value="">{lang === 'he' ? 'אין נהגים' : 'No drivers'}</option>}
+                {driversList.map(d => (
+                  <option key={d.id} value={d.id}>{d.name.replace(' (נהג)', '')}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'סדרן' : 'Dispatcher'}</label>
+              <select className="form-input form-select" value={addRideDispatcherId} onChange={(e) => setAddRideDispatcherId(e.target.value)}>
+                {dispatchersList.length === 0 && <option value="">{lang === 'he' ? 'אין סדרנים' : 'No dispatchers'}</option>}
+                {dispatchersList.map(d => (
+                  <option key={d.id} value={d.id}>{d.name.replace(' (סדרן)', '')}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
+              <input
+                type="datetime-local"
+                className="form-input"
+                value={addRideScannedAtLocal}
+                onChange={(e) => setAddRideScannedAtLocal(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('passengersCountLabel')}</label>
+              <input
+                type="number"
+                className="form-input"
+                value={addRidePassengers}
+                onChange={(e) => setAddRidePassengers(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('originHeader')}</label>
+              <select
+                className="form-input form-select"
+                value={addRideDepartureLocation}
+                onChange={(e) => setAddRideDepartureLocation(e.target.value as DepartureLocation)}
+              >
+                <option value="770">770 ({lang === 'he' ? 'קראון הייטס' : 'Crown Heights'})</option>
+                <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+              <button onClick={handleCreateManualRide} className="btn btn-primary" style={{ flex: 1 }}>
+                {lang === 'he' ? 'הוסף' : 'Add'}
+              </button>
+              <button onClick={() => setShowAddRideModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>{t('cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Pending self-registration requests - pops up for the admin as soon as
           the app is open (any tab), not just when they navigate to Users. */}
@@ -5269,6 +5581,13 @@ export default function App() {
                         )}
                       </div>
 
+                      {currentUser.role === 'admin' && (
+                        <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Plus size={14} />
+                          {lang === 'he' ? 'הוסף הסעה' : 'Add ride'}
+                        </button>
+                      )}
+
                       <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginInlineStart: 'auto', flexWrap: 'wrap' }}>
                         <select
                           value={selectedDriverForPdf}
@@ -5345,22 +5664,6 @@ export default function App() {
                                   <td style={tdCentral}>{r.dayOfWeek}</td>
                                   <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>
                                     {r.time}
-                                    {currentUser.role === 'admin' && (
-                                      <button
-                                        onClick={() => toggleHalfHourRoundingForDate(r.dateStr)}
-                                        title={halfHourRoundingDates.includes(r.dateStr)
-                                          ? (lang === 'he' ? 'היום הזה מעוגל לחצי שעה - לחץ לעיגול שעתי רגיל' : 'This day rounds to half hour - click for regular hourly rounding')
-                                          : (lang === 'he' ? 'עגל את היום הזה לחצי שעה' : 'Round this day to the nearest half hour')}
-                                        style={{
-                                          marginInlineStart: '6px', border: 'none', cursor: 'pointer', borderRadius: '4px',
-                                          padding: '1px 5px', fontSize: '10px', fontFamily: 'inherit',
-                                          background: halfHourRoundingDates.includes(r.dateStr) ? 'var(--accent)' : 'rgba(255,255,255,0.08)',
-                                          color: halfHourRoundingDates.includes(r.dateStr) ? '#000' : 'var(--text-secondary)'
-                                        }}
-                                      >
-                                        ½{lang === 'he' ? 'שע' : 'hr'}
-                                      </button>
-                                    )}
                                   </td>
                                   <td style={tdCentral}>{r.dateStr}</td>
                                   <td style={{ ...tdCentral, color: '#fff' }}>{r.driver}</td>
@@ -5373,7 +5676,15 @@ export default function App() {
                                   <td style={tdCentral}>{r.passengers}</td>
                                   <td style={tdCentral}>{r.remainingSeats}</td>
                                   <td style={tdCentral}>{r.driverCapacity}</td>
-                                  <td style={tdCentral}>
+                                  <td style={{ ...tdCentral, display: 'flex', gap: '6px' }}>
+                                    <button
+                                      onClick={() => { const scan = scans.find(s => s.id === r.id); if (scan) handleEditScanClick(scan); }}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '4px 8px', fontSize: '11px' }}
+                                      title={lang === 'he' ? 'ערוך שורה' : 'Edit row'}
+                                    >
+                                      <Edit size={12} />
+                                    </button>
                                     <button
                                       onClick={() => handleDeleteScan(r.id)}
                                       className="btn btn-danger"
@@ -5992,46 +6303,6 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* EDIT MODAL DIALOG MOCK */}
-                    {selectedScanForEdit && (
-                      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
-                        <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                          <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>{t('editTripTitle')}</h3>
-                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '20px' }}>
-                            {t('editTripSubtitle', { driver: selectedScanForEdit.driverName })}
-                            <br/>{t('editTripMeta', { dispatcher: selectedScanForEdit.dispatcherName, time: new Date(selectedScanForEdit.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US') })}
-                          </p>
-
-                          <div className="form-group">
-                            <label className="form-label">{t('passengersCountLabel')}</label>
-                            <input 
-                              type="number" 
-                              className="form-input"
-                              value={editPassengersCount}
-                              onChange={(e) => setEditPassengersCount(Math.max(0, parseInt(e.target.value) || 0))}
-                            />
-                          </div>
-
-                          <div className="form-group">
-                            <label className="form-label">{t('originHeader')}</label>
-                            <select 
-                              className="form-input form-select"
-                              value={editDepartureLocation}
-                              onChange={(e) => setEditDepartureLocation(e.target.value as DepartureLocation)}
-                            >
-                              <option value="770">770 ({lang === 'he' ? 'קראון הייטס' : 'Crown Heights'})</option>
-                              <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}</option>
-                            </select>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-                            <button onClick={handleSaveEditScan} className="btn btn-primary" style={{ flex: 1 }}>{t('saveChanges')}</button>
-                            <button onClick={() => setSelectedScanForEdit(null)} className="btn btn-secondary" style={{ flex: 1 }}>{t('cancel')}</button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Attendance Grid */}
                     <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
                       <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
@@ -6504,6 +6775,24 @@ export default function App() {
                         </div>
                       </div>
                     )}
+
+                    {/* Half-hour rounding calendar - central table times default to
+                        whole-hour rounding; clicking a day here marks it to round to
+                        the half hour instead, persisted in GlobalConfig for everyone. */}
+                    <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Calendar size={16} color="var(--accent)" />
+                        {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                        {lang === 'he'
+                          ? 'כברירת מחדל הזמנים בטבלה המרכזית מעוגלים לשעה עגולה. לחץ על יום כדי לסמן אותו לעיגול לחצי שעה במקום.'
+                          : 'By default, times in the central table round to the nearest whole hour. Click a day to mark it for half-hour rounding instead.'}
+                      </p>
+                      <div style={{ maxWidth: '320px' }}>
+                        <HalfHourRoundingCalendar selectedDates={halfHourRoundingDates} onToggle={toggleHalfHourRoundingForDate} lang={lang} />
+                      </div>
+                    </div>
                   </div>
                 )}
 
