@@ -945,14 +945,19 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
       <button
         type="button"
         onClick={() => (isOpen ? setIsOpen(false) : openPicker())}
+        title={buttonLabel}
         style={{
           padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)',
           background: 'var(--bg-primary, #0d0d0d)', color: (fromValue || toValue) ? '#fff' : 'var(--text-secondary)',
-          fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', minWidth: '160px'
+          fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+          // Fixed width (not minWidth) so picking a range - whose rendered
+          // text is longer than the placeholder - never changes this
+          // button's own size and can't push the toolbar row to reflow.
+          width: '220px'
         }}
       >
-        <Calendar size={14} />
-        {buttonLabel}
+        <Calendar size={14} style={{ flexShrink: 0 }} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buttonLabel}</span>
       </button>
 
       {isOpen && (
@@ -5851,11 +5856,13 @@ export default function App() {
                             lang={lang}
                             placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end dates'}
                           />
-                          {(centralDateFrom || centralDateTo) && (
-                            <button onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }} className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '12px', color: '#fff' }}>
-                              {lang === 'he' ? 'נקה' : 'Clear'}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => { setCentralDateFrom(''); setCentralDateTo(''); }}
+                            className="btn btn-secondary"
+                            style={{ padding: '8px 12px', fontSize: '12px', color: '#fff', visibility: (centralDateFrom || centralDateTo) ? 'visible' : 'hidden' }}
+                          >
+                            {lang === 'he' ? 'נקה' : 'Clear'}
+                          </button>
                         </div>
 
                         <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'wrap' }}>
@@ -5863,41 +5870,37 @@ export default function App() {
                             value={centralMonthFilter}
                             onChange={e => setCentralMonthFilter(e.target.value)}
                             title={t('monthFilterLabel')}
-                            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ width: '150px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{t('monthFilterLabel')}</option>
                             {HEBREW_MONTH_OPTIONS.map(m => (
                               <option key={m.key} value={m.key}>{m.label}</option>
                             ))}
                           </select>
-                          {centralMonthFilter && (
-                            <button
-                              onClick={() => setCentralMonthFilter('')}
-                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                            >
-                              {t('clearMonth')}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setCentralMonthFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralMonthFilter ? 'visible' : 'hidden' }}
+                          >
+                            {t('clearMonth')}
+                          </button>
 
                           <select
                             value={centralYearFilter}
                             onChange={e => setCentralYearFilter(e.target.value)}
                             title={t('yearFilterLabel')}
-                            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ width: '190px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{t('yearFilterLabel')}</option>
                             {availableHebrewYears.map(y => (
                               <option key={y} value={y}>{renderHebrewYear(y)}</option>
                             ))}
                           </select>
-                          {centralYearFilter && (
-                            <button
-                              onClick={() => setCentralYearFilter('')}
-                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                            >
-                              {t('clearYear')}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setCentralYearFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralYearFilter ? 'visible' : 'hidden' }}
+                          >
+                            {t('clearYear')}
+                          </button>
 
                           <select
                             className="form-input"
@@ -5910,14 +5913,12 @@ export default function App() {
                               <option key={p} value={p}>{p}</option>
                             ))}
                           </select>
-                          {centralParshaFilter && (
-                            <button
-                              onClick={() => setCentralParshaFilter('')}
-                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                            >
-                              {t('clearParsha')}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setCentralParshaFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralParshaFilter ? 'visible' : 'hidden' }}
+                          >
+                            {t('clearParsha')}
+                          </button>
 
                           <select
                             className="form-input"
@@ -5929,14 +5930,12 @@ export default function App() {
                             <option value="770">{lang === 'he' ? '770 (קראון הייטס)' : '770 (Crown Heights)'}</option>
                             <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel'}</option>
                           </select>
-                          {centralOriginFilter && (
-                            <button
-                              onClick={() => setCentralOriginFilter('')}
-                              style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer' }}
-                            >
-                              {t('clearOrigin')}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setCentralOriginFilter('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralOriginFilter ? 'visible' : 'hidden' }}
+                          >
+                            {t('clearOrigin')}
+                          </button>
                         </div>
                       </div>
 
@@ -5954,7 +5953,7 @@ export default function App() {
                           <select
                             value={selectedDriverForPdf}
                             onChange={e => setSelectedDriverForPdf(e.target.value)}
-                            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ width: '150px', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{lang === 'he' ? 'בחר נהג...' : 'Select driver...'}</option>
                             {driverNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
@@ -5967,7 +5966,7 @@ export default function App() {
                           <select
                             value={selectedDispatcherForPdf}
                             onChange={e => setSelectedDispatcherForPdf(e.target.value)}
-                            style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ width: '150px', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{lang === 'he' ? 'בחר סדרן...' : 'Select dispatcher...'}</option>
                             {dispatcherNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
@@ -7173,7 +7172,11 @@ export default function App() {
                           ? `בחר עד 4 קטגוריות שיוצגו בתפריט התחתון שלך בטלפון (ניהול משתמשים תמיד מוצג). נבחרו: ${(currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).length}/4.`
                           : `Choose up to 4 categories to show in your own phone bottom nav (Users Management is always shown). Selected: ${(currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).length}/4.`}
                       </p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                      {/* Fixed 3-column grid (not flex-wrap) - each option
+                          always renders in the same cell no matter which
+                          others are checked/disabled, so nothing can shift
+                          position when you click one. */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                         {MOBILE_TAB_OPTIONS.map(opt => {
                           const activeMobileTabs = currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS;
                           const isChecked = activeMobileTabs.includes(opt.key);
@@ -7195,10 +7198,10 @@ export default function App() {
                                 checked={isChecked}
                                 disabled={disabled}
                                 onChange={() => handleToggleMobileTab(opt.key)}
-                                style={{ width: '15px', height: '15px' }}
+                                style={{ width: '15px', height: '15px', flexShrink: 0 }}
                               />
-                              <Icon size={14} color={isChecked ? 'var(--accent)' : undefined} />
-                              {opt.label[lang]}
+                              <Icon size={14} color={isChecked ? 'var(--accent)' : undefined} style={{ flexShrink: 0 }} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label[lang]}</span>
                             </label>
                           );
                         })}
