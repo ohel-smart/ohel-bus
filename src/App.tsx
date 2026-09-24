@@ -23,8 +23,8 @@ const MOBILE_TAB_OPTIONS: { key: string; icon: LucideIcon; label: { he: string; 
   { key: 'situation', icon: FileText, label: { he: 'ערכת מצב', en: 'Situation' } },
   { key: 'history', icon: Calendar, label: { he: 'כלל הפעילות', en: 'Activity' } },
   { key: 'central', icon: Table, label: { he: 'טבלה מרכזית', en: 'Master Table' } },
-  { key: 'roundingCalendar', icon: Clock, label: { he: 'לוח עיגול זמנים', en: 'Rounding Calendar' } },
   { key: 'hourlySummary', icon: RefreshCw, label: { he: 'סיכום לפי שעות', en: 'Hourly Summary' } },
+  { key: 'roundingCalendar', icon: Clock, label: { he: 'לוח עיגול זמנים', en: 'Rounding Calendar' } },
 ];
 const DEFAULT_MOBILE_TABS = ['dashboard', 'situation', 'history', 'central'];
 
@@ -5618,19 +5618,19 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setActiveTab('roundingCalendar')}
-                    className={`sidebar-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
-                  >
-                    <Clock size={16} />
-                    <span>{lang === 'he' ? 'לוח עיגול זמנים' : 'Rounding Calendar'}</span>
-                  </button>
-
-                  <button
                     onClick={() => setActiveTab('hourlySummary')}
                     className={`sidebar-item ${activeTab === 'hourlySummary' ? 'active' : ''}`}
                   >
                     <RefreshCw size={16} />
                     <span>{lang === 'he' ? 'סיכום לפי שעות' : 'Hourly Summary'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('roundingCalendar')}
+                    className={`sidebar-item ${activeTab === 'roundingCalendar' ? 'active' : ''}`}
+                  >
+                    <Clock size={16} />
+                    <span>{lang === 'he' ? 'לוח עיגול זמנים' : 'Rounding Calendar'}</span>
                   </button>
 
                   <button
