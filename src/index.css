@@ -776,6 +776,8 @@ body {
   .filter-toolbar-row > *:not(input[type="checkbox"]),
   .filter-toolbar-group > *:not(input[type="checkbox"]) {
     width: 100% !important;
+    max-width: none !important;
+    flex: none !important;
     margin-inline-start: 0 !important;
   }
   /* A lone trailing item in an odd-count group (e.g. the "clear all filters"

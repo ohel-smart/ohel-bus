@@ -5852,7 +5852,7 @@ export default function App() {
                           clip HebrewRangePicker's absolutely-positioned
                           popup calendar, since an overflow:auto ancestor
                           clips content that would otherwise escape it. */}
-                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'nowrap' }}>
+                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'nowrap', minWidth: 0 }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>
                           <input type="checkbox" checked={centralBigBusOnly} onChange={e => setCentralBigBusOnly(e.target.checked)} style={{ width: '16px', height: '16px' }} />
                           {lang === 'he' ? 'הצג רק אוטובוסים גדולים' : 'Show big buses only'}
@@ -5875,83 +5875,63 @@ export default function App() {
                           </button>
                         </div>
 
-                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'nowrap', flexShrink: 0 }}>
+                        {/* Selects share whatever width is left (flex 1 1 0, minWidth 0) instead
+                            of fixed pixel widths, so the row always fits inside the card. There's
+                            no per-filter clear link: picking the placeholder option resets that
+                            filter, and "clear all" (row 2) resets everything. */}
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexWrap: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
                           <select
                             value={centralMonthFilter}
                             onChange={e => setCentralMonthFilter(e.target.value)}
                             title={t('monthFilterLabel')}
-                            style={{ width: '150px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ flex: '1 1 0', minWidth: 0, maxWidth: '190px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{t('monthFilterLabel')}</option>
                             {HEBREW_MONTH_OPTIONS.map(m => (
                               <option key={m.key} value={m.key}>{m.label}</option>
                             ))}
                           </select>
-                          <button
-                            onClick={() => setCentralMonthFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralMonthFilter ? 'visible' : 'hidden' }}
-                          >
-                            {t('clearMonth')}
-                          </button>
 
                           <select
                             value={centralYearFilter}
                             onChange={e => setCentralYearFilter(e.target.value)}
                             title={t('yearFilterLabel')}
-                            style={{ width: '190px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ flex: '1 1 0', minWidth: 0, maxWidth: '190px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{t('yearFilterLabel')}</option>
                             {availableHebrewYears.map(y => (
                               <option key={y} value={y}>{renderHebrewYear(y)}</option>
                             ))}
                           </select>
-                          <button
-                            onClick={() => setCentralYearFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralYearFilter ? 'visible' : 'hidden' }}
-                          >
-                            {t('clearYear')}
-                          </button>
 
                           <select
                             className="form-input"
                             value={centralParshaFilter}
                             onChange={e => setCentralParshaFilter(e.target.value)}
-                            style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                            style={{ flex: '1 1 0', minWidth: 0, maxWidth: '190px', height: '38px', fontSize: '13px' }}
                           >
                             <option value="">{t('parshaFilterLabel')}</option>
                             {availableParshas.map(p => (
                               <option key={p} value={p}>{p}</option>
                             ))}
                           </select>
-                          <button
-                            onClick={() => setCentralParshaFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralParshaFilter ? 'visible' : 'hidden' }}
-                          >
-                            {t('clearParsha')}
-                          </button>
 
                           <select
                             className="form-input"
                             value={centralOriginFilter}
                             onChange={e => setCentralOriginFilter(e.target.value as '' | DepartureLocation)}
-                            style={{ width: '160px', height: '38px', fontSize: '13px' }}
+                            style={{ flex: '1 1 0', minWidth: 0, maxWidth: '190px', height: '38px', fontSize: '13px' }}
                           >
                             <option value="">{t('originFilterLabel')}</option>
                             <option value="770">{lang === 'he' ? '770 (קראון הייטס)' : '770 (Crown Heights)'}</option>
                             <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel'}</option>
                           </select>
-                          <button
-                            onClick={() => setCentralOriginFilter('')}
-                            style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', visibility: centralOriginFilter ? 'visible' : 'hidden' }}
-                          >
-                            {t('clearOrigin')}
-                          </button>
                         </div>
                       </div>
 
                       {/* Row 2: actions - always the second row, regardless of
                           what's selected above. */}
-                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', overflowX: 'auto' }}>
+                      <div className="filter-toolbar-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', minWidth: 0 }}>
                         {currentUser.role === 'admin' && (
                           <button onClick={openAddRideModal} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                             <Plus size={14} />
@@ -5959,16 +5939,16 @@ export default function App() {
                           </button>
                         )}
 
-                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0 }}>
+                        <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flex: '1 1 0', minWidth: 0 }}>
                           <select
                             value={selectedDriverForPdf}
                             onChange={e => setSelectedDriverForPdf(e.target.value)}
-                            style={{ width: '150px', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ flex: '1 1 0', minWidth: 0, maxWidth: '190px', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{lang === 'he' ? 'בחר נהג...' : 'Select driver...'}</option>
                             {driverNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
                           </select>
-                          <button onClick={() => handleExportDriverPdf()} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5 }}>
+                          <button onClick={() => handleExportDriverPdf()} disabled={!selectedDriverForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDriverForPdf ? 1 : 0.5, flexShrink: 0, whiteSpace: 'nowrap' }}>
                             <FileText size={15} />
                             <span>{lang === 'he' ? 'דו"ח PDF לנהג' : 'Driver PDF report'}</span>
                           </button>
@@ -5976,12 +5956,12 @@ export default function App() {
                           <select
                             value={selectedDispatcherForPdf}
                             onChange={e => setSelectedDispatcherForPdf(e.target.value)}
-                            style={{ width: '150px', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
+                            style={{ flex: '1 1 0', minWidth: 0, maxWidth: '190px', padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary, #0d0d0d)', color: '#fff', fontSize: '13px' }}
                           >
                             <option value="">{lang === 'he' ? 'בחר סדרן...' : 'Select dispatcher...'}</option>
                             {dispatcherNamesForPdf.map(name => <option key={name} value={name}>{name}</option>)}
                           </select>
-                          <button onClick={() => handleExportDispatcherPdf()} disabled={!selectedDispatcherForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDispatcherForPdf ? 1 : 0.5 }}>
+                          <button onClick={() => handleExportDispatcherPdf()} disabled={!selectedDispatcherForPdf} className="btn btn-secondary" style={{ padding: '9px 14px', fontSize: '13px', color: '#fff', opacity: selectedDispatcherForPdf ? 1 : 0.5, flexShrink: 0, whiteSpace: 'nowrap' }}>
                             <FileText size={15} />
                             <span>{lang === 'he' ? 'דו"ח PDF לסדרן' : 'Dispatcher PDF report'}</span>
                           </button>
