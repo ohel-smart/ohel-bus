@@ -749,6 +749,12 @@ body {
     display: flex !important;
   }
 
+  /* Users tab's mobile-menu picker: 2 columns (3 rows for 6 tabs) instead of 3,
+     with minmax(0,1fr) so a long label can't force the grid wider than its card. */
+  .mobile-tabs-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
   /* Filter toolbars (History/Master Table/Situation tabs): each control used
      a fixed pixel width, which wrapped unevenly on a narrow screen - an empty
      date input with nothing to distinguish it, a <select> truncating its own

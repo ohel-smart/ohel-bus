@@ -7167,7 +7167,7 @@ export default function App() {
                           always renders in the same cell no matter which
                           others are checked/disabled, so nothing can shift
                           position when you click one. */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                      <div className="mobile-tabs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
                         {MOBILE_TAB_OPTIONS.map(opt => {
                           const activeMobileTabs = currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS;
                           const isChecked = activeMobileTabs.includes(opt.key);
