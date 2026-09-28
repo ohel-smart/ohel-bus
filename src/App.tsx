@@ -5,11 +5,10 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, Fingerprint, type LucideIcon
+  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
-import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
 
 // Shared cell styles for the central master summary table.
@@ -1676,13 +1675,6 @@ export default function App() {
   const [newUserIsBigBus, setNewUserIsBigBus] = useState(false);
   const [newUserCanSelfReport, setNewUserCanSelfReport] = useState(false);
   const [loginCode, setLoginCode] = useState('');
-  // Which user this exact browser/device has registered Face ID/fingerprint
-  // (WebAuthn) for, if any - persisted so the "log in with Face ID" button
-  // shows up again on a later visit without needing the code first.
-  const [webauthnUserId, setWebauthnUserId] = useState<string | null>(() => {
-    try { return localStorage.getItem('tp_webauthn_user'); } catch { return null; }
-  });
-  const [biometricBusy, setBiometricBusy] = useState(false);
   const [newUserCode, setNewUserCode] = useState('');
   // Self-registration requests (…/join) awaiting admin approval.
   const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
@@ -2791,102 +2783,13 @@ export default function App() {
   }, [activeLocations, scans]);
 
   // --- Handlers ---
-
-  // Registers this exact browser/device's Face ID/Touch ID/Android
-  // fingerprint (a WebAuthn "platform authenticator") for `user`, so a
-  // later visit can log them in via handleBiometricLogin instead of typing
-  // the code. `code` re-proves ownership of the account to the server
-  // (see api/webauthn-register-options.js) - the fingerprint/face image
-  // itself never leaves the device, only a public key does.
-  const registerBiometricForCurrentDevice = async (user: User, code: string) => {
-    try {
-      const optsResp = await fetch('/api/webauthn-register-options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, code })
-      });
-      const optsData = await optsResp.json();
-      if (!optsResp.ok) throw new Error(optsData.error || 'failed to start registration');
-
-      const attestation = await startRegistration({ optionsJSON: optsData.options });
-
-      const verifyResp = await fetch('/api/webauthn-register-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, code, response: attestation })
-      });
-      const verifyData = await verifyResp.json();
-      if (!verifyResp.ok || !verifyData.ok) throw new Error(verifyData.error || 'verification failed');
-
-      localStorage.setItem('tp_webauthn_user', user.id);
-      setWebauthnUserId(user.id);
-      triggerToast(
-        lang === 'he' ? 'המכשיר חובר בהצלחה - בפעם הבאה אפשר להיכנס עם Face ID / טביעת אצבע' : 'Device connected - next time you can log in with Face ID / fingerprint',
-        'success'
-      );
-    } catch (e) {
-      // Cancelling the OS biometric prompt lands here too via a thrown
-      // NotAllowedError - not worth surfacing as an error toast, the user
-      // just didn't want to set it up right now.
-      console.warn('Biometric registration failed or cancelled:', e);
-    }
-  };
-
-  // Logs in via a previously-registered Face ID/fingerprint credential for
-  // `webauthnUserId`, with no code needed - the biometric check itself is
-  // the authentication (see api/webauthn-login-*.js).
-  const handleBiometricLogin = async () => {
-    if (!webauthnUserId || biometricBusy) return;
-    setBiometricBusy(true);
-    try {
-      const optsResp = await fetch('/api/webauthn-login-options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: webauthnUserId })
-      });
-      if (!optsResp.ok) {
-        // The credential was removed server-side (or never existed) -
-        // forget it locally too so this button stops appearing.
-        localStorage.removeItem('tp_webauthn_user');
-        setWebauthnUserId(null);
-        throw new Error('no credential registered for this device');
-      }
-      const { options } = await optsResp.json();
-
-      const assertion = await startAuthentication({ optionsJSON: options });
-
-      const verifyResp = await fetch('/api/webauthn-login-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: webauthnUserId, response: assertion })
-      });
-      const verifyData = await verifyResp.json();
-      if (!verifyResp.ok || !verifyData.ok) throw new Error(verifyData.error || 'verification failed');
-
-      const user: User = verifyData.user;
-      if (user.role === 'screen') {
-        // Same rule as the code-login path: screen codes only unlock /board.
-        triggerToast(t('screenCodeLoginRejected'), 'danger');
-        return;
-      }
-      localStorage.setItem('tp_current_user', JSON.stringify(user));
-      setCurrentUser(user);
-      triggerToast(t('welcomeUser', { name: user.name }), 'success');
-    } catch (e) {
-      console.warn('Biometric login failed or cancelled:', e);
-    } finally {
-      setBiometricBusy(false);
-    }
-  };
-
   const handleCodeLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const enteredCode = loginCode.trim();
-    if (!enteredCode) {
+    if (!loginCode.trim()) {
       triggerToast(t('enterPasscode'), 'danger');
       return;
     }
-    const user = dbService.loginWithCode(enteredCode);
+    const user = dbService.loginWithCode(loginCode.trim());
     if (user && user.role === 'screen') {
       // Screen codes only ever unlock the public /board display — never the
       // dispatcher app itself, so reject explicitly rather than letting it
@@ -2899,21 +2802,6 @@ export default function App() {
       setCurrentUser(user);
       setLoginCode('');
       triggerToast(t('welcomeUser', { name: user.name }), 'success');
-
-      // Offer to connect this device for Face ID/fingerprint next time -
-      // only when it isn't already connected for this exact user, and only
-      // when the device actually has a platform biometric sensor.
-      if (webauthnUserId !== user.id && typeof window.PublicKeyCredential !== 'undefined') {
-        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(available => {
-          if (available && window.confirm(
-            lang === 'he'
-              ? 'לחבר את המכשיר הזה כדי שבפעם הבאה תוכל להיכנס עם Face ID / טביעת אצבע במקום קוד?'
-              : 'Connect this device so next time you can log in with Face ID / fingerprint instead of a code?'
-          )) {
-            registerBiometricForCurrentDevice(user, enteredCode);
-          }
-        }).catch(() => {});
-      }
     } else {
       triggerToast(t('loginError'), 'danger');
     }
@@ -4347,28 +4235,6 @@ export default function App() {
               {t('subtitle')}
               <br/>{t('enterCode')}
             </p>
-
-            {webauthnUserId && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleBiometricLogin}
-                  disabled={biometricBusy}
-                  className="btn btn-primary"
-                  style={{ width: '100%', height: '46px', fontSize: '14px', fontWeight: 'bold', justifyContent: 'center', gap: '8px', marginBottom: '16px', opacity: biometricBusy ? 0.6 : 1 }}
-                >
-                  <Fingerprint size={18} />
-                  {biometricBusy
-                    ? (lang === 'he' ? 'מאמת...' : 'Verifying...')
-                    : (lang === 'he' ? 'כניסה עם Face ID / טביעת אצבע' : 'Sign in with Face ID / fingerprint')}
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0 20px' }}>
-                  <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'או' : 'or'}</span>
-                  <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
-                </div>
-              </>
-            )}
 
             <form onSubmit={handleCodeLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: lang === 'he' ? 'right' : 'left' }}>
               <div className="form-group" style={{ margin: 0 }}>
