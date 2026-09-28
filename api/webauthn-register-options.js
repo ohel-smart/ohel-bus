@@ -52,12 +52,6 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'not authorized' });
     }
 
-    const existingCreds = await db.collection('webauthn_credentials').where('userId', '==', userId).get();
-    const excludeCredentials = existingCreds.docs.map(d => ({
-      id: d.id,
-      transports: d.data().transports || undefined
-    }));
-
     const options = await generateRegistrationOptions({
       rpName: 'אוהל בוס',
       rpID,
@@ -68,7 +62,17 @@ export default async function handler(req, res) {
       userID: new TextEncoder().encode(userId),
       userDisplayName: user.name,
       attestationType: 'none',
-      excludeCredentials,
+      // Deliberately NOT passing excludeCredentials: it lists this user's
+      // OTHER already-registered credentials so the browser can refuse to
+      // recreate one it thinks it still has - but that check can require
+      // Safari to confirm across every synced device (iCloud Keychain),
+      // and if a stale Firestore doc outlives the person manually deleting
+      // the matching Keychain entry on their phone, that cross-device check
+      // is exactly what forced the "scan a QR code from another device"
+      // fallback instead of a normal local Face ID prompt. This app only
+      // ever keeps one credential per user anyway (see webauthn-register-
+      // verify.js, which deletes any previous one on success), so there's
+      // nothing worth excluding.
       // 'platform' restricts this to the device's own built-in sensor
       // (Face ID / Touch ID / Android fingerprint), not a USB security key.
       authenticatorSelection: { residentKey: 'required', userVerification: 'required', authenticatorAttachment: 'platform' }

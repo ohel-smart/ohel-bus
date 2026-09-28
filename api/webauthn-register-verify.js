@@ -53,6 +53,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'could not verify registration' });
     }
 
+    // Only one registered device per user at a time - clear out anything
+    // this user had before saving the new one, so a device's Keychain entry
+    // and this collection can never drift apart (a manually-deleted local
+    // passkey leaving a phantom server-side doc behind was exactly what
+    // forced Safari into its cross-device QR fallback on the next attempt).
+    const oldCreds = await db.collection('webauthn_credentials').where('userId', '==', userId).get();
+    await Promise.all(oldCreds.docs.map(d => d.ref.delete()));
+
     const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
     await db.collection('webauthn_credentials').doc(credential.id).set({
       userId,
