@@ -61,7 +61,10 @@ export default async function handler(req, res) {
     const options = await generateRegistrationOptions({
       rpName: 'אוהל בוס',
       rpID,
-      userName: user.code,
+      // The device's own "sign in with..." sheet shows userName as the
+      // account label - the raw login code isn't meaningful there, so use
+      // the person's actual name for both fields.
+      userName: user.name,
       userID: new TextEncoder().encode(userId),
       userDisplayName: user.name,
       attestationType: 'none',
