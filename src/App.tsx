@@ -4241,7 +4241,7 @@ export default function App() {
 
           {/* Apple-style frosted glass - same blur(28px) saturate(1.8) recipe
               as .toast, but more transparent so the Ohel photo shows through. */}
-          <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '32px 30px', background: 'rgba(24, 26, 32, 0.4)', backdropFilter: 'blur(28px) saturate(1.8)', WebkitBackdropFilter: 'blur(28px) saturate(1.8)', borderColor: 'rgba(255, 255, 255, 0.14)', position: 'relative', zIndex: 10 }}>
+          <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '32px 30px', background: 'rgba(24, 26, 32, 0.16)', backdropFilter: 'blur(28px) saturate(1.8)', WebkitBackdropFilter: 'blur(28px) saturate(1.8)', borderColor: 'rgba(255, 255, 255, 0.18)', position: 'relative', zIndex: 10 }}>
             
             {/* Horizontal Brand Logo */}
             <div style={{ marginBottom: '24px' }}>
