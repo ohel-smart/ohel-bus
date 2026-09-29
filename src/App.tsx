@@ -57,6 +57,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import QRCode from 'qrcode';
 import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
+import loginBackground from './assets/login-background.jpg'; // the Rebbe's Ohel - login screen background
 import './App.css';
 
 const TRANSLATIONS = {
@@ -4177,12 +4178,23 @@ export default function App() {
             alignItems: 'center', 
             justifyContent: 'center', 
             padding: '40px 20px', 
-            background: '#05070c', 
-            position: 'relative', 
+            background: '#05070c',
+            position: 'relative',
             overflow: 'hidden',
             userSelect: 'none'
           }}
         >
+          {/* Background photo of the Rebbe's Ohel, with a dark overlay so the
+              existing ambient glows, logo and login card all still read
+              clearly on top of it - everything else here is unchanged. */}
+          <img
+            src={loginBackground}
+            alt=""
+            aria-hidden="true"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(5, 7, 12, 0.72)' }} />
+
           {/* Ambient Apple-style shifting glows in the background */}
           <div className="ambient-glow-1"></div>
           <div className="ambient-glow-2"></div>
