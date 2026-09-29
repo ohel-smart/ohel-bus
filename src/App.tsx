@@ -4185,7 +4185,12 @@ export default function App() {
             background: '#05070c',
             position: 'relative',
             overflow: 'hidden',
-            userSelect: 'none'
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            // user-select alone doesn't stop iOS Safari's long-press "Copy /
+            // Translate / Share" callout menu on text - this non-standard
+            // property is what actually suppresses that.
+            WebkitTouchCallout: 'none'
           }}
         >
           {/* Background photo of the Rebbe's Ohel, with a dark overlay so the
