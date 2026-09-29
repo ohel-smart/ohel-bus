@@ -4170,14 +4170,18 @@ export default function App() {
       {!currentUser ? (
         <div 
           onPointerDown={handleLoginPointerDown}
-          style={{ 
-            flex: 1, 
-            minHeight: '100dvh',
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            padding: '40px 20px', 
+          style={{
+            flex: 1,
+            // A fixed height (not minHeight) that exactly matches the visible
+            // viewport, combined with overflow:hidden below, so this screen
+            // can never be taller than the screen itself - nothing to
+            // scroll, on any device.
+            height: '100dvh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px 20px',
             background: '#05070c',
             position: 'relative',
             overflow: 'hidden',
@@ -4193,7 +4197,7 @@ export default function App() {
             aria-hidden="true"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           />
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(5, 7, 12, 0.72)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(5, 7, 12, 0.82)' }} />
 
           {/* Ambient Apple-style shifting glows in the background */}
           <div className="ambient-glow-1"></div>
@@ -4235,7 +4239,9 @@ export default function App() {
             <span>{lang === 'he' ? 'English' : 'עברית'}</span>
           </button>
 
-          <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px 30px', background: 'rgba(18, 22, 32, 0.75)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderColor: 'rgba(32, 38, 54, 0.6)', position: 'relative', zIndex: 10 }}>
+          {/* Apple-style frosted glass - same blur(28px) saturate(1.8) recipe
+              as .toast, but more transparent so the Ohel photo shows through. */}
+          <div className="card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '32px 30px', background: 'rgba(24, 26, 32, 0.4)', backdropFilter: 'blur(28px) saturate(1.8)', WebkitBackdropFilter: 'blur(28px) saturate(1.8)', borderColor: 'rgba(255, 255, 255, 0.14)', position: 'relative', zIndex: 10 }}>
             
             {/* Horizontal Brand Logo */}
             <div style={{ marginBottom: '24px' }}>
