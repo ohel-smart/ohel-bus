@@ -1,11 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  /* Dramatic deep-blue night-sky page (kept per explicit request) - the
-     CARDS themselves, below, are flat neutral dark gray to match the
-     reference exactly; only the page behind them is blue. */
-  --bg-primary: #040a1a;
-  --bg-secondary: #060c1f;
+  /* Dramatic near-black page, darker than before per feedback - just a
+     whisper of blue left (not a visible navy), so it reads as black first
+     and foremost. The radial glows further down add the "night sky"
+     depth without lifting the base color itself. */
+  --bg-primary: #010104;
+  --bg-secondary: #020206;
   --bg-panel: #131722;
   --border-color: #232323;
   --border-hover: #3a3a3a;
@@ -82,8 +83,8 @@ body {
   /* Dramatic deep-blue night-sky depth instead of a perfectly flat fill -
      a soft radial glow top-right fading into the base navy, fixed so it
      doesn't scroll/repeat oddly on long pages. */
-  background-image: radial-gradient(ellipse 1200px 800px at 85% -10%, rgba(30, 58, 110, 0.35), transparent 60%),
-    radial-gradient(ellipse 900px 700px at 10% 110%, rgba(20, 40, 80, 0.25), transparent 60%);
+  background-image: radial-gradient(ellipse 1200px 800px at 85% -10%, rgba(30, 58, 110, 0.18), transparent 60%),
+    radial-gradient(ellipse 900px 700px at 10% 110%, rgba(20, 40, 80, 0.12), transparent 60%);
   background-attachment: fixed;
   font-family: var(--font-sans);
   /* Follows <html dir>, which index.html defaults to rtl and App.tsx toggles per
