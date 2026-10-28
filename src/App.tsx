@@ -1797,7 +1797,7 @@ export default function App() {
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioFromNumber, setTwilioFromNumber] = useState('');
   const [twilioRecipientSms, setTwilioRecipientSms] = useState('');
-  const [staffFilter, setStaffFilter] = useState<'driver' | 'dispatcher' | 'screen'>('driver');
+  const [staffFilter, setStaffFilter] = useState<'driver' | 'dispatcher' | 'screen' | 'admin'>('driver');
   const [newUserName, setNewUserName] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<'driver' | 'dispatcher' | 'admin' | 'screen'>('driver');
@@ -2781,10 +2781,6 @@ export default function App() {
   const filteredStaffList = useMemo(() => {
     return users.filter(u => u.role === staffFilter);
   }, [users, staffFilter]);
-
-  const adminUsersList = useMemo(() => {
-    return users.filter(u => u.role === 'admin');
-  }, [users]);
 
   const myTripsHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'driver') return [];
@@ -7422,6 +7418,23 @@ export default function App() {
                           >
                             {lang === 'he' ? `קודי מסך (${users.filter(u => u.role === 'screen').length})` : `Screens (${users.filter(u => u.role === 'screen').length})`}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setStaffFilter('admin')}
+                            style={{
+                              background: staffFilter === 'admin' ? 'var(--accent)' : 'transparent',
+                              color: staffFilter === 'admin' ? '#000' : 'var(--text-secondary)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '6px 16px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {lang === 'he' ? `מנהלי מערכת (${users.filter(u => u.role === 'admin').length})` : `Admins (${users.filter(u => u.role === 'admin').length})`}
+                          </button>
                           </div>
 
                           <button
@@ -7507,7 +7520,7 @@ export default function App() {
                                       onClick={() => handleDeleteUser(u.id)} 
                                       className="btn btn-danger" 
                                       style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                                      disabled={u.id === 'usr_admin'} 
+                                      disabled={u.id === 'usr_admin' || u.id === 'usr_admin_rosenberg'} 
                                     >
                                       <Trash size={11} />
                                       {t('delete')}
@@ -7580,7 +7593,7 @@ export default function App() {
                                 onClick={() => handleDeleteUser(u.id)}
                                 className="btn btn-danger"
                                 style={{ flex: 1, padding: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px' }}
-                                disabled={u.id === 'usr_admin'}
+                                disabled={u.id === 'usr_admin' || u.id === 'usr_admin_rosenberg'}
                               >
                                 <Trash size={14} />
                                 {t('delete')}
@@ -7590,63 +7603,6 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-
-                    {/* System Administrators Section */}
-                    {adminUsersList.length > 0 && (
-                      <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '10px' }}>
-                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#f43f5e', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <ShieldAlert size={16} color="#f43f5e" />
-                          {lang === 'he' ? 'מנהלי מערכת (מורשי גישה)' : 'System Administrators'}
-                        </h3>
-                        
-                        <div className="table-container">
-                          <table className="tp-table">
-                            <thead>
-                              <tr>
-                                <th>{t('userName')}</th>
-                                <th>{t('phoneLabel')}</th>
-                                <th style={{ textAlign: 'center' }}>{t('passcodeLabel')}</th>
-                                <th style={{ textAlign: 'center' }}>{t('actionsHeader')}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {adminUsersList.map(u => (
-                                <tr key={u.id}>
-                                  <td><strong>{u.name}</strong></td>
-                                  <td>{u.phone}</td>
-                                  <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
-                                      {u.code}
-                                    </span>
-                                  </td>
-                                  <td style={{ textAlign: 'center' }}>
-                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                      <button 
-                                        onClick={() => handleEditUserClick(u)} 
-                                        className="btn btn-secondary" 
-                                        style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                                      >
-                                        <Edit size={11} />
-                                        {t('edit')}
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeleteUser(u.id)} 
-                                        className="btn btn-danger" 
-                                        style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }} 
-                                        disabled={u.id === 'usr_admin' || u.id === 'usr_admin_rosenberg'} 
-                                      >
-                                        <Trash size={11} />
-                                        {t('delete')}
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Each admin's own choice of which 4 report tabs show in
                         THEIR mobile bottom nav - Users Management itself is
