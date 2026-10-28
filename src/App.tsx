@@ -42,9 +42,12 @@ interface HourlySummaryRow {
   peopleOhel: number;
   regularOhel: number;
   bigOhel: number;
+  // Headcount who paid for the return ride, summed across every Ohel-origin
+  // scan in this half-hour bucket. Always 0 for a bucket with no Ohel scans.
+  paidFromOhel: number;
 }
 
-type HourlySummaryNumericField = 'people770' | 'regular770' | 'big770' | 'peopleOhel' | 'regularOhel' | 'bigOhel';
+type HourlySummaryNumericField = 'people770' | 'regular770' | 'big770' | 'peopleOhel' | 'regularOhel' | 'bigOhel' | 'paidFromOhel';
 const HOURLY_SUMMARY_NUMERIC_COLS: { key: HourlySummaryNumericField; label: { he: string; en: string } }[] = [
   { key: 'people770', label: { he: 'אנשים מ-770', en: 'People from 770' } },
   { key: 'regular770', label: { he: 'רגילים מ-770', en: 'Regular from 770' } },
@@ -52,6 +55,7 @@ const HOURLY_SUMMARY_NUMERIC_COLS: { key: HourlySummaryNumericField; label: { he
   { key: 'peopleOhel', label: { he: 'אנשים מהאוהל', en: 'People from Ohel' } },
   { key: 'regularOhel', label: { he: 'רגילים מהאוהל', en: 'Regular from Ohel' } },
   { key: 'bigOhel', label: { he: 'גדולים מהאוהל', en: 'Big from Ohel' } },
+  { key: 'paidFromOhel', label: { he: 'שילמו מהאוהל', en: 'Paid from Ohel' } },
 ];
 import { Html5Qrcode } from 'html5-qrcode';
 import QRCode from 'qrcode';
@@ -1646,7 +1650,16 @@ export default function App() {
   const [parshaFilter, setParshaFilter] = useState(''); // weekly parsha name
   const [selectedScanForEdit, setSelectedScanForEdit] = useState<Scan | null>(null);
   const [editPassengersCount, setEditPassengersCount] = useState<number>(0);
+  const [editPaidCount, setEditPaidCount] = useState<number>(0);
   const [editDepartureLocation, setEditDepartureLocation] = useState<DepartureLocation>('770');
+
+  // Dispatcher's own restricted self-correction of a trip they reported today -
+  // deliberately a SEPARATE, much narrower modal from the admin's full edit
+  // modal above: no delete, no changing driver/dispatcher/origin/time, just
+  // the passenger count and (for an Ohel-origin trip) the paid count.
+  const [dispatcherEditScan, setDispatcherEditScan] = useState<Scan | null>(null);
+  const [dispatcherEditPassengers, setDispatcherEditPassengers] = useState<number>(0);
+  const [dispatcherEditPaidCount, setDispatcherEditPaidCount] = useState<number>(0);
   const [editDriverId, setEditDriverId] = useState('');
   const [editDispatcherId, setEditDispatcherId] = useState('');
   const [editScannedAtLocal, setEditScannedAtLocal] = useState(''); // datetime-local input value, browser-local time
@@ -1657,6 +1670,7 @@ export default function App() {
   const [addRideDriverId, setAddRideDriverId] = useState('');
   const [addRideDispatcherId, setAddRideDispatcherId] = useState('');
   const [addRidePassengers, setAddRidePassengers] = useState<number>(0);
+  const [addRidePaidCount, setAddRidePaidCount] = useState<number>(0);
   const [addRideDepartureLocation, setAddRideDepartureLocation] = useState<DepartureLocation>('770');
   const [addRideScannedAtLocal, setAddRideScannedAtLocal] = useState('');
 
@@ -1705,6 +1719,9 @@ export default function App() {
   const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
   const [scannerModalDriver, setScannerModalDriver] = useState<User | null>(null);
   const [scannerModalPassengers, setScannerModalPassengers] = useState<number>(0);
+  // Headcount of riders who paid for the return ride - only asked/shown when
+  // currentDepartureLocation is 'Ohel' (the Ohel-origin, 770-bound direction).
+  const [scannerModalPaidCount, setScannerModalPaidCount] = useState<number>(0);
 
   // "No phone" flow: a dispatcher without their own device can issue a ride
   // using the driver's phone, from below the driver's own QR code screen.
@@ -1712,6 +1729,7 @@ export default function App() {
   const [noPhoneCode, setNoPhoneCode] = useState<string>('');
   const [noPhoneDispatcher, setNoPhoneDispatcher] = useState<User | null>(null);
   const [noPhonePassengers, setNoPhonePassengers] = useState<number>(0);
+  const [noPhonePaidCount, setNoPhonePaidCount] = useState<number>(0);
 
   const toggleDayExpanded = (date: string) => {
     setExpandedDays(prev => ({ ...prev, [date]: !prev[date] }));
@@ -1874,6 +1892,7 @@ export default function App() {
     } else {
       setScannerModalDriver(matched);
       setScannerModalPassengers(0);
+      setScannerModalPaidCount(0);
       setActiveTab('scan');
       triggerToast(t('externalQrSuccess'), 'success');
     }
@@ -1909,6 +1928,7 @@ export default function App() {
         if (blockedMinutes === null) {
           setScannerModalDriver(targetDriver);
           setScannerModalPassengers(0);
+          setScannerModalPaidCount(0);
         }
 
         // Stop the camera asynchronously in the background
@@ -2459,6 +2479,9 @@ export default function App() {
             remainingSeats: s.remainingSeats,
             driverCapacity: s.driverCapacity,
             bigBus,
+            // Headcount who paid for the return ride - only meaningful for
+            // an Ohel-origin row; undefined for a 770-origin row (not "0").
+            paidCount: isReturn ? (s.paidCount ?? 0) : undefined,
           };
         })
         .filter(r => !centralBigBusOnly || r.bigBus);
@@ -2516,7 +2539,7 @@ export default function App() {
           parsha: getWeeklyParsha(when),
           hebrewDate: getHebrewDate(dayDate),
           dayOfWeek: getDayOfWeekHe(dayDate),
-          people770: 0, regular770: 0, big770: 0, peopleOhel: 0, regularOhel: 0, bigOhel: 0
+          people770: 0, regular770: 0, big770: 0, peopleOhel: 0, regularOhel: 0, bigOhel: 0, paidFromOhel: 0
         };
       }
       const g = groups[key];
@@ -2527,6 +2550,7 @@ export default function App() {
       } else {
         g.peopleOhel += (s.passengersCount || 0);
         if (bigBus) g.bigOhel += 1; else g.regularOhel += 1;
+        g.paidFromOhel += (s.paidCount || 0);
       }
     }
     return Object.values(groups).sort((a, b) => {
@@ -2900,6 +2924,7 @@ export default function App() {
   const handleEditScanClick = (scan: Scan) => {
     setSelectedScanForEdit(scan);
     setEditPassengersCount(scan.passengersCount);
+    setEditPaidCount(scan.paidCount ?? 0);
     setEditDepartureLocation(scan.departureLocation);
     setEditDriverId(scan.driverId);
     setEditDispatcherId(scan.dispatcherId);
@@ -2915,6 +2940,7 @@ export default function App() {
       ...selectedScanForEdit,
       passengersCount: editPassengersCount,
       departureLocation: editDepartureLocation,
+      paidCount: editDepartureLocation === 'Ohel' ? editPaidCount : undefined,
       driverId: editDriverId,
       driverName: driver?.name ?? selectedScanForEdit.driverName,
       driverCapacity: driver?.capacity ?? selectedScanForEdit.driverCapacity,
@@ -2929,6 +2955,25 @@ export default function App() {
     };
     dbService.updateScan(updated);
     setSelectedScanForEdit(null);
+    triggerToast(t('scanUpdated'), 'success');
+  };
+
+  const handleDispatcherEditClick = (scan: Scan) => {
+    setDispatcherEditScan(scan);
+    setDispatcherEditPassengers(scan.passengersCount);
+    setDispatcherEditPaidCount(scan.paidCount ?? 0);
+  };
+
+  const handleDispatcherSaveEdit = () => {
+    if (!dispatcherEditScan) return;
+    const updated: Scan = {
+      ...dispatcherEditScan,
+      passengersCount: dispatcherEditPassengers,
+      remainingSeats: Math.max(0, dispatcherEditScan.driverCapacity - dispatcherEditPassengers),
+      paidCount: dispatcherEditScan.departureLocation === 'Ohel' ? dispatcherEditPaidCount : undefined,
+    };
+    dbService.updateScan(updated);
+    setDispatcherEditScan(null);
     triggerToast(t('scanUpdated'), 'success');
   };
 
@@ -2951,6 +2996,7 @@ export default function App() {
     setAddRideDriverId(driversList[0]?.id || '');
     setAddRideDispatcherId(dispatchersList[0]?.id || '');
     setAddRidePassengers(0);
+    setAddRidePaidCount(0);
     setAddRideDepartureLocation('770');
     setAddRideScannedAtLocal(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
     setShowAddRideModal(true);
@@ -2974,7 +3020,8 @@ export default function App() {
         passengersCount: addRidePassengers,
         scannedAt,
         location: { latitude: loc.latitude, longitude: loc.longitude },
-        departureLocation: addRideDepartureLocation
+        departureLocation: addRideDepartureLocation,
+        ...(addRideDepartureLocation === 'Ohel' ? { paidCount: addRidePaidCount } : {})
       });
       setShowAddRideModal(false);
       triggerToast(lang === 'he' ? 'הנסיעה נוספה בהצלחה' : 'Ride added successfully', 'success');
@@ -3462,9 +3509,10 @@ export default function App() {
       lang === 'he' ? 'מוצא' : 'Origin',
       lang === 'he' ? 'נוסעים שעלו' : 'Passengers',
       lang === 'he' ? 'מושבים פנויים' : 'Empty Seats',
-      lang === 'he' ? 'קיבולת נהג' : 'Capacity'
+      lang === 'he' ? 'קיבולת נהג' : 'Capacity',
+      lang === 'he' ? 'שילמו מהאוהל' : 'Paid from Ohel'
     ];
-    
+
     const rows = filteredScans.map(scan => {
       const scanDate = new Date(scan.logicalDate + 'T12:00:00');
       return [
@@ -3478,7 +3526,8 @@ export default function App() {
         scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel'),
         scan.passengersCount,
         scan.remainingSeats,
-        scan.driverCapacity
+        scan.driverCapacity,
+        scan.departureLocation === 'Ohel' ? (scan.paidCount ?? 0) : ''
       ];
     });
 
@@ -3527,7 +3576,7 @@ export default function App() {
     const q = csvCell;
     const colHeaders = [
       'פרשת שבוע', 'תאריך עברי', 'יום', 'שעת סריקה', 'תאריך עבודה',
-      'נהג', 'סדרן', 'מוצא', 'נוסעים שעלו', 'מושבים פנויים', 'קיבולת נהג'
+      'נהג', 'סדרן', 'מוצא', 'נוסעים שעלו', 'מושבים פנויים', 'קיבולת נהג', 'שילמו'
     ];
     // One flat table, no repeated per-day header/column blocks - every row
     // already carries its own parsha/Hebrew date/day/logical date columns.
@@ -3538,7 +3587,8 @@ export default function App() {
     [...centralFlatRows].reverse().forEach(r => {
       lines.push([
         q(r.parsha), q(r.hebrewDate), q(r.dayOfWeek), q(r.time), q(r.dateStr),
-        q(r.driver), q(r.dispatcher), q(r.origin), q(r.passengers), q(r.remainingSeats), q(r.driverCapacity)
+        q(r.driver), q(r.dispatcher), q(r.origin), q(r.passengers), q(r.remainingSeats), q(r.driverCapacity),
+        q(r.paidCount ?? '')
       ].join(','));
     });
 
@@ -3559,7 +3609,7 @@ export default function App() {
     const q = csvCell;
     const colHeaders = [
       'פרשת שבוע', 'תאריך עברי', 'יום', 'תאריך לועזי', 'שעה',
-      'אנשים מ-770', 'רגילים מ-770', 'גדולים מ-770', 'אנשים מהאוהל', 'רגילים מהאוהל', 'גדולים מהאוהל'
+      'אנשים מ-770', 'רגילים מ-770', 'גדולים מ-770', 'אנשים מהאוהל', 'רגילים מהאוהל', 'גדולים מהאוהל', 'שילמו מהאוהל'
     ];
     // hourlySummaryRows is already filtered by the tab's own date-range
     // picker (hourlySummaryDateFrom/To), same as the central table's export.
@@ -3567,7 +3617,7 @@ export default function App() {
     [...hourlySummaryRows].reverse().forEach(r => {
       lines.push([
         q(r.parsha), q(r.hebrewDate), q(r.dayOfWeek), q(r.dateStr), q(r.time),
-        q(r.people770), q(r.regular770), q(r.big770), q(r.peopleOhel), q(r.regularOhel), q(r.bigOhel)
+        q(r.people770), q(r.regular770), q(r.big770), q(r.peopleOhel), q(r.regularOhel), q(r.bigOhel), q(r.paidFromOhel)
       ].join(','));
     });
 
@@ -4064,9 +4114,62 @@ export default function App() {
               </select>
             </div>
 
+            {editDepartureLocation === 'Ohel' && (
+              <div className="form-group">
+                <label className="form-label">{lang === 'he' ? 'כמה אנשים שילמו' : 'How many people paid'}</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={editPaidCount}
+                  onChange={(e) => setEditPaidCount(Math.max(0, parseInt(e.target.value) || 0))}
+                />
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
               <button onClick={handleSaveEditScan} className="btn btn-primary" style={{ flex: 1 }}>{t('saveChanges')}</button>
               <button onClick={() => setSelectedScanForEdit(null)} className="btn btn-secondary" style={{ flex: 1 }}>{t('cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DISPATCHER'S OWN RESTRICTED EDIT (My Recent Trips) - only the
+          passenger count and, for an Ohel-origin trip, the paid count.
+          No driver/dispatcher/origin/time change and no delete here -
+          that stays admin-only in the modal above. */}
+      {dispatcherEditScan && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
+          <div className="card" style={{ maxWidth: '360px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>
+              {lang === 'he' ? 'עריכת כמות' : 'Edit count'}
+            </h3>
+
+            <div className="form-group">
+              <label className="form-label">{t('passengersCountLabel')}</label>
+              <input
+                type="number"
+                className="form-input"
+                value={dispatcherEditPassengers}
+                onChange={(e) => setDispatcherEditPassengers(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+            </div>
+
+            {dispatcherEditScan.departureLocation === 'Ohel' && (
+              <div className="form-group">
+                <label className="form-label">{lang === 'he' ? 'כמה אנשים שילמו' : 'How many people paid'}</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={dispatcherEditPaidCount}
+                  onChange={(e) => setDispatcherEditPaidCount(Math.max(0, parseInt(e.target.value) || 0))}
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+              <button onClick={handleDispatcherSaveEdit} className="btn btn-primary" style={{ flex: 1 }}>{t('saveChanges')}</button>
+              <button onClick={() => setDispatcherEditScan(null)} className="btn btn-secondary" style={{ flex: 1 }}>{t('cancel')}</button>
             </div>
           </div>
         </div>
@@ -4131,6 +4234,18 @@ export default function App() {
                 <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}</option>
               </select>
             </div>
+
+            {addRideDepartureLocation === 'Ohel' && (
+              <div className="form-group">
+                <label className="form-label">{lang === 'he' ? 'כמה אנשים שילמו' : 'How many people paid'}</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={addRidePaidCount}
+                  onChange={(e) => setAddRidePaidCount(Math.max(0, parseInt(e.target.value) || 0))}
+                />
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
               <button onClick={handleCreateManualRide} className="btn btn-primary" style={{ flex: 1 }}>
@@ -4412,6 +4527,7 @@ export default function App() {
                                 } else {
                                   setScannerModalDriver(matched);
                                   setScannerModalPassengers(0);
+                                  setScannerModalPaidCount(0);
                                 }
                               }
                             }
@@ -4662,17 +4778,28 @@ export default function App() {
                         </div>
                       ) : (
                         myScansToday.map(scan => (
-                          <div key={scan.id} style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div key={scan.id} style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                             <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
                               <strong style={{ color: '#fff', fontSize: '14px', display: 'block' }}>{scan.driverName.replace(' (נהג)', '')}</strong>
                               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                 {t('time')}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} | {t('departure')}: {scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
+                                {scan.departureLocation === 'Ohel' && (
+                                  <> | {lang === 'he' ? 'שילמו' : 'paid'}: {scan.paidCount ?? 0}</>
+                                )}
                               </span>
                             </div>
-                            <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span className="badge badge-success">
                                 {scan.passengersCount} {lang === 'he' ? 'נוסעים' : 'passengers'}
                               </span>
+                              <button
+                                onClick={() => handleDispatcherEditClick(scan)}
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 8px', fontSize: '11px' }}
+                                aria-label={lang === 'he' ? 'עריכת כמות' : 'Edit count'}
+                              >
+                                <Edit size={14} />
+                              </button>
                             </div>
                           </div>
                         ))
@@ -5173,12 +5300,27 @@ export default function App() {
                                 placeholder="0"
                                 style={{ textAlign: 'center', marginBottom: '12px' }}
                               />
+                              {currentDepartureLocation === 'Ohel' && (
+                                <>
+                                  <label className="form-label" style={{ fontSize: '12px' }}>
+                                    {lang === 'he' ? 'כמה אנשים שילמו:' : 'How many people paid:'}
+                                  </label>
+                                  <input
+                                    type="number"
+                                    className="form-input"
+                                    value={noPhonePaidCount === 0 ? '' : noPhonePaidCount}
+                                    onChange={(e) => setNoPhonePaidCount(Math.max(0, parseInt(e.target.value) || 0))}
+                                    placeholder="0"
+                                    style={{ textAlign: 'center', marginBottom: '12px' }}
+                                  />
+                                </>
+                              )}
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <button
                                   type="button"
                                   className="btn btn-secondary"
                                   style={{ flex: 1, fontSize: '12px' }}
-                                  onClick={() => { setNoPhoneShowForm(false); setNoPhoneDispatcher(null); setNoPhonePassengers(0); }}
+                                  onClick={() => { setNoPhoneShowForm(false); setNoPhoneDispatcher(null); setNoPhonePassengers(0); setNoPhonePaidCount(0); }}
                                 >
                                   {t('noPhoneCancel')}
                                 </button>
@@ -5197,13 +5339,16 @@ export default function App() {
                                       setNoPhoneShowForm(false);
                                       setNoPhoneDispatcher(null);
                                       setNoPhonePassengers(0);
+                                      setNoPhonePaidCount(0);
                                       return;
                                     }
                                     const disp = noPhoneDispatcher;
                                     const passengers = noPhonePassengers;
+                                    const paidCountForScan = noPhonePaidCount;
                                     setNoPhoneShowForm(false);
                                     setNoPhoneDispatcher(null);
                                     setNoPhonePassengers(0);
+                                    setNoPhonePaidCount(0);
                                     setIsSavingScan(true);
                                     try {
                                       await dbService.addScan({
@@ -5214,7 +5359,8 @@ export default function App() {
                                         passengersCount: passengers,
                                         scannedAt: new Date().toISOString(),
                                         location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
-                                        departureLocation: currentDepartureLocation
+                                        departureLocation: currentDepartureLocation,
+                                        ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
                                       });
                                       confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
                                       triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
@@ -6035,6 +6181,7 @@ export default function App() {
                                 <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
                                 <th style={thCentral}>{t('emptySeatsHeader')}</th>
                                 <th style={thCentral}>{t('driverCapacityHeader')}</th>
+                                <th style={thCentral}>{lang === 'he' ? 'שילמו' : 'Paid'}</th>
                                 <th style={thCentral}></th>
                               </tr>
                             </thead>
@@ -6072,6 +6219,7 @@ export default function App() {
                                   <td style={tdCentral}>{r.passengers}</td>
                                   <td style={tdCentral}>{r.remainingSeats}</td>
                                   <td style={tdCentral}>{r.driverCapacity}</td>
+                                  <td style={tdCentral}>{r.paidCount ?? '-'}</td>
                                   <td style={{ ...tdCentral, display: 'flex', gap: '6px' }}>
                                     <button
                                       onClick={() => { const scan = scans.find(s => s.id === r.id); if (scan) handleEditScanClick(scan); }}
@@ -6572,13 +6720,14 @@ export default function App() {
                               <th style={{ textAlign: 'center' }}>{t('passengersBoardedHeader')}</th>
                               <th style={{ textAlign: 'center' }}>{t('emptySeatsHeader')}</th>
                               <th style={{ textAlign: 'center' }}>{t('driverCapacityHeader')}</th>
+                              <th style={{ textAlign: 'center' }}>{lang === 'he' ? 'שילמו מהאוהל' : 'Paid from Ohel'}</th>
                               <th style={{ textAlign: 'center' }}>{t('actionsHeader')}</th>
                             </tr>
                           </thead>
                           <tbody>
                             {filteredScans.length === 0 ? (
                               <tr>
-                                <td colSpan={12} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                <td colSpan={13} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                   {t('noMatchingScans')}
                                 </td>
                               </tr>
@@ -6602,6 +6751,9 @@ export default function App() {
                                   <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--success)' }}>{scan.passengersCount}</td>
                                   <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{scan.remainingSeats}</td>
                                   <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{scan.driverCapacity}</td>
+                                  <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                    {scan.departureLocation === 'Ohel' ? (scan.paidCount ?? 0) : '-'}
+                                  </td>
                                   <td style={{ textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                       <button onClick={() => handleEditScanClick(scan)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }}>
@@ -6619,6 +6771,19 @@ export default function App() {
                               })
                             )}
                           </tbody>
+                          {filteredScans.length > 0 && (
+                            <tfoot>
+                              <tr style={{ borderTop: '2px solid var(--border-color)', fontWeight: 700 }}>
+                                <td colSpan={9} style={{ textAlign: lang === 'he' ? 'right' : 'left', padding: '10px 8px' }}>
+                                  {lang === 'he' ? 'סה"כ שילמו מהאוהל (לפי הסינון הנוכחי)' : 'Total paid from Ohel (current filter)'}
+                                </td>
+                                <td style={{ textAlign: 'center', color: 'var(--accent)' }}>
+                                  {filteredScans.reduce((sum, s) => sum + (s.departureLocation === 'Ohel' ? (s.paidCount || 0) : 0), 0)}
+                                </td>
+                                <td colSpan={2}></td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       </div>
                     </div>
@@ -6678,6 +6843,12 @@ export default function App() {
                                 <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('driverCapacityHeader')}</span>
                                 <span style={{ color: 'var(--text-secondary)' }}>{scan.driverCapacity}</span>
                               </div>
+                              {scan.departureLocation === 'Ohel' && (
+                                <div>
+                                  <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{lang === 'he' ? 'שילמו מהאוהל' : 'Paid from Ohel'}</span>
+                                  <strong style={{ color: 'var(--accent)' }}>{scan.paidCount ?? 0}</strong>
+                                </div>
+                              )}
                             </div>
 
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '6px', textAlign: 'center' }}>
@@ -6699,6 +6870,17 @@ export default function App() {
                         })
                       )}
                     </div>
+
+                    {filteredScans.length > 0 && (
+                      <div style={{ background: 'rgba(226,176,78,0.08)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', color: '#fff', fontWeight: 700 }}>
+                          {lang === 'he' ? 'סה"כ שילמו מהאוהל (לפי הסינון הנוכחי)' : 'Total paid from Ohel (current filter)'}
+                        </span>
+                        <strong style={{ fontSize: '18px', color: 'var(--accent)' }}>
+                          {filteredScans.reduce((sum, s) => sum + (s.departureLocation === 'Ohel' ? (s.paidCount || 0) : 0), 0)}
+                        </strong>
+                      </div>
+                    )}
 
                     {/* Attendance Grid */}
                     <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
@@ -7695,6 +7877,24 @@ export default function App() {
                   />
                 </div>
 
+                {/* Headcount of riders who paid for the return ride - only
+                    relevant on the Ohel-origin (770-bound) direction. */}
+                {currentDepartureLocation === 'Ohel' && (
+                  <div className="form-group" style={{ marginBottom: '24px' }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>
+                      {lang === 'he' ? 'כמה אנשים שילמו:' : 'How many people paid:'}
+                    </label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      style={{ textAlign: 'center', fontSize: '20px', fontWeight: 'bold' }}
+                      value={scannerModalPaidCount === 0 ? '' : scannerModalPaidCount}
+                      onChange={(e) => setScannerModalPaidCount(Math.max(0, parseInt(e.target.value) || 0))}
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <button
@@ -7711,11 +7911,13 @@ export default function App() {
                         triggerToast(t('driverScanBlocked', { name: scannerModalDriver.name.replace(' (נהג)', ''), minutes: stillBlockedMinutes }), 'danger');
                         setScannerModalDriver(null);
                         setScannerModalPassengers(0);
+                        setScannerModalPaidCount(0);
                         return;
                       }
 
                       const driverForScan = scannerModalDriver;
                       const passengersForScan = scannerModalPassengers;
+                      const paidCountForScan = scannerModalPaidCount;
 
                       // Reset the modal immediately (the scan is already visible in
                       // this dispatcher's own local view) - but the success/error
@@ -7723,6 +7925,7 @@ export default function App() {
                       // not just the optimistic local write.
                       setScannerModalDriver(null);
                       setScannerModalPassengers(0);
+                      setScannerModalPaidCount(0);
 
                       setIsSavingScan(true);
                       try {
@@ -7734,7 +7937,8 @@ export default function App() {
                           passengersCount: passengersForScan,
                           scannedAt: new Date().toISOString(),
                           location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
-                          departureLocation: currentDepartureLocation
+                          departureLocation: currentDepartureLocation,
+                          ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
                         });
 
                         confetti({
@@ -7763,10 +7967,11 @@ export default function App() {
                     {lang === 'he' ? 'שמור ושלח סריקה' : 'Save & Send Scan'}
                   </button>
 
-                  <button 
+                  <button
                     onClick={() => {
                       setScannerModalDriver(null);
                       setScannerModalPassengers(0);
+                      setScannerModalPaidCount(0);
                     }}
                     className="btn btn-secondary"
                     style={{ width: '100%', padding: '12px', fontSize: '13px', background: 'none', border: 'none', color: 'var(--text-secondary)', textDecoration: 'underline', cursor: 'pointer' }}

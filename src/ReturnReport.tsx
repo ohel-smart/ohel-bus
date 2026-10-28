@@ -26,6 +26,8 @@ const TXT = {
     passengersLabel: 'כמה אנשים',
     passengersPlaceholder: 'מספר הנוסעים',
     passengersInvalid: 'מספר אנשים לא תקין',
+    paidLabel: 'כמה אנשים שילמו',
+    paidPlaceholder: 'כמות ששילמו',
     timeLabel: 'שעה',
     submit: 'שלח דיווח',
     submitting: 'שולח…',
@@ -51,6 +53,8 @@ const TXT = {
     passengersLabel: 'How many people',
     passengersPlaceholder: 'Number of passengers',
     passengersInvalid: 'Invalid number of people',
+    paidLabel: 'How many people paid',
+    paidPlaceholder: 'Number who paid',
     timeLabel: 'Time',
     submit: 'Send Report',
     submitting: 'Sending…',
@@ -83,6 +87,7 @@ export default function ReturnReport() {
   const [driver, setDriver] = useState<User | null>(null);
   const [origin, setOrigin] = useState<DepartureLocation>('Ohel');
   const [passengers, setPassengers] = useState('');
+  const [paidCount, setPaidCount] = useState('');
   const [time, setTime] = useState(nowHHMM);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -110,6 +115,8 @@ export default function ReturnReport() {
   const submit = async () => {
     const pax = parseInt(passengers, 10);
     if (isNaN(pax) || pax < 0) { setError(tx.passengersInvalid); return; }
+    // Optional - blank means "not recorded" (shown as 0 later), not an error.
+    const paidParsed = paidCount === '' ? undefined : parseInt(paidCount, 10);
     setError('');
     setSubmitting(true);
     try {
@@ -122,6 +129,7 @@ export default function ReturnReport() {
         scannedAt: buildScannedAt(time),
         location: { latitude: LOCATIONS[origin].latitude, longitude: LOCATIONS[origin].longitude },
         departureLocation: origin,
+        ...(typeof paidParsed === 'number' && !isNaN(paidParsed) ? { paidCount: paidParsed } : {}),
       });
       setDone(true);
     } catch {
@@ -133,6 +141,7 @@ export default function ReturnReport() {
 
   const reset = () => {
     setPassengers('');
+    setPaidCount('');
     setTime(nowHHMM());
     setOrigin('Ohel');
     setDone(false);
@@ -198,6 +207,17 @@ export default function ReturnReport() {
             </div>
 
             <div>
+              <label style={labelStyle}>{tx.paidLabel}</label>
+              <input
+                value={paidCount}
+                onChange={e => setPaidCount(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder={tx.paidPlaceholder}
+                inputMode="numeric"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
               <label style={labelStyle}>{tx.timeLabel}</label>
               <input type="time" value={time} onChange={e => setTime(e.target.value)} style={inputStyle} />
             </div>
@@ -217,7 +237,7 @@ export default function ReturnReport() {
             <div style={{ fontSize: '46px' }}>✅</div>
             <strong style={{ color: 'var(--success)', fontSize: '18px' }}>{tx.successTitle}</strong>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-              {driverLabel} · {origin === 'Ohel' ? 'אוהל' : '770'} · {passengers} {tx.peopleWord} · {time}
+              {driverLabel} · {origin === 'Ohel' ? 'אוהל' : '770'} · {passengers} {tx.peopleWord} · {tx.paidLabel}: {paidCount || '0'} · {time}
             </p>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>{tx.successHint}</p>
             <button onClick={reset} className="btn btn-primary" style={btnStyle}>{tx.another}</button>

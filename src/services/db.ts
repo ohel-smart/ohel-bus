@@ -44,6 +44,10 @@ export interface Scan {
   etaMinutes?: number;
   expectedArrivalTime?: string;
   actualArrivalTime?: string;
+  // Headcount (not money) of riders who paid for the return ride - only
+  // meaningful when departureLocation === 'Ohel' (the 770-bound direction).
+  // Optional/undefined means "not recorded", displayed as 0, not blank.
+  paidCount?: number;
 }
 
 export interface ActiveLocation {
