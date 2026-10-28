@@ -48,6 +48,13 @@ export interface Scan {
   // meaningful when departureLocation === 'Ohel' (the 770-bound direction).
   // Optional/undefined means "not recorded", displayed as 0, not blank.
   paidCount?: number;
+  // A ride entered AFTER the fact ("forgot to log it" / manual add): scannedAt
+  // is the departure time the person typed in, not when it was saved. It has no
+  // ETA/expected arrival (long past or irrelevant) and must never drive a
+  // driver's live "en route" state - every status derivation skips these.
+  isLateEntry?: boolean;
+  // When the late entry was actually saved (ISO). Only set with isLateEntry.
+  enteredAt?: string;
 }
 
 export interface ActiveLocation {
@@ -382,13 +389,21 @@ class DBService {
     const remainingSeats = Math.max(0, capacity - scanData.passengersCount);
 
     const targetDirection: Direction = scanData.departureLocation === '770' ? 'to_ohel' : 'to_770';
-    const startLoc = targetDirection === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
-    const etaMinutes = await this.getRouteEtaMinutes(startLoc.latitude, startLoc.longitude, targetDirection);
+    const isLateEntry = scanData.isLateEntry === true;
 
-    // Calculate expected arrival time clock string
-    const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
-    const arrivalTime = new Date(startTime + (etaMinutes * 60000));
-    const expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
+    // A late entry has no meaningful trip duration/arrival (the ride may have
+    // left hours ago), so skip the Routes API call and leave both fields off.
+    let etaMinutes: number | undefined;
+    let expectedArrivalTime: string | undefined;
+    if (!isLateEntry) {
+      const startLoc = targetDirection === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
+      etaMinutes = await this.getRouteEtaMinutes(startLoc.latitude, startLoc.longitude, targetDirection);
+
+      // Calculate expected arrival time clock string
+      const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
+      const arrivalTime = new Date(startTime + (etaMinutes * 60000));
+      expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
+    }
 
     const newScan: Scan = {
       ...scanData,
@@ -397,8 +412,9 @@ class DBService {
       isBigBus,
       remainingSeats,
       logicalDate: this.getLogicalDate(scanData.scannedAt),
-      etaMinutes,
-      expectedArrivalTime
+      ...(isLateEntry
+        ? { enteredAt: new Date().toISOString() }
+        : { etaMinutes, expectedArrivalTime })
     };
 
     this.scansCache = [...this.scansCache, newScan];
@@ -412,7 +428,9 @@ class DBService {
     await this.writeScan(newScan);
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
-    this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection, etaMinutes);
+    if (!isLateEntry) {
+      this.updateDriverTripState(scanData.driverId, 'en_route', targetDirection, etaMinutes);
+    }
 
     this.notify();
     return newScan;
@@ -459,7 +477,8 @@ class DBService {
     const scans = this.getScans();
 
     return drivers.map(driver => {
-      const driverScans = scans.filter(s => s.driverId === driver.id);
+      // Late entries (rides logged after the fact) never describe a driver's live state.
+      const driverScans = scans.filter(s => s.driverId === driver.id && !s.isLateEntry);
       driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
       const latestScan = driverScans[0];
 
@@ -508,7 +527,7 @@ class DBService {
 
   public async updateDriverTripState(driverId: string, status: DriverStatus, _direction: Direction, _precomputedEta?: number) {
     if (status === 'idle' || status === 'break') {
-      const activeScan = this.getScans().find(s => s.driverId === driverId && !s.actualArrivalTime);
+      const activeScan = this.getScans().find(s => s.driverId === driverId && !s.actualArrivalTime && !s.isLateEntry);
       if (activeScan) {
         const updated = { ...activeScan, actualArrivalTime: new Date().toISOString() };
         const index = this.scansCache.findIndex(s => s.id === updated.id);

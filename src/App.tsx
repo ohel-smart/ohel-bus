@@ -1903,7 +1903,7 @@ export default function App() {
   // the driver's remaining minutes if it's blocked.
   const getDriverScanBlockMinutes = (driverId: string): number | null => {
     const driverScans = scans
-      .filter(s => s.driverId === driverId)
+      .filter(s => s.driverId === driverId && !s.isLateEntry)
       .sort((a, b) => dbService.parseScannedAt(b.scannedAt, b.logicalDate).getTime() - dbService.parseScannedAt(a.scannedAt, a.logicalDate).getTime());
     const latestScan = driverScans[0];
     if (!latestScan || latestScan.actualArrivalTime) return null;
@@ -2825,7 +2825,7 @@ export default function App() {
     if (!loc || loc.status !== 'en_route') return false;
     
     // Find the latest scan for this driver to get the static trip start time
-    const driverScans = scans.filter(s => s.driverId === currentUser?.id);
+    const driverScans = scans.filter(s => s.driverId === currentUser?.id && !s.isLateEntry);
     if (driverScans.length === 0) return false;
     
     driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
@@ -2851,7 +2851,7 @@ export default function App() {
     const loc = activeLocations.find(l => l.id === currentUser.id);
     if (!loc || loc.status !== 'en_route') return;
 
-    const driverScans = scans.filter(s => s.driverId === currentUser.id);
+    const driverScans = scans.filter(s => s.driverId === currentUser.id && !s.isLateEntry);
     if (driverScans.length === 0) return;
     driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
     const latestScan = driverScans[0];
@@ -2872,7 +2872,7 @@ export default function App() {
     return activeLocations
       .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_770')
       .map(loc => {
-        const driverScans = scans.filter(s => s.driverId === loc.id);
+        const driverScans = scans.filter(s => s.driverId === loc.id && !s.isLateEntry);
         driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
         const matchingScan = driverScans[0];
         const startTime = matchingScan
@@ -2893,7 +2893,7 @@ export default function App() {
     return activeLocations
       .filter(loc => loc.role === 'driver' && loc.status === 'en_route' && loc.direction === 'to_ohel')
       .map(loc => {
-        const driverScans = scans.filter(s => s.driverId === loc.id);
+        const driverScans = scans.filter(s => s.driverId === loc.id && !s.isLateEntry);
         driverScans.sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime());
         const matchingScan = driverScans[0];
         const startTime = matchingScan
@@ -3124,6 +3124,7 @@ export default function App() {
         scannedAt,
         location: { latitude: loc.latitude, longitude: loc.longitude },
         departureLocation: addRideDepartureLocation,
+        isLateEntry: true,
         ...(addRideDepartureLocation === 'Ohel' ? { paidCount: addRidePaidCount } : {})
       });
       setShowAddRideModal(false);
@@ -3177,6 +3178,7 @@ export default function App() {
         scannedAt: when.toISOString(),
         location: { latitude: loc.latitude, longitude: loc.longitude },
         departureLocation: forgotRideOrigin,
+        isLateEntry: true,
         ...(forgotRideOrigin === 'Ohel' ? { paidCount: forgotRidePaidCount } : {})
       });
       setShowForgotRideModal(false);
@@ -4968,11 +4970,17 @@ export default function App() {
                                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                   {lang === 'he' ? 'יציאה בשעה' : 'Departure time'}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
+                                {scan.isLateEntry ? (
+                                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent)', marginTop: '2px' }}>
+                                    {lang === 'he' ? 'נרשם בדיעבד (נשכח)' : 'Logged late (was forgotten)'}
+                                  </span>
+                                ) : (
                                 <span style={{ display: 'block', fontSize: '11px', color: scan.actualArrivalTime ? '#4ade80' : 'var(--text-secondary)', marginTop: '2px' }}>
                                   {scan.actualArrivalTime
                                     ? `${lang === 'he' ? 'הגיע בשעה' : 'Arrived at'}: ${new Date(scan.actualArrivalTime).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`
                                     : `${lang === 'he' ? 'צפוי להגיע' : 'Expected'}: ${scan.expectedArrivalTime ? (lang === 'he' ? `בערך ${scan.expectedArrivalTime}` : `approx. ${scan.expectedArrivalTime}`) : (lang === 'he' ? 'מחשב...' : 'calc...')}`}
                                 </span>
+                                )}
                               </div>
                               <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
                                 <span className="badge badge-success" style={{ display: 'inline-block', marginBottom: '4px' }}>
@@ -5027,6 +5035,9 @@ export default function App() {
                                 {t('time')}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} | {t('departure')}: {scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
                                 {scan.departureLocation === 'Ohel' && (
                                   <> | {lang === 'he' ? 'שילמו' : 'paid'}: {scan.paidCount ?? 0}</>
+                                )}
+                                {scan.isLateEntry && (
+                                  <> | <span style={{ color: 'var(--accent)' }}>{lang === 'he' ? 'נרשם בדיעבד' : 'logged late'}</span></>
                                 )}
                               </span>
                             </div>
@@ -5254,7 +5265,7 @@ export default function App() {
                   // contradict each other (previously direction came from `loc.direction`,
                   // a separately-sourced field, while the time numbers were recomputed
                   // fresh from `scans` here — those two could transiently disagree).
-                  const driverScans = scans.filter(s => s.driverId === currentUser.id);
+                  const driverScans = scans.filter(s => s.driverId === currentUser.id && !s.isLateEntry);
                   driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
                   const latestScan = driverScans[0];
 
@@ -5669,6 +5680,9 @@ export default function App() {
                               </strong>
                               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                 {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' }), dispatcher: trip.dispatcherName })}
+                                {trip.isLateEntry && (
+                                  <> | <span style={{ color: 'var(--accent)' }}>{lang === 'he' ? 'נרשם בדיעבד' : 'logged late'}</span></>
+                                )}
                               </span>
                             </div>
                             <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
@@ -6579,9 +6593,9 @@ export default function App() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
                       {[
                         { label: lang === 'he' ? 'סה"כ נוסעים' : 'Total Passengers', value: situationData.totalPassengers, color: '#fff' },
-                        { label: lang === 'he' ? 'סה"כ נסיעות' : 'Total Trips', value: situationData.totalTrips, color: '#fff' },
-                        { label: lang === 'he' ? 'נסיעות מהאוהל' : 'Trips from Ohel', value: situationData.tripsFromOhel, color: 'var(--accent)' },
-                        { label: lang === 'he' ? 'נסיעות מ-770' : 'Trips from 770', value: situationData.tripsFrom770, color: '#10b981' }
+                        { label: lang === 'he' ? 'סה"כ הסעות' : 'Total Trips', value: situationData.totalTrips, color: '#fff' },
+                        { label: lang === 'he' ? 'הסעות מהאוהל' : 'Trips from Ohel', value: situationData.tripsFromOhel, color: 'var(--accent)' },
+                        { label: lang === 'he' ? 'הסעות מ-770' : 'Trips from 770', value: situationData.tripsFrom770, color: '#10b981' }
                       ].map(stat => (
                         <div key={stat.label} className="card" style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', textAlign: 'center', minWidth: 0 }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.3 }}>{stat.label}</span>
@@ -6969,7 +6983,14 @@ export default function App() {
                                   <td>{getDayOfWeekHe(scanDate)}</td>
                                   <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                                   <td>{lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}</td>
-                                  <td><strong>{scan.driverName}</strong></td>
+                                  <td>
+                                    <strong>{scan.driverName}</strong>
+                                    {scan.isLateEntry && (
+                                      <span style={{ marginInlineStart: '6px', fontSize: '10px', color: 'var(--accent)' }}>
+                                        {lang === 'he' ? '(נרשם בדיעבד)' : '(logged late)'}
+                                      </span>
+                                    )}
+                                  </td>
                                   <td>{scan.dispatcherName}</td>
                                   <td>
                                     <span style={{ color: scan.departureLocation === '770' ? 'var(--accent)' : 'var(--info)', fontWeight: 'bold' }}>
@@ -7032,6 +7053,11 @@ export default function App() {
                                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                                   {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                 </span>
+                                {scan.isLateEntry && (
+                                  <span style={{ fontSize: '10px', color: 'var(--accent)' }}>
+                                    {lang === 'he' ? '(נרשם בדיעבד)' : '(logged late)'}
+                                  </span>
+                                )}
                               </div>
                               <span style={{ color: scan.departureLocation === '770' ? 'var(--accent)' : 'var(--info)', fontWeight: 'bold', fontSize: '13px' }}>
                                 {scan.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel')}
