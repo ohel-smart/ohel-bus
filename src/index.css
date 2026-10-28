@@ -770,6 +770,43 @@ body {
   .card {
     padding: 16px !important;
   }
+
+  /* Dashboard header: title + subtitle each stay on one line on mobile
+     instead of wrapping to 3 and 2 lines. */
+  .manager-dashboard-title {
+    font-size: 17px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .manager-dashboard-subtitle {
+    font-size: 11px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .manager-dashboard-header-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+  }
+
+  .manager-dashboard-title-wrap {
+    width: 100%;
+    text-align: center;
+  }
+
+  .manager-dashboard-date-badge {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 12px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+  }
   
   /* SOS dialog overlay on mobile */
   div[style*="position: fixed"][style*="inset: 0"] {

@@ -4254,6 +4254,11 @@ export default function App() {
                 value={addRideScannedAtLocal}
                 onChange={(e) => setAddRideScannedAtLocal(e.target.value)}
               />
+              {addRideScannedAtLocal && (
+                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px' }}>
+                  {getHebrewDate(new Date(addRideScannedAtLocal))}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
@@ -5872,12 +5877,12 @@ export default function App() {
                 {activeTab === 'dashboard' && (
                   <>
                     {/* Header line */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#fff' }}>{t('managerDashboardTitle')}</h2>
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('managerDashboardSubtitle')}</p>
+                    <div className="manager-dashboard-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="manager-dashboard-title-wrap">
+                        <h2 className="manager-dashboard-title" style={{ fontSize: '24px', fontWeight: 800, color: '#fff' }}>{t('managerDashboardTitle')}</h2>
+                        <p className="manager-dashboard-subtitle" style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('managerDashboardSubtitle')}</p>
                       </div>
-                       <div style={{ fontSize: '14px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                       <div className="manager-dashboard-date-badge" style={{ fontSize: '14px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                          {lang === 'he' ? `תאריך עבודה לוגי: ${formatHebrewAndGregorianDate(logicalToday)}` : t('logicalWorkDateText', { date: logicalToday })}
                        </div>
                     </div>
