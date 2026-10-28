@@ -5753,7 +5753,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px', marginBottom: '20px' }}>
+                <div style={{ background: 'var(--glass-bg)', padding: '12px', borderRadius: '16px', border: '1px solid var(--glass-border)', fontSize: '12px', marginBottom: '20px' }}>
                   <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10px' }}>{t('connectedUser')}</span>
                   <strong style={{ color: '#fff', fontSize: '13px' }}>{currentUser.name.replace(' (מנהל)', '')}</strong>
                 </div>
