@@ -1085,10 +1085,14 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
                 : (lang === 'he' ? 'לחץ לעיגול חצי שעה ביום הזה' : 'Click to round this day to the half hour')}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                width: '100%', height: '100%', padding: '4px', borderRadius: '12px',
-                border: isToday && !isHalf ? '2px solid var(--accent)' : '1px solid transparent',
-                background: isHalf ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '4px'
+                width: '100%', height: '100%', padding: '4px', borderRadius: '14px',
+                border: isToday && !isHalf ? '2px solid var(--accent)' : `1px solid ${isHalf ? 'transparent' : 'var(--glass-border)'}`,
+                background: isHalf ? 'var(--accent)' : 'var(--glass-bg)',
+                backdropFilter: isHalf ? undefined : 'blur(var(--glass-blur)) saturate(var(--glass-saturate))',
+                WebkitBackdropFilter: isHalf ? undefined : 'blur(var(--glass-blur)) saturate(var(--glass-saturate))',
+                boxShadow: isHalf ? undefined : 'inset 0 1px 0 0 rgba(255, 255, 255, 0.1)',
+                color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '4px',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease'
               }}
             >
               <span style={{ fontWeight: 700, fontSize: '26px' }}>{getHebrewDayLabel(day.gregDate)}</span>
