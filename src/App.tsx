@@ -6369,22 +6369,32 @@ export default function App() {
                               fontSize: '13px'
                             }}
                           />
+                          {situationStartDate && (
+                            <span style={{ fontSize: '11px', color: 'var(--accent)' }}>
+                              {getHebrewDate(new Date(situationStartDate + 'T12:00:00'))}
+                            </span>
+                          )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '150px' }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עד תאריך:' : 'To Date:'}</span>
-                          <input 
-                            type="date" 
+                          <input
+                            type="date"
                             value={situationEndDate}
                             onChange={(e) => setSituationEndDate(e.target.value)}
-                            style={{ 
-                              background: 'rgba(255,255,255,0.05)', 
-                              border: '1px solid var(--border-color)', 
-                              borderRadius: '6px', 
-                              color: '#fff', 
+                            style={{
+                              background: 'rgba(255,255,255,0.05)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              color: '#fff',
                               padding: '8px 12px',
                               fontSize: '13px'
                             }}
                           />
+                          {situationEndDate && (
+                            <span style={{ fontSize: '11px', color: 'var(--accent)' }}>
+                              {getHebrewDate(new Date(situationEndDate + 'T12:00:00'))}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
