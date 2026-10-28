@@ -143,6 +143,7 @@ body {
 
 /* Buttons */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -165,11 +166,30 @@ body {
 }
 
 .btn-primary {
-  background: var(--accent);
+  /* Same glass-cards structure as every other square, but tinted gold
+     instead of neutral white - a sheen over the accent color rather than
+     a flat fill. */
+  background: linear-gradient(180deg, rgba(234, 196, 125, 1), var(--accent) 50%, rgba(207, 161, 67, 1));
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   color: #0d0e12;
 }
 .btn-primary:hover {
-  background: var(--accent-hover);
+  background: linear-gradient(180deg, rgba(234, 196, 125, 1), var(--accent-hover) 50%, rgba(191, 147, 56, 1));
+}
+
+/* Top-edge highlight, same as .card/.sidebar-item. Scoped to .btn-primary
+   only (not tiny icon buttons) - inset by the button's own 8px radius. */
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .btn-secondary {
