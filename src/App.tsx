@@ -153,19 +153,19 @@ const TRANSLATIONS = {
     totalHours: 'סך שעות מחושב',
     scansCount: 'נסיעות שסרק',
     addUser: 'הוספת משתמש חדש לצי',
-    userName: 'שם המשתמש',
+    userName: 'שם',
     namePlaceholder: 'שם פרטי / מלא',
     phoneLabel: 'מספר טלפון',
     phonePlaceholder: '050-123-4567',
     passcodeLabel: 'קוד כניסה ייחודי',
-    userRole: 'תפקיד במערכת',
+    userRole: 'תפקיד',
     roleDriver: 'נהג (הסעות)',
     roleDispatcher: 'סדרן (שטח)',
     roleAdmin: 'מנהל (פיקוח)',
     roleScreen: 'קוד מסך (לוח תצוגה)',
     screenLocationLabel: 'מיקום המסך (לזיהוי)',
     screenLocationPlaceholder: 'לדוגמה: 770 / אוהל / כניסה ראשית',
-    capacityLabel: 'קיבולת רכב (מספר מושבים)',
+    capacityLabel: 'מס\' מושבים',
     bigBusLabel: 'אוטובוס גדול',
     canSelfReportLabel: 'מורשה לדיווח נסיעת חזרה עצמאי (קישור לנהג)',
     createUser: 'צור משתמש חדש',
@@ -441,7 +441,7 @@ const TRANSLATIONS = {
     roleScreen: 'Screen Code (Display Board)',
     screenLocationLabel: 'Screen Location (for reference)',
     screenLocationPlaceholder: 'e.g. 770 / Ohel / Main Entrance',
-    capacityLabel: 'Vehicle Capacity (Number of Seats)',
+    capacityLabel: 'Number of Seats',
     bigBusLabel: 'Big Bus',
     canSelfReportLabel: 'Authorized for self-service return report (driver link)',
     createUser: 'Create New User',
@@ -1242,7 +1242,7 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: 0 }}>
       {selected.size > 0 && (
         <div style={{
           position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: '16px',
@@ -1261,8 +1261,8 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
         </div>
       )}
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container" ref={tableContainerRef}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="table-container" ref={tableContainerRef} style={{ maxHeight: 'none', flex: 1, minHeight: 0 }}>
           <table className="tp-table" style={isDragging ? { userSelect: 'none' } : undefined}>
             <thead>
               <tr>
@@ -3935,6 +3935,17 @@ export default function App() {
       handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo, lang: selfReportLang });
     } else if (currentUser.role === 'dispatcher') {
       handleExportDispatcherPdf({ name: currentUser.name.replace(' (סדרן)', ''), dateFrom, dateTo, lang: selfReportLang });
+    }
+  };
+
+  const handleCopyCode = (code: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code).then(
+        () => triggerToast(lang === 'he' ? 'הקוד הועתק!' : 'Code copied!', 'success'),
+        () => triggerToast(code, 'success')
+      );
+    } else {
+      triggerToast(code, 'success');
     }
   };
 
@@ -7093,23 +7104,14 @@ export default function App() {
 
                     {/* Users list card - shown first on mobile (see .users-list-card in index.css) */}
                     <div className="card users-list-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>
-                            {t('usersListTitle')}
-                          </h3>
-                          <button 
-                            onClick={handleExportUsersToCsv}
-                            className="btn btn-secondary"
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '12px' }}
-                          >
-                            <Download size={12} />
-                            {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
-                          </button>
-                        </div>
-                        
-                        {/* Role Filter Toggle */}
-                        <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)', alignSelf: 'flex-start' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>
+                          {t('usersListTitle')}
+                        </h3>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                          {/* Role Filter Toggle */}
+                          <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                           <button
                             type="button"
                             onClick={() => setStaffFilter('driver')}
@@ -7161,6 +7163,16 @@ export default function App() {
                           >
                             {lang === 'he' ? `קודי מסך (${users.filter(u => u.role === 'screen').length})` : `Screens (${users.filter(u => u.role === 'screen').length})`}
                           </button>
+                          </div>
+
+                          <button
+                            onClick={handleExportUsersToCsv}
+                            className="btn btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '12px' }}
+                          >
+                            <Download size={12} />
+                            {lang === 'he' ? 'ייצא לאקסל' : 'Export to Excel'}
+                          </button>
                         </div>
                       </div>
 
@@ -7190,8 +7202,18 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                                  <span style={{ background: '#1e293b', padding: '4px 8px', borderRadius: '4px', border: '1px solid #334155', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
-                                    {u.code}
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(226, 176, 78, 0.3)', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
+                                      {u.code}
+                                    </span>
+                                    <button
+                                      onClick={() => handleCopyCode(u.code)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '4px', width: '24px', height: '24px' }}
+                                      title={lang === 'he' ? 'העתק קוד' : 'Copy code'}
+                                    >
+                                      <Copy size={11} />
+                                    </button>
                                   </span>
                                 </td>
                                 <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -7256,9 +7278,17 @@ export default function App() {
                               <div><strong>{(u.role === 'screen' ? t('screenLocationLabel') : (lang === 'he' ? 'טלפון:' : 'Phone:'))}</strong> {u.phone}</div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <strong>{lang === 'he' ? 'קוד כניסה:' : 'Passcode:'}</strong>
-                                <span style={{ background: '#0f172a', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
+                                <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '3px 8px', borderRadius: '10px', border: '1px solid rgba(226, 176, 78, 0.3)', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
                                   {u.code}
                                 </span>
+                                <button
+                                  onClick={() => handleCopyCode(u.code)}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '4px', width: '24px', height: '24px' }}
+                                  title={lang === 'he' ? 'העתק קוד' : 'Copy code'}
+                                >
+                                  <Copy size={11} />
+                                </button>
                               </div>
                               {u.role === 'driver' && (
                                 <div>
@@ -7326,7 +7356,7 @@ export default function App() {
                                   <td><strong>{u.name}</strong></td>
                                   <td>{u.phone}</td>
                                   <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                                    <span style={{ background: '#1e293b', padding: '4px 8px', borderRadius: '4px', border: '1px solid #334155', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
+                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(226, 176, 78, 0.3)', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
                                       {u.code}
                                     </span>
                                   </td>
@@ -7776,8 +7806,8 @@ export default function App() {
                     so any add/edit/delete on the scans table is reflected here on the
                     next render with no separate sync step. Read-only, no driver names. */}
                 {activeTab === 'hourlySummary' && (
-                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div>
+                  <div style={{ width: '100%', height: 'calc(100vh - 64px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ flexShrink: 0 }}>
                       <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fff', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <RefreshCw size={20} color="var(--accent)" />
                         {lang === 'he' ? 'סיכום לפי שעות' : 'Hourly Summary'}
@@ -7789,7 +7819,7 @@ export default function App() {
                       </p>
                     </div>
 
-                    <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff' }}>
+                    <div className="filter-toolbar-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#fff', flexShrink: 0 }}>
                       <span style={{ color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים' : 'Date range'}</span>
                       <HebrewRangePicker
                         fromValue={hourlySummaryDateFrom} toValue={hourlySummaryDateTo}
@@ -7808,7 +7838,9 @@ export default function App() {
                       </button>
                     </div>
 
-                    <HourlySummaryTable rows={hourlySummaryRows} lang={lang} />
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                      <HourlySummaryTable rows={hourlySummaryRows} lang={lang} />
+                    </div>
                   </div>
                 )}
 

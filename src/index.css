@@ -545,7 +545,14 @@ body {
 }
 
 .tp-table th {
-  background: rgba(255, 255, 255, 0.04);
+  /* Sticky - stays pinned at the top of .table-container's own scroll
+     area while rows scroll underneath. Needs a near-opaque backing (not
+     the usual translucent wash) so scrolled-past rows don't show through
+     it. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #1c1c1e;
   color: var(--text-secondary);
   font-weight: 600;
   padding: 14px 18px;
