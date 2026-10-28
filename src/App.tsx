@@ -4139,6 +4139,11 @@ export default function App() {
                 value={editScannedAtLocal}
                 onChange={(e) => setEditScannedAtLocal(e.target.value)}
               />
+              {editScannedAtLocal && (
+                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px' }}>
+                  {getHebrewDate(new Date(editScannedAtLocal))}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
