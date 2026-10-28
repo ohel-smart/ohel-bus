@@ -99,11 +99,11 @@ body {
   flex-direction: column;
 }
 
-/* The "glass-cards" skill recipe, exactly: true see-through glass - a
-   white top-to-bottom sheen gradient + blur/saturate + hairline border +
-   a bright top edge (via ::before, inset by the corner radius). Padding
-   bumped from the skill's 16px to this app's existing 24px/22px since
-   these cards hold denser content than a simple widget. */
+/* The "glass-cards" skill recipe (minus the top-edge line, removed per
+   feedback): see-through glass via a white top-to-bottom sheen gradient +
+   blur/saturate + hairline border. Padding bumped from the skill's 16px
+   to this app's existing 24px/22px since these cards hold denser content
+   than a simple widget. */
 .card {
   position: relative;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04) 50%, rgba(255, 255, 255, 0.02));
@@ -114,16 +114,6 @@ body {
   padding: 24px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 22px;
-  right: 22px;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.55);
 }
 
 .card:hover {
@@ -167,9 +157,9 @@ body {
 
 .btn-primary {
   /* Same glass-cards structure as every other square, but tinted gold
-     instead of neutral white - a sheen over the accent color rather than
-     a flat fill. */
-  background: linear-gradient(180deg, rgba(234, 196, 125, 1), var(--accent) 50%, rgba(207, 161, 67, 1));
+     instead of neutral white - a translucent sheen over the accent color
+     rather than a flat opaque fill. */
+  background: linear-gradient(180deg, rgba(234, 196, 125, 0.85), rgba(226, 176, 78, 0.7) 50%, rgba(207, 161, 67, 0.8));
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -177,19 +167,7 @@ body {
   color: #0d0e12;
 }
 .btn-primary:hover {
-  background: linear-gradient(180deg, rgba(234, 196, 125, 1), var(--accent-hover) 50%, rgba(191, 147, 56, 1));
-}
-
-/* Top-edge highlight, same as .card/.sidebar-item. Scoped to .btn-primary
-   only (not tiny icon buttons) - inset by the button's own 8px radius. */
-.btn-primary::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 8px;
-  right: 8px;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.7);
+  background: linear-gradient(180deg, rgba(234, 196, 125, 0.92), rgba(207, 161, 67, 0.78) 50%, rgba(191, 147, 56, 0.88));
 }
 
 .btn-secondary {
