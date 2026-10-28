@@ -1706,6 +1706,17 @@ export default function App() {
   const [addRideDepartureLocation, setAddRideDepartureLocation] = useState<DepartureLocation>('770');
   const [addRideScannedAtLocal, setAddRideScannedAtLocal] = useState('');
 
+  // Dispatcher "I forgot to log a trip" modal - a late entry recorded under
+  // the logged-in dispatcher themselves (unlike the admin form above, which
+  // lets the admin pick any dispatcher).
+  const [showForgotRideModal, setShowForgotRideModal] = useState(false);
+  const [forgotRideDriverId, setForgotRideDriverId] = useState('');
+  const [forgotRidePassengers, setForgotRidePassengers] = useState<number>(0);
+  const [forgotRidePaidCount, setForgotRidePaidCount] = useState<number>(0);
+  const [forgotRideOrigin, setForgotRideOrigin] = useState<DepartureLocation>('770');
+  const [forgotRideTimeLocal, setForgotRideTimeLocal] = useState('');
+  const [isSavingForgotRide, setIsSavingForgotRide] = useState(false);
+
   // Settings & Users Admin states
   const [reportEmail, setReportEmail] = useState('');
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState('');
@@ -3068,6 +3079,62 @@ export default function App() {
     }
   };
 
+  const openForgotRideModal = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setForgotRideDriverId('');
+    setForgotRidePassengers(0);
+    setForgotRidePaidCount(0);
+    setForgotRideOrigin('770');
+    setForgotRideTimeLocal(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
+    setShowForgotRideModal(true);
+  };
+
+  const handleSaveForgotRide = async () => {
+    if (!currentUser) return;
+    const driver = driversList.find(d => d.id === forgotRideDriverId);
+    if (!driver) {
+      triggerToast(lang === 'he' ? 'יש לבחור נהג' : 'Pick a driver', 'danger');
+      return;
+    }
+    if (forgotRidePassengers <= 0) {
+      triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+      return;
+    }
+    const when = forgotRideTimeLocal ? new Date(forgotRideTimeLocal) : new Date();
+    const nowMs = Date.now();
+    if (isNaN(when.getTime()) || when.getTime() > nowMs + 60_000) {
+      triggerToast(lang === 'he' ? 'לא ניתן לרשום נסיעה בזמן עתידי' : 'A ride cannot be logged in the future', 'danger');
+      return;
+    }
+    if (when.getTime() < nowMs - 24 * 60 * 60 * 1000) {
+      triggerToast(lang === 'he' ? 'ניתן לרשום רק נסיעות מ-24 השעות האחרונות' : 'Only rides from the last 24 hours can be logged', 'danger');
+      return;
+    }
+    const loc = LOCATIONS[forgotRideOrigin];
+    setIsSavingForgotRide(true);
+    try {
+      await dbService.addScan({
+        dispatcherId: currentUser.id,
+        dispatcherName: currentUser.name,
+        driverId: driver.id,
+        driverName: driver.name,
+        passengersCount: forgotRidePassengers,
+        scannedAt: when.toISOString(),
+        location: { latitude: loc.latitude, longitude: loc.longitude },
+        departureLocation: forgotRideOrigin,
+        ...(forgotRideOrigin === 'Ohel' ? { paidCount: forgotRidePaidCount } : {})
+      });
+      setShowForgotRideModal(false);
+      triggerToast(lang === 'he' ? `הנסיעה נרשמה עבור ${driver.name.replace(' (נהג)', '')}` : `Ride logged for ${driver.name}`, 'success');
+    } catch (e) {
+      console.error('Failed to save forgotten ride:', e);
+      triggerToast(lang === 'he' ? 'הנסיעה לא נשמרה בשרת - נסה שוב' : 'Ride failed to save - try again', 'danger');
+    } finally {
+      setIsSavingForgotRide(false);
+    }
+  };
+
   const handleDeleteScan = (scanId: string) => {
     if (window.confirm(t('confirmDeleteScan'))) {
       dbService.deleteScan(scanId);
@@ -4317,6 +4384,88 @@ export default function App() {
       )}
 
 
+      {/* FORGOT-A-RIDE MODAL (dispatcher) - late entry under the logged-in dispatcher */}
+      {showForgotRideModal && currentUser?.role === 'dispatcher' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '4px', color: '#fff' }}>
+              {lang === 'he' ? 'שכחת להוציא נסיעה?' : 'Forgot to log a ride?'}
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              {lang === 'he' ? 'הנסיעה תירשם על שמך, בשעה שתבחר.' : 'The ride will be logged under your name, at the time you pick.'}
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'נהג' : 'Driver'}</label>
+              <select className="form-input form-select" value={forgotRideDriverId} onChange={(e) => setForgotRideDriverId(e.target.value)}>
+                <option value="">{t('selectDriver')}</option>
+                {driversList.map(d => (
+                  <option key={d.id} value={d.id}>{d.name.replace(' (נהג)', '')}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'מספר נוסעים' : 'Number of passengers'}</label>
+              <input
+                type="number"
+                className="form-input"
+                value={forgotRidePassengers === 0 ? '' : forgotRidePassengers}
+                placeholder="0"
+                onChange={(e) => setForgotRidePassengers(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
+              <input
+                type="datetime-local"
+                className="form-input"
+                value={forgotRideTimeLocal}
+                onChange={(e) => setForgotRideTimeLocal(e.target.value)}
+              />
+              {forgotRideTimeLocal && (
+                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px' }}>
+                  {getHebrewDate(new Date(forgotRideTimeLocal))}
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('originHeader')}</label>
+              <select
+                className="form-input form-select"
+                value={forgotRideOrigin}
+                onChange={(e) => setForgotRideOrigin(e.target.value as DepartureLocation)}
+              >
+                <option value="770">770 ({lang === 'he' ? 'קראון הייטס' : 'Crown Heights'})</option>
+                <option value="Ohel">{lang === 'he' ? 'אוהל חב"ד (קווינס)' : 'Chabad Ohel (Queens)'}</option>
+              </select>
+            </div>
+
+            {forgotRideOrigin === 'Ohel' && (
+              <div className="form-group">
+                <label className="form-label">{lang === 'he' ? 'כמה אנשים שילמו' : 'How many people paid'}</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={forgotRidePaidCount === 0 ? '' : forgotRidePaidCount}
+                  placeholder="0"
+                  onChange={(e) => setForgotRidePaidCount(Math.max(0, parseInt(e.target.value) || 0))}
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+              <button onClick={handleSaveForgotRide} disabled={isSavingForgotRide} className="btn btn-primary" style={{ flex: 1 }}>
+                {lang === 'he' ? 'שמור נסיעה' : 'Save ride'}
+              </button>
+              <button onClick={() => setShowForgotRideModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>{t('cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pending self-registration requests - pops up for the admin as soon as
           the app is open (any tab), not just when they navigate to Users. */}
       {showPendingRegModal && currentUser?.role === 'admin' && pendingRegistrations.length > 0 && (
@@ -4532,6 +4681,7 @@ export default function App() {
 
               <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {activeTab === 'scan' && (
+                  <>
                   <div className="card" style={{ padding: '24px' }}>
                     <h3 className="card-title">
                       <QrCode size={18} color="var(--accent)" />
@@ -4634,6 +4784,22 @@ export default function App() {
                       </div>
                     </form>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={openForgotRideModal}
+                    className="btn btn-secondary"
+                    style={{
+                      width: '100%', padding: '18px 16px', justifyContent: 'center', gap: '8px',
+                      fontSize: '15px', fontWeight: 700, color: 'var(--accent)',
+                      background: 'rgba(226, 176, 78, 0.06)',
+                      border: 'none', borderBottom: '2px solid var(--accent)', borderRadius: '12px'
+                    }}
+                  >
+                    <Clock size={16} />
+                    {lang === 'he' ? 'שכחת להוציא נסיעה?' : 'Forgot to log a ride?'}
+                  </button>
+                  </>
                 )}
 
                 {activeTab === 'arrivals' && (
