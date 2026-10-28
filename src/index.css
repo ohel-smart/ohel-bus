@@ -948,6 +948,23 @@ body {
   min-height: 0;
 }
 
+/* Desktop: the staff-list card is always exactly as tall as the add-user
+   card beside it, whatever the list length or selected filter. height:0 +
+   min-height:100% stops the list's own content from setting the row height
+   (only the form column does), and the table scrolls inside the card. */
+@media (min-width: 901px) {
+  .users-list-card {
+    height: 0;
+    min-height: 100%;
+    overflow: hidden;
+  }
+
+  .users-list-card .desktop-users-table {
+    max-height: none;
+    overflow-y: auto;
+  }
+}
+
 .mobile-users-cards {
   display: none;
 }
