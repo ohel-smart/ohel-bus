@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import {
   MapPin, Users, Calendar, QrCode, LogOut,
@@ -904,11 +905,25 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
   // click completes the range (or when the picker is reopened fresh).
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  // The popup is rendered via a portal straight onto <body> (see return
+  // below) instead of as a normal absolutely-positioned child - any
+  // ancestor with backdrop-filter (every .card, now that cards are glass)
+  // creates its own stacking context, which traps a child's z-index inside
+  // it. That meant this popup could silently render BEHIND a later sibling
+  // card (e.g. the table under the filter toolbar) with no way to fix it
+  // via z-index alone. A portal sidesteps the whole stacking-context trap.
+  // popupPos is computed from the trigger button's own on-screen position.
+  const [popupPos, setPopupPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     const onClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setIsOpen(false);
+      const target = e.target as Node;
+      if (wrapperRef.current && !wrapperRef.current.contains(target) &&
+          popupRef.current && !popupRef.current.contains(target)) {
+        setIsOpen(false);
+      }
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -918,6 +933,12 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
     const base = fromValue ? new Date(fromValue + 'T12:00:00') : new Date();
     setViewYM(getHebrewYearMonth(base));
     setPendingStart(null);
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPopupPos(lang === 'he'
+        ? { top: rect.bottom + 6, right: window.innerWidth - rect.right }
+        : { top: rect.bottom + 6, left: rect.left });
+    }
     setIsOpen(true);
   };
 
@@ -965,12 +986,17 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buttonLabel}</span>
       </button>
 
-      {isOpen && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', [lang === 'he' ? 'right' : 'left']: 0, zIndex: 50,
-          background: 'var(--bg-secondary, #161616)', border: '1px solid var(--border-color)', borderRadius: '12px',
-          padding: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', width: '280px'
-        }}>
+      {isOpen && popupPos && createPortal(
+        <div
+          ref={popupRef}
+          style={{
+            position: 'fixed', top: popupPos.top, left: popupPos.left, right: popupPos.right, zIndex: 9999,
+            // Solid, not glass - a floating popup needs to stay legible
+            // regardless of whatever happens to be scrolled underneath it.
+            background: '#15151a', border: '1px solid var(--border-color)', borderRadius: '12px',
+            padding: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', width: '280px'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
             <button type="button" onClick={() => setViewYM(shiftHebrewMonth(viewYM.year, viewYM.monthKey, -1))} className="btn btn-secondary" style={{ padding: '4px 8px' }}>
               <PrevIcon size={16} />
@@ -1013,7 +1039,8 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
