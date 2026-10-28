@@ -30,7 +30,7 @@ const MOBILE_TAB_OPTIONS: { key: string; icon: LucideIcon; label: { he: string; 
 const DEFAULT_MOBILE_TABS = ['dashboard', 'situation', 'history', 'central'];
 
 // One row of the "Hourly Summary" tab - all scans sharing a (logicalDate,
-// half-hour bucket), fully derived and read-only (see hourlySummaryRows).
+// time bucket), fully derived and read-only (see hourlySummaryRows).
 interface HourlySummaryRow {
   dateStr: string;
   time: string;
@@ -44,7 +44,7 @@ interface HourlySummaryRow {
   regularOhel: number;
   bigOhel: number;
   // Headcount who paid for the return ride, summed across every Ohel-origin
-  // scan in this half-hour bucket. Always 0 for a bucket with no Ohel scans.
+  // scan in this time bucket. Always 0 for a bucket with no Ohel scans.
   paidFromOhel: number;
 }
 
@@ -2631,12 +2631,12 @@ export default function App() {
     });
   }, [centralSummary]);
 
-  // "Summary by half-hour" - a fully auto-computed, read-only rollup of every
-  // scan, grouped by (logicalDate, half-hour bucket). Always rounds to the
-  // half hour regardless of halfHourRoundingDates (that override only affects
-  // the central table's display) - this report's whole point is half-hour
-  // granularity. Recomputes automatically whenever `scans` changes, which
-  // dbService's Firestore listener already updates on every add/edit/delete.
+  // "Summary by hour" - a fully auto-computed, read-only rollup of every
+  // scan, grouped by (logicalDate, time bucket). Follows the SAME rounding rule
+  // as the central table: the nearest whole hour by default, and the nearest
+  // half hour only on days an admin marked in the rounding calendar
+  // (halfHourRoundingDates). Recomputes automatically whenever `scans` or that
+  // setting changes, which dbService's Firestore listener already updates.
   const hourlySummaryRows = useMemo(() => {
     const groups: { [key: string]: HourlySummaryRow } = {};
     for (const s of scans) {
@@ -2644,7 +2644,7 @@ export default function App() {
       if (hourlySummaryDateFrom && s.logicalDate < hourlySummaryDateFrom) continue;
       if (hourlySummaryDateTo && s.logicalDate > hourlySummaryDateTo) continue;
       const when = new Date(s.scannedAt);
-      const time = roundToHalfHourStr(when);
+      const time = halfHourRoundingDates.includes(s.logicalDate) ? roundToHalfHourStr(when) : roundToHourStr(when);
       const key = `${s.logicalDate}_${time}`;
       if (!groups[key]) {
         const dayDate = new Date(s.logicalDate + 'T12:00:00');
@@ -2672,7 +2672,7 @@ export default function App() {
       if (a.dateStr !== b.dateStr) return a.dateStr < b.dateStr ? 1 : -1; // newest date first
       return a.time < b.time ? -1 : 1; // ascending time within a day
     });
-  }, [scans, hourlySummaryDateFrom, hourlySummaryDateTo]);
+  }, [scans, hourlySummaryDateFrom, hourlySummaryDateTo, halfHourRoundingDates]);
 
   // Applies the SAME filters currently active on the central table (date range,
   // Hebrew month/year, parsha, origin, big-bus-only) to an arbitrary scan list -
@@ -8073,8 +8073,8 @@ export default function App() {
                       </h3>
                       <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
                         {lang === 'he'
-                          ? 'מחושב אוטומטית מטבלת הסריקות - כל סריקה נספרת כאוטובוס אחד, מקובצת לפי תאריך וחצי שעה. לא ניתן לערוך כאן. סמן כמה תאים (לחיצה+גרירה, או Ctrl/Cmd+לחיצה) כדי לראות סה"כ, כמו באקסל.'
-                          : 'Computed automatically from the scans table - each scan counts as one bus, grouped by date and half hour. Not editable here. Select cells (click+drag, or Ctrl/Cmd+click) to see a running total, like in Excel.'}
+                          ? 'מחושב אוטומטית מטבלת הסריקות - כל סריקה נספרת כאוטובוס אחד, מקובצת לפי תאריך ושעה (שעה עגולה, וחצי שעה רק בימים שסומנו בלוח עיגול הזמנים). לא ניתן לערוך כאן. סמן כמה תאים (לחיצה+גרירה, או Ctrl/Cmd+לחיצה) כדי לראות סה"כ, כמו באקסל.'
+                          : 'Computed automatically from the scans table - each scan counts as one bus, grouped by date and hour (half hour only on days marked in the rounding calendar). Not editable here. Select cells (click+drag, or Ctrl/Cmd+click) to see a running total, like in Excel.'}
                       </p>
                     </div>
 
