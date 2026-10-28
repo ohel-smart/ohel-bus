@@ -1,25 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  /* Dramatic deep blue-black page (a night-sky navy, not neutral black) -
-     like Apple's own dark surfaces (Control Center, Music). Glass only
-     reads as "glass" when it's visibly LIGHTER than what it sits on. */
+  /* Dramatic deep-blue night-sky page (kept per explicit request) - the
+     CARDS themselves, below, are flat neutral dark gray to match the
+     reference exactly; only the page behind them is blue. */
   --bg-primary: #040a1a;
   --bg-secondary: #060c1f;
   --bg-panel: #131722;
   --border-color: #232323;
   --border-hover: #3a3a3a;
 
-  /* Glassmorphism custom variables - genuine Apple-style frosted glass: a
-     WHITE wash (not a dark tint) + strong blur/saturate + a crisp bright
-     hairline border. This is what makes a panel look lit from within
-     against the deep blue-black, the way iOS Control Center panels do.
-     Pushed further still: more transparent, more blurred. */
-  --glass-opacity: 0.08;
-  --glass-blur: 72px;
-  --glass-saturate: 2.6;
-  --glass-border-opacity: 0.22;
-  --glass-bg: rgba(255, 255, 255, var(--glass-opacity));
+  /* "Glass" per the reference image = a solid, slightly-lighter-than-page
+     flat dark gray card with soft rounded corners and a subtle lift
+     shadow - there is NO visible blur/transparency in that image at all.
+     Kept the variable names (still read by .card etc.) but repointed them
+     at a flat, nearly-opaque fill instead of a translucent one. */
+  --glass-opacity: 0.97;
+  --glass-blur: 0px;
+  --glass-saturate: 1;
+  --glass-border-opacity: 0.06;
+  --glass-bg: rgba(28, 28, 30, var(--glass-opacity));
   --glass-border: rgba(255, 255, 255, var(--glass-border-opacity));
   
   --accent: #e2b04e; /* Gold Accent */
@@ -107,19 +107,18 @@ body {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: 22px;
   padding: 24px;
-  /* Deep outer shadow for real lift off true black + a brighter inner
-     highlight along the top edge - the classic "glass catching light from
-     above" cue, pushed further so it actually reads at a glance. */
-  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+  /* Soft lift, not a dramatic glow - matches the reference's understated
+     flat-card shadow. */
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .card:hover {
-  border-color: rgba(255, 255, 255, calc(var(--glass-border-opacity) * 1.6));
-  background: rgba(255, 255, 255, calc(var(--glass-opacity) + 0.03));
-  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, calc(var(--glass-border-opacity) * 2));
+  background: rgba(32, 32, 35, var(--glass-opacity));
+  box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.6);
 }
 
 .card-title {
@@ -164,10 +163,8 @@ body {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #1c1c1e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 .btn-secondary:hover {
@@ -209,12 +206,8 @@ body {
   width: 100%;
   padding: 10px 14px;
   border-radius: 8px;
-  /* Frosted haze instead of a flat solid fill - matches the glass surfaces
-     around it without hurting legibility (text stays near-opaque). */
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #0a0a0c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 15px;
@@ -339,13 +332,11 @@ body {
   width: 100%;
   max-width: 480px;
   height: 68px;
-  /* Frosted tab bar, same white-glass recipe as .card - the iOS-style
-     "glass chrome" look, lit from within against true black. */
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(56px) saturate(2.4);
-  -webkit-backdrop-filter: blur(56px) saturate(2.4);
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 -8px 32px 0 rgba(0, 0, 0, 0.5);
+  /* Flat tab bar matching the card recipe - a touch lighter than the page
+     behind it, no blur. */
+  background: #121214;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 -8px 24px 0 rgba(0, 0, 0, 0.4);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
