@@ -889,12 +889,15 @@ const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en')
 // earlier one becomes "from"). Values exchanged with the parent are still
 // Gregorian "YYYY-MM-DD" (matching Scan.logicalDate), since only the grid's
 // navigation/layout is Hebrew-calendar-based, not the stored filter values.
-function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: {
+function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, single, fullWidth }: {
   fromValue: string;
   toValue: string;
   onChange: (from: string, to: string) => void;
   lang: 'he' | 'en';
   placeholder: string;
+  // single: one click picks one day (from === to) and closes the popup.
+  single?: boolean;
+  fullWidth?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [viewYM, setViewYM] = useState(() => {
@@ -951,6 +954,11 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
   const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
 
   const handleDayClick = (ymd: string) => {
+    if (single) {
+      onChange(ymd, ymd);
+      setIsOpen(false);
+      return;
+    }
     if (pendingStart === null) {
       setPendingStart(ymd);
       onChange(ymd, '');
@@ -962,12 +970,16 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
     }
   };
 
-  const buttonLabel = fromValue || toValue
-    ? `${fromValue ? getHebrewDate(new Date(fromValue + 'T12:00:00')) : '…'} - ${toValue ? getHebrewDate(new Date(toValue + 'T12:00:00')) : '…'}`
-    : placeholder;
+  const buttonLabel = single
+    ? (fromValue
+        ? `${getHebrewDate(new Date(fromValue + 'T12:00:00'))} (${fromValue.slice(8, 10)}.${fromValue.slice(5, 7)}.${fromValue.slice(0, 4)})`
+        : placeholder)
+    : (fromValue || toValue
+        ? `${fromValue ? getHebrewDate(new Date(fromValue + 'T12:00:00')) : '…'} - ${toValue ? getHebrewDate(new Date(toValue + 'T12:00:00')) : '…'}`
+        : placeholder);
 
   return (
-    <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={wrapperRef} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : undefined }}>
       <button
         type="button"
         onClick={() => (isOpen ? setIsOpen(false) : openPicker())}
@@ -979,7 +991,7 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
           // Fixed width (not minWidth) so picking a range - whose rendered
           // text is longer than the placeholder - never changes this
           // button's own size and can't push the toolbar row to reflow.
-          width: '220px'
+          width: fullWidth ? '100%' : '220px'
         }}
       >
         <Calendar size={14} style={{ flexShrink: 0 }} />
@@ -1008,9 +1020,11 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
           </div>
 
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-            {pendingStart
-              ? (lang === 'he' ? 'בחר תאריך סיום' : 'Now pick the end date')
-              : (lang === 'he' ? 'בחר תאריך התחלה' : 'Pick the start date')}
+            {single
+              ? (lang === 'he' ? 'בחר תאריך' : 'Pick a date')
+              : pendingStart
+                ? (lang === 'he' ? 'בחר תאריך סיום' : 'Now pick the end date')
+                : (lang === 'he' ? 'בחר תאריך התחלה' : 'Pick the start date')}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
@@ -1042,6 +1056,45 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder }: 
         </div>,
         document.body
       )}
+    </div>
+  );
+}
+
+// Date + time entry using the Hebrew-calendar picker for the day (instead of
+// the browser's Gregorian-only <input type="datetime-local"> popup) plus a
+// plain time box. Value is the same "YYYY-MM-DDTHH:MM" local string that
+// datetime-local used, so callers' existing state and parsing don't change.
+function HebrewDateTimeField({ value, onChange, lang }: {
+  value: string;
+  onChange: (next: string) => void;
+  lang: 'he' | 'en';
+}) {
+  const datePart = value ? value.slice(0, 10) : '';
+  const timePart = value && value.length >= 16 ? value.slice(11, 16) : '';
+  const todayYmd = () => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ minWidth: 0 }}>
+        <HebrewRangePicker
+          single
+          fullWidth
+          fromValue={datePart}
+          toValue={datePart}
+          lang={lang}
+          placeholder={lang === 'he' ? 'בחר תאריך' : 'Pick a date'}
+          onChange={(from) => onChange(`${from}T${timePart || '12:00'}`)}
+        />
+      </div>
+      <input
+        type="time"
+        className="form-input"
+        value={timePart}
+        onChange={(e) => onChange(`${datePart || todayYmd()}T${e.target.value || '00:00'}`)}
+      />
     </div>
   );
 }
@@ -4200,17 +4253,7 @@ export default function App() {
 
             <div className="form-group">
               <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={editScannedAtLocal}
-                onChange={(e) => setEditScannedAtLocal(e.target.value)}
-              />
-              {editScannedAtLocal && (
-                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px' }}>
-                  {getHebrewDate(new Date(editScannedAtLocal))}
-                </div>
-              )}
+              <HebrewDateTimeField value={editScannedAtLocal} onChange={setEditScannedAtLocal} lang={lang} />
             </div>
 
             <div className="form-group">
@@ -4326,17 +4369,7 @@ export default function App() {
 
             <div className="form-group">
               <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={addRideScannedAtLocal}
-                onChange={(e) => setAddRideScannedAtLocal(e.target.value)}
-              />
-              {addRideScannedAtLocal && (
-                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px' }}>
-                  {getHebrewDate(new Date(addRideScannedAtLocal))}
-                </div>
-              )}
+              <HebrewDateTimeField value={addRideScannedAtLocal} onChange={setAddRideScannedAtLocal} lang={lang} />
             </div>
 
             <div className="form-group">
@@ -4418,17 +4451,7 @@ export default function App() {
 
             <div className="form-group">
               <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={forgotRideTimeLocal}
-                onChange={(e) => setForgotRideTimeLocal(e.target.value)}
-              />
-              {forgotRideTimeLocal && (
-                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '4px' }}>
-                  {getHebrewDate(new Date(forgotRideTimeLocal))}
-                </div>
-              )}
+              <HebrewDateTimeField value={forgotRideTimeLocal} onChange={setForgotRideTimeLocal} lang={lang} />
             </div>
 
             <div className="form-group">
