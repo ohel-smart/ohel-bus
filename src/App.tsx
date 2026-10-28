@@ -6211,21 +6211,26 @@ export default function App() {
                         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
                             <thead>
-                              <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left', background: 'rgba(255, 255, 255, 0.04)' }}>
-                                {centralSelectMode && <th style={thCentral}></th>}
-                                <th style={thCentral}>{t('parshaHeader')}</th>
-                                <th style={thCentral}>{t('hebrewDateHeader')}</th>
-                                <th style={thCentral}>{t('dayHeader')}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
-                                <th style={thCentral}>{t('logicalDateHeader')}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
-                                <th style={thCentral}>{t('scannerDispatcherHeader')}</th>
-                                <th style={thCentral}>{t('originHeader')}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'אנשים' : 'People'}</th>
-                                <th style={thCentral}>{t('emptySeatsHeader')}</th>
-                                <th style={thCentral}>{t('driverCapacityHeader')}</th>
-                                <th style={thCentral}>{lang === 'he' ? 'שילמו' : 'Paid'}</th>
-                                <th style={thCentral}></th>
+                              <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                                {/* Sticky header - stays pinned at the top of this card's own
+                                    scroll area while rows scroll underneath (per feedback, to
+                                    match the hourly-summary table's already-sticky header).
+                                    Needs a near-opaque backing per cell (sticky can't be set on
+                                    the <tr> itself) so scrolled-past rows don't show through. */}
+                                {centralSelectMode && <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}></th>}
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('parshaHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('hebrewDateHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('dayHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{lang === 'he' ? 'שעה' : 'Time'}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('logicalDateHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('scannerDispatcherHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('originHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{lang === 'he' ? 'אנשים' : 'People'}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('emptySeatsHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{t('driverCapacityHeader')}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}>{lang === 'he' ? 'שילמו' : 'Paid'}</th>
+                                <th style={{ ...thCentral, position: 'sticky', top: 0, zIndex: 2, background: '#1c1c1e' }}></th>
                               </tr>
                             </thead>
                             <tbody>
