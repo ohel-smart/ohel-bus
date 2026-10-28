@@ -1,11 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  /* Near-black page with a faint blue cast (not a pure neutral black) -
+  /* Dramatic deep blue-black page (a night-sky navy, not neutral black) -
      like Apple's own dark surfaces (Control Center, Music). Glass only
      reads as "glass" when it's visibly LIGHTER than what it sits on. */
-  --bg-primary: #020306;
-  --bg-secondary: #06070b;
+  --bg-primary: #040a1a;
+  --bg-secondary: #060c1f;
   --bg-panel: #131722;
   --border-color: #232323;
   --border-hover: #3a3a3a;
@@ -13,10 +13,11 @@
   /* Glassmorphism custom variables - genuine Apple-style frosted glass: a
      WHITE wash (not a dark tint) + strong blur/saturate + a crisp bright
      hairline border. This is what makes a panel look lit from within
-     against near-black, the way iOS Control Center panels do. */
-  --glass-opacity: 0.12;
-  --glass-blur: 56px;
-  --glass-saturate: 2.4;
+     against the deep blue-black, the way iOS Control Center panels do.
+     Pushed further still: more transparent, more blurred. */
+  --glass-opacity: 0.08;
+  --glass-blur: 72px;
+  --glass-saturate: 2.6;
   --glass-border-opacity: 0.22;
   --glass-bg: rgba(255, 255, 255, var(--glass-opacity));
   --glass-border: rgba(255, 255, 255, var(--glass-border-opacity));
@@ -80,6 +81,12 @@ body {
   margin: 0;
   min-height: 100vh;
   background-color: var(--bg-primary);
+  /* Dramatic deep-blue night-sky depth instead of a perfectly flat fill -
+     a soft radial glow top-right fading into the base navy, fixed so it
+     doesn't scroll/repeat oddly on long pages. */
+  background-image: radial-gradient(ellipse 1200px 800px at 85% -10%, rgba(30, 58, 110, 0.35), transparent 60%),
+    radial-gradient(ellipse 900px 700px at 10% 110%, rgba(20, 40, 80, 0.25), transparent 60%);
+  background-attachment: fixed;
   font-family: var(--font-sans);
   /* Follows <html dir>, which index.html defaults to rtl and App.tsx toggles per
      `lang`. Do NOT hardcode this here — a fixed value on body overrides the
@@ -641,7 +648,10 @@ body {
   display: grid;
   grid-template-columns: 350px 1fr;
   gap: 24px;
-  align-items: start;
+  /* Both columns match the taller one's height (the form column usually
+     wins) instead of each hugging its own content - was "start", which is
+     why the staff-list card used to end well short of the form beside it. */
+  align-items: stretch;
 }
 
 .dashboard-grid {
@@ -875,6 +885,11 @@ body {
 
 .desktop-users-table {
   display: block;
+  /* Grow to fill the extra height .users-grid's stretch now gives this
+     card, so the list genuinely reaches the bottom instead of leaving a
+     blank gap under a short filtered list. */
+  flex: 1;
+  min-height: 0;
 }
 
 .mobile-users-cards {
