@@ -889,7 +889,7 @@ const buildHourlyBreakdownHtml = (scannedAtTimes: string[], locale: 'he' | 'en')
 // earlier one becomes "from"). Values exchanged with the parent are still
 // Gregorian "YYYY-MM-DD" (matching Scan.logicalDate), since only the grid's
 // navigation/layout is Hebrew-calendar-based, not the stored filter values.
-function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, single, fullWidth }: {
+function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, single, fullWidth, minDate, maxDate }: {
   fromValue: string;
   toValue: string;
   onChange: (from: string, to: string) => void;
@@ -898,6 +898,9 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
   // single: one click picks one day (from === to) and closes the popup.
   single?: boolean;
   fullWidth?: boolean;
+  // Days outside [minDate, maxDate] ("YYYY-MM-DD") are shown greyed out and can't be picked.
+  minDate?: string;
+  maxDate?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [viewYM, setViewYM] = useState(() => {
@@ -953,7 +956,10 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
   const PrevIcon = lang === 'he' ? ChevronRight : ChevronLeft;
   const NextIcon = lang === 'he' ? ChevronLeft : ChevronRight;
 
+  const isDayDisabled = (ymd: string) => (!!minDate && ymd < minDate) || (!!maxDate && ymd > maxDate);
+
   const handleDayClick = (ymd: string) => {
+    if (isDayDisabled(ymd)) return;
     if (single) {
       onChange(ymd, ymd);
       setIsOpen(false);
@@ -1034,17 +1040,20 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
               const isEnd = day.ymd === toValue && !pendingStart;
               const inRange = !pendingStart && fromValue && toValue && day.ymd > fromValue && day.ymd < toValue;
               const isToday = day.ymd === todayStr;
+              const dayDisabled = isDayDisabled(day.ymd);
               return (
                 <button
                   type="button"
                   key={day.hebrewDay}
+                  disabled={dayDisabled}
                   onClick={() => handleDayClick(day.ymd)}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                     padding: '4px 0', borderRadius: '6px',
                     border: isToday && !isStart && !isEnd ? '1px solid var(--accent)' : '1px solid transparent',
                     background: (isStart || isEnd) ? 'var(--accent)' : inRange ? 'rgba(226, 176, 78, 0.18)' : 'transparent',
-                    color: (isStart || isEnd) ? '#000' : '#fff', cursor: 'pointer', fontSize: '12px'
+                    color: (isStart || isEnd) ? '#000' : '#fff', cursor: dayDisabled ? 'not-allowed' : 'pointer', fontSize: '12px',
+                    opacity: dayDisabled ? 0.25 : 1
                   }}
                 >
                   <span style={{ fontWeight: 600 }}>{getHebrewDayLabel(day.gregDate)}</span>
@@ -1064,17 +1073,29 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
 // the browser's Gregorian-only <input type="datetime-local"> popup) plus a
 // plain time box. Value is the same "YYYY-MM-DDTHH:MM" local string that
 // datetime-local used, so callers' existing state and parsing don't change.
-function HebrewDateTimeField({ value, onChange, lang }: {
+function HebrewDateTimeField({ value, onChange, lang, minDate, maxDateTime }: {
   value: string;
   onChange: (next: string) => void;
   lang: 'he' | 'en';
+  // Optional limits, same local "YYYY-MM-DD" / "YYYY-MM-DDTHH:MM" format as value.
+  // Anything later than maxDateTime is pulled back to it, so a time that hasn't
+  // happened yet can't be entered.
+  minDate?: string;
+  maxDateTime?: string;
 }) {
   const datePart = value ? value.slice(0, 10) : '';
   const timePart = value && value.length >= 16 ? value.slice(11, 16) : '';
+  const maxDate = maxDateTime ? maxDateTime.slice(0, 10) : undefined;
   const todayYmd = () => {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const emit = (d: string, t: string) => {
+    let next = `${d}T${t}`;
+    if (maxDateTime && next > maxDateTime) next = maxDateTime;
+    if (minDate && next.slice(0, 10) < minDate) next = `${minDate}T${t}`;
+    onChange(next);
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1085,15 +1106,18 @@ function HebrewDateTimeField({ value, onChange, lang }: {
           fromValue={datePart}
           toValue={datePart}
           lang={lang}
+          minDate={minDate}
+          maxDate={maxDate}
           placeholder={lang === 'he' ? 'בחר תאריך' : 'Pick a date'}
-          onChange={(from) => onChange(`${from}T${timePart || '12:00'}`)}
+          onChange={(from) => emit(from, timePart || '12:00')}
         />
       </div>
       <input
         type="time"
         className="form-input"
         value={timePart}
-        onChange={(e) => onChange(`${datePart || todayYmd()}T${e.target.value || '00:00'}`)}
+        max={maxDateTime && datePart === maxDate ? maxDateTime.slice(11, 16) : undefined}
+        onChange={(e) => emit(datePart || todayYmd(), e.target.value || '00:00')}
       />
     </div>
   );
@@ -3159,11 +3183,14 @@ export default function App() {
     const when = forgotRideTimeLocal ? new Date(forgotRideTimeLocal) : new Date();
     const nowMs = Date.now();
     if (isNaN(when.getTime()) || when.getTime() > nowMs + 60_000) {
-      triggerToast(lang === 'he' ? 'לא ניתן לרשום נסיעה בזמן עתידי' : 'A ride cannot be logged in the future', 'danger');
+      triggerToast(lang === 'he' ? 'לא ניתן לרשום הסעה בזמן עתידי' : 'A ride cannot be logged in the future', 'danger');
       return;
     }
-    if (when.getTime() < nowMs - 24 * 60 * 60 * 1000) {
-      triggerToast(lang === 'he' ? 'ניתן לרשום רק נסיעות מ-24 השעות האחרונות' : 'Only rides from the last 24 hours can be logged', 'danger');
+    const startOfYesterday = new Date();
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    startOfYesterday.setHours(0, 0, 0, 0);
+    if (when.getTime() < startOfYesterday.getTime()) {
+      triggerToast(lang === 'he' ? 'ניתן לרשום רק הסעות מהיום או מאתמול' : 'Only rides from today or yesterday can be logged', 'danger');
       return;
     }
     const loc = LOCATIONS[forgotRideOrigin];
@@ -4454,7 +4481,23 @@ export default function App() {
 
             <div className="form-group">
               <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
-              <HebrewDateTimeField value={forgotRideTimeLocal} onChange={setForgotRideTimeLocal} lang={lang} />
+              {(() => {
+                // Only yesterday or today, and today only up to the current minute.
+                const pad = (n: number) => String(n).padStart(2, '0');
+                const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                const now = new Date();
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                return (
+                  <HebrewDateTimeField
+                    value={forgotRideTimeLocal}
+                    onChange={setForgotRideTimeLocal}
+                    lang={lang}
+                    minDate={fmt(yesterday)}
+                    maxDateTime={`${fmt(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}`}
+                  />
+                );
+              })()}
             </div>
 
             <div className="form-group">
