@@ -58,6 +58,7 @@ const HOURLY_SUMMARY_NUMERIC_COLS: { key: HourlySummaryNumericField; label: { he
   { key: 'bigOhel', label: { he: 'גדולים מהאוהל', en: 'Big from Ohel' } },
   { key: 'paidFromOhel', label: { he: 'שילמו מהאוהל', en: 'Paid from Ohel' } },
 ];
+import { NY_TZ, nyDateStr, nyLocalInput, isoToNyLocalInput, nyWallToDate, prevDay } from './services/nyTime';
 import { Html5Qrcode } from 'html5-qrcode';
 import QRCode from 'qrcode';
 import logo from './assets/logo.png';
@@ -949,7 +950,7 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
   };
 
   const monthLabel = HEBREW_MONTH_OPTIONS.find(m => m.key === viewYM.monthKey)?.label || viewYM.monthKey;
-  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const todayStr = nyDateStr();
   const days = useMemo(() => getHebrewMonthDays(viewYM.year, viewYM.monthKey), [viewYM.year, viewYM.monthKey]);
   const leadingBlanks = days.length > 0 ? days[0].gregDate.getDay() : 0;
 
@@ -1086,11 +1087,7 @@ function HebrewDateTimeField({ value, onChange, lang, minDate, maxDateTime }: {
   const datePart = value ? value.slice(0, 10) : '';
   const timePart = value && value.length >= 16 ? value.slice(11, 16) : '';
   const maxDate = maxDateTime ? maxDateTime.slice(0, 10) : undefined;
-  const todayYmd = () => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
+  const todayYmd = () => nyDateStr();
   const emit = (d: string, t: string) => {
     let next = `${d}T${t}`;
     if (maxDateTime && next > maxDateTime) next = maxDateTime;
@@ -1138,7 +1135,7 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
   const [viewYM, setViewYM] = useState(() => getHebrewYearMonth(new Date()));
 
   const monthLabel = HEBREW_MONTH_OPTIONS.find(m => m.key === viewYM.monthKey)?.label || viewYM.monthKey;
-  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const todayStr = nyDateStr();
   const selectedSet = new Set(selectedDates);
   const days = useMemo(() => getHebrewMonthDays(viewYM.year, viewYM.monthKey), [viewYM.year, viewYM.monthKey]);
   const leadingBlanks = days.length > 0 ? days[0].gregDate.getDay() : 0;
@@ -1718,12 +1715,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('');
   const [situationTimeframe, setSituationTimeframe] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [situationStartDate, setSituationStartDate] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().split('T')[0];
+    return nyDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
   });
   const [situationEndDate, setSituationEndDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return nyDateStr();
   });
   // Situation tab: which logicalDates currently have their individual-ride list
   // expanded open (used by both the Daily Breakdown card and the day-level
@@ -1771,7 +1766,7 @@ export default function App() {
   const [dispatcherEditPaidCount, setDispatcherEditPaidCount] = useState<number>(0);
   const [editDriverId, setEditDriverId] = useState('');
   const [editDispatcherId, setEditDispatcherId] = useState('');
-  const [editScannedAtLocal, setEditScannedAtLocal] = useState(''); // datetime-local input value, browser-local time
+  const [editScannedAtLocal, setEditScannedAtLocal] = useState(''); // datetime-local input value, New York wall time
 
   // Admin-only "add a ride manually" modal (central tab) - a full record the
   // dispatcher scan flow would normally create, entered by hand instead.
@@ -2184,13 +2179,6 @@ export default function App() {
   const dispatchersList = useMemo(() => {
     return users.filter(u => u.role === 'dispatcher');
   }, [users]);
-
-  // "2026-09-24T14:30" (local, for a datetime-local input) <-> ISO string.
-  const isoToLocalInput = (iso: string) => {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
 
   // Logical Today (01:00 AM reset rule)
   const logicalToday = useMemo(() => {
@@ -3055,14 +3043,14 @@ export default function App() {
     setEditDepartureLocation(scan.departureLocation);
     setEditDriverId(scan.driverId);
     setEditDispatcherId(scan.dispatcherId);
-    setEditScannedAtLocal(isoToLocalInput(scan.scannedAt));
+    setEditScannedAtLocal(isoToNyLocalInput(scan.scannedAt));
   };
 
   const handleSaveEditScan = () => {
     if (!selectedScanForEdit) return;
     const driver = driversList.find(d => d.id === editDriverId);
     const dispatcher = dispatchersList.find(d => d.id === editDispatcherId);
-    const newScannedAt = editScannedAtLocal ? new Date(editScannedAtLocal).toISOString() : selectedScanForEdit.scannedAt;
+    const newScannedAt = editScannedAtLocal ? nyWallToDate(editScannedAtLocal).toISOString() : selectedScanForEdit.scannedAt;
     const updated: Scan = {
       ...selectedScanForEdit,
       passengersCount: editPassengersCount,
@@ -3118,14 +3106,12 @@ export default function App() {
   };
 
   const openAddRideModal = () => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
     setAddRideDriverId(driversList[0]?.id || '');
     setAddRideDispatcherId(dispatchersList[0]?.id || '');
     setAddRidePassengers(0);
     setAddRidePaidCount(0);
     setAddRideDepartureLocation('770');
-    setAddRideScannedAtLocal(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
+    setAddRideScannedAtLocal(nyLocalInput());
     setShowAddRideModal(true);
   };
 
@@ -3136,7 +3122,7 @@ export default function App() {
       triggerToast(lang === 'he' ? 'יש לבחור נהג וסדרן' : 'Pick a driver and dispatcher', 'danger');
       return;
     }
-    const scannedAt = addRideScannedAtLocal ? new Date(addRideScannedAtLocal).toISOString() : new Date().toISOString();
+    const scannedAt = addRideScannedAtLocal ? nyWallToDate(addRideScannedAtLocal).toISOString() : new Date().toISOString();
     const loc = LOCATIONS[addRideDepartureLocation];
     try {
       await dbService.addScan({
@@ -3159,13 +3145,11 @@ export default function App() {
   };
 
   const openForgotRideModal = () => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
     setForgotRideDriverId('');
     setForgotRidePassengers(null);
     setForgotRidePaidCount(0);
     setForgotRideOrigin('770');
-    setForgotRideTimeLocal(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
+    setForgotRideTimeLocal(nyLocalInput());
     setShowForgotRideModal(true);
   };
 
@@ -3180,15 +3164,13 @@ export default function App() {
       triggerToast(lang === 'he' ? 'נא להזין מספר נוסעים (גם 0 אם יצא ריק)' : 'Enter the number of passengers (0 if it left empty)', 'danger');
       return;
     }
-    const when = forgotRideTimeLocal ? new Date(forgotRideTimeLocal) : new Date();
+    const when = forgotRideTimeLocal ? nyWallToDate(forgotRideTimeLocal) : new Date();
     const nowMs = Date.now();
     if (isNaN(when.getTime()) || when.getTime() > nowMs + 60_000) {
       triggerToast(lang === 'he' ? 'לא ניתן לרשום הסעה בזמן עתידי' : 'A ride cannot be logged in the future', 'danger');
       return;
     }
-    const startOfYesterday = new Date();
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-    startOfYesterday.setHours(0, 0, 0, 0);
+    const startOfYesterday = nyWallToDate(`${prevDay(nyDateStr())}T00:00`);
     if (when.getTime() < startOfYesterday.getTime()) {
       triggerToast(lang === 'he' ? 'ניתן לרשום רק הסעות מהיום או מאתמול' : 'Only rides from today or yesterday can be logged', 'danger');
       return;
@@ -3490,7 +3472,7 @@ export default function App() {
   // --- Reports Preview Generators ---
   const handleGenerateReportPreview = (type: 'daily' | 'monthly') => {
     setEmailPreviewType(type);
-    const dateStr = new Date().toLocaleDateString('he-IL');
+    const dateStr = new Date().toLocaleDateString('he-IL', { timeZone: NY_TZ });
     
     if (type === 'daily') {
       const todayScans = scans.filter(s => s.logicalDate === logicalToday);
@@ -3500,7 +3482,7 @@ export default function App() {
       todayScans.forEach(s => {
         tableRows += `
           <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px; text-align: right;">${new Date(s.scannedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</td>
+            <td style="padding: 10px; text-align: right;">${new Date(s.scannedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })}</td>
             <td style="padding: 10px; text-align: right;">${escHtml(s.driverName)}</td>
             <td style="padding: 10px; text-align: right;">${s.departureLocation === '770' ? '770 Eastern Parkway' : 'אוהל חב"ד'}</td>
             <td style="padding: 10px; text-align: center; font-weight: bold; color: #d97706;">${s.passengersCount}</td>
@@ -3575,7 +3557,7 @@ export default function App() {
           const diffMs = last.getTime() - first.getTime();
           const diffHrs = (diffMs / (1000 * 60 * 60)).toFixed(2);
           
-          const timeFormat = { hour: '2-digit' as const, minute: '2-digit' as const };
+          const timeFormat = { hour: '2-digit' as const, minute: '2-digit' as const, timeZone: NY_TZ };
           const firstStr = first.toLocaleTimeString('he-IL', timeFormat);
           const lastStr = last.toLocaleTimeString('he-IL', timeFormat);
 
@@ -3673,7 +3655,7 @@ export default function App() {
       const todayScans = scans.filter(s => s.logicalDate === logicalToday);
       const totalPassengers = todayScans.reduce((sum, s) => sum + s.passengersCount, 0);
       bodyText = `${subject}\n-----------------------------------\n*תאריך עבודה:* ${logicalToday}\n*סה"כ נסיעות:* ${todayScans.length}\n*סה"כ נוסעים:* ${totalPassengers}\n\n*פירוט הסריקות:*\n` + 
-        todayScans.map(s => `• *${new Date(s.scannedAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})}* - נהג: ${s.driverName.replace(' (נהג)', '')} | מוצא: ${s.departureLocation === '770' ? '770' : 'אוהל'} | נוסעים: *${s.passengersCount}*`).join('\n');
+        todayScans.map(s => `• *${new Date(s.scannedAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit', timeZone: NY_TZ})}* - נהג: ${s.driverName.replace(' (נהג)', '')} | מוצא: ${s.departureLocation === '770' ? '770' : 'אוהל'} | נוסעים: *${s.passengersCount}*`).join('\n');
     } else {
       const totalTrips = scans.length;
       const totalPassengers = scans.reduce((sum, s) => sum + s.passengersCount, 0);
@@ -3707,7 +3689,7 @@ export default function App() {
         getWeeklyParsha(new Date(scan.scannedAt)),
         getHebrewDate(scanDate),
         getDayOfWeekHe(scanDate),
-        new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: NY_TZ }),
         scan.logicalDate,
         scan.driverName.replace(' (נהג)', ''),
         scan.dispatcherName.replace(' (סדרן)', ''),
@@ -3887,7 +3869,7 @@ export default function App() {
           <div>
             <h1>${t.title}</h1>
             <div class="driver-name">${t.driver}: ${escHtml(driverName)}</div>
-            <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+            <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US', { timeZone: NY_TZ })} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })}</div>
           </div>
           <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale, override ? { from: override.dateFrom, to: override.dateTo } : undefined)}</div>
         </div>
@@ -4022,7 +4004,7 @@ export default function App() {
           <div>
             <h1>${t.title}</h1>
             <div class="driver-name">${t.dispatcher}: ${escHtml(dispatcherName)}</div>
-            <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US')} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+            <div class="sub">${t.generated} ${generatedOn.toLocaleDateString(locale === 'he' ? 'he-IL' : 'en-US', { timeZone: NY_TZ })} · ${generatedOn.toLocaleTimeString(locale === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })}</div>
           </div>
           <div class="scope-badge"><strong>${t.scope}:</strong> ${buildFilterScopeLabel(locale, override ? { from: override.dateFrom, to: override.dateTo } : undefined)}</div>
         </div>
@@ -4161,7 +4143,7 @@ export default function App() {
       const todayScans = scans.filter(s => s.logicalDate === logicalToday);
       const totalPassengers = todayScans.reduce((sum, s) => sum + s.passengersCount, 0);
       bodyText = `דו"ח פעילות יומי - אוהל בוס\n=========================\nתאריך עבודה: ${logicalToday}\nסה"כ נסיעות: ${todayScans.length}\nסה"כ נוסעים: ${totalPassengers}\n\nפירוט:\n` + 
-        todayScans.map(s => `- ${new Date(s.scannedAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})}: נהג: ${s.driverName}, מוצא: ${s.departureLocation === '770' ? '770' : 'אוהל'}, נוסעים: ${s.passengersCount}`).join('\n');
+        todayScans.map(s => `- ${new Date(s.scannedAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit', timeZone: NY_TZ})}: נהג: ${s.driverName}, מוצא: ${s.departureLocation === '770' ? '770' : 'אוהל'}, נוסעים: ${s.passengersCount}`).join('\n');
     }
     
     const mailtoUrl = `mailto:${encodeURIComponent(reportEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
@@ -4196,7 +4178,7 @@ export default function App() {
         const diffMs = last.getTime() - first.getTime();
         const hours = (diffMs / (1000 * 60 * 60)).toFixed(2);
         
-        const format = { hour: '2-digit' as const, minute: '2-digit' as const };
+        const format = { hour: '2-digit' as const, minute: '2-digit' as const, timeZone: NY_TZ };
         rows.push({
           date,
           name,
@@ -4252,7 +4234,7 @@ export default function App() {
             <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>{t('editTripTitle')}</h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '20px' }}>
               {t('editTripSubtitle', { driver: selectedScanForEdit.driverName })}
-              <br/>{t('editTripMeta', { dispatcher: selectedScanForEdit.dispatcherName, time: new Date(selectedScanForEdit.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US') })}
+              <br/>{t('editTripMeta', { dispatcher: selectedScanForEdit.dispatcherName, time: new Date(selectedScanForEdit.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { timeZone: NY_TZ }) })}
             </p>
 
             <div className="form-group">
@@ -4482,19 +4464,14 @@ export default function App() {
             <div className="form-group">
               <label className="form-label">{lang === 'he' ? 'שעת יציאה' : 'Departure time'}</label>
               {(() => {
-                // Only yesterday or today, and today only up to the current minute.
-                const pad = (n: number) => String(n).padStart(2, '0');
-                const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                const now = new Date();
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
+                // Only yesterday or today (New York), and today only up to the current minute.
                 return (
                   <HebrewDateTimeField
                     value={forgotRideTimeLocal}
                     onChange={setForgotRideTimeLocal}
                     lang={lang}
-                    minDate={fmt(yesterday)}
-                    maxDateTime={`${fmt(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}`}
+                    minDate={prevDay(nyDateStr())}
+                    maxDateTime={nyLocalInput()}
                   />
                 );
               })()}
@@ -5011,7 +4988,7 @@ export default function App() {
                                   </span>
                                 </div>
                                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                  {lang === 'he' ? 'יציאה בשעה' : 'Departure time'}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                                  {lang === 'he' ? 'יציאה בשעה' : 'Departure time'}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })}
                                 </span>
                                 {scan.isLateEntry ? (
                                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent)', marginTop: '2px' }}>
@@ -5020,7 +4997,7 @@ export default function App() {
                                 ) : (
                                 <span style={{ display: 'block', fontSize: '11px', color: scan.actualArrivalTime ? '#4ade80' : 'var(--text-secondary)', marginTop: '2px' }}>
                                   {scan.actualArrivalTime
-                                    ? `${lang === 'he' ? 'הגיע בשעה' : 'Arrived at'}: ${new Date(scan.actualArrivalTime).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}`
+                                    ? `${lang === 'he' ? 'הגיע בשעה' : 'Arrived at'}: ${new Date(scan.actualArrivalTime).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })}`
                                     : `${lang === 'he' ? 'צפוי להגיע' : 'Expected'}: ${scan.expectedArrivalTime ? (lang === 'he' ? `בערך ${scan.expectedArrivalTime}` : `approx. ${scan.expectedArrivalTime}`) : (lang === 'he' ? 'מחשב...' : 'calc...')}`}
                                 </span>
                                 )}
@@ -5075,7 +5052,7 @@ export default function App() {
                             <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
                               <strong style={{ color: '#fff', fontSize: '14px', display: 'block' }}>{scan.driverName.replace(' (נהג)', '')}</strong>
                               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                {t('time')}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} | {t('departure')}: {scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
+                                {t('time')}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })} | {t('departure')}: {scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
                                 {scan.departureLocation === 'Ohel' && (
                                   <> | {lang === 'he' ? 'שילמו' : 'paid'}: {scan.paidCount ?? 0}</>
                                 )}
@@ -5151,7 +5128,7 @@ export default function App() {
                                         <div style={{ textAlign: lang === 'he' ? 'right' : 'left' }}>
                                           <strong style={{ color: '#fff', fontSize: '12px', display: 'block' }}>{scan.driverName.replace(' (נהג)', '')}</strong>
                                           <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                            {t('time')}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })} | {t('departure')}: {scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
+                                            {t('time')}: {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ })} | {t('departure')}: {scan.departureLocation === '770' ? '770' : (lang === 'he' ? 'אוהל' : 'Ohel')}
                                           </span>
                                         </div>
                                         <div>
@@ -5323,7 +5300,7 @@ export default function App() {
                     const duration = latestScan.etaMinutes || 28;
                     const arrivalTimeMs = startTime.getTime() + duration * 60000;
                     const arrivalTime = new Date(arrivalTimeMs);
-                    expectedTimeStr = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                    expectedTimeStr = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ });
                     remainingMinutes = Math.max(0, Math.round((arrivalTimeMs - currentLiveTime.getTime()) / 60000));
                   }
 
@@ -5722,7 +5699,7 @@ export default function App() {
                                 {t('departureFrom', { loc: trip.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel') })}
                               </strong>
                               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' }), dispatcher: trip.dispatcherName })}
+                                {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ }), dispatcher: trip.dispatcherName })}
                                 {trip.isLateEntry && (
                                   <> | <span style={{ color: 'var(--accent)' }}>{lang === 'he' ? 'נרשם בדיעבד' : 'logged late'}</span></>
                                 )}
@@ -5815,7 +5792,7 @@ export default function App() {
                                               {t('departureFrom', { loc: trip.departureLocation === '770' ? (lang === 'he' ? '770 קראון הייטס' : '770 Crown Heights') : (lang === 'he' ? 'אוהל חב"ד' : 'Chabad Ohel') })}
                                             </strong>
                                             <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                              {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' }), dispatcher: trip.dispatcherName })}
+                                              {t('departureTimeAndDispatcher', { time: new Date(trip.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: NY_TZ }), dispatcher: trip.dispatcherName })}
                                             </span>
                                           </div>
                                           <div>
@@ -6868,7 +6845,7 @@ export default function App() {
                     <div style={{ padding: '12px 16px', margin: '-24px -24px 0', background: 'rgba(226,176,78,0.08)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                       <strong style={{ color: '#fff', fontSize: '14px' }}>{getHebrewDate(new Date())}</strong>
                       <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                        {new Date().toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        {new Date().toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: NY_TZ })}
                       </span>
                       {getWeeklyParsha(new Date()) && (
                         <span style={{ color: 'var(--accent)', fontSize: '12px', fontWeight: 700 }}>
@@ -7024,7 +7001,7 @@ export default function App() {
                                   <td>{getWeeklyParsha(new Date(scan.scannedAt))}</td>
                                   <td>{getHebrewDate(scanDate)}</td>
                                   <td>{getDayOfWeekHe(scanDate)}</td>
-                                  <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                                  <td>{new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: NY_TZ })}</td>
                                   <td>{lang === 'he' ? formatHebrewAndGregorianDate(scan.logicalDate) : scan.logicalDate}</td>
                                   <td>
                                     <strong>{scan.driverName}</strong>
@@ -7094,7 +7071,7 @@ export default function App() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                  {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                  {new Date(scan.scannedAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: NY_TZ })}
                                 </span>
                                 {scan.isLateEntry && (
                                   <span style={{ fontSize: '10px', color: 'var(--accent)' }}>

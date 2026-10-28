@@ -6,6 +6,7 @@
 // "My Trips Today" list in the main app — no dispatcher scan needed.
 import { useState, useEffect, type CSSProperties } from 'react';
 import dbService, { LOCATIONS } from './services/db';
+import { nyLocalInput, nyDateStr, nyWallToDate } from './services/nyTime';
 import type { User, DepartureLocation } from './services/db';
 import logo from './assets/logo.png';
 import './App.css';
@@ -67,16 +68,15 @@ const TXT = {
   },
 } as const;
 
+// Both read and write New York wall time, regardless of the device's timezone.
 function nowHHMM(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return nyLocalInput().slice(11, 16);
 }
 
 function buildScannedAt(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(n => parseInt(n, 10));
-  const d = new Date();
-  if (!isNaN(h) && !isNaN(m)) d.setHours(h, m, 0, 0);
-  return d.toISOString();
+  if (isNaN(h) || isNaN(m)) return new Date().toISOString();
+  return nyWallToDate(`${nyDateStr()}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`).toISOString();
 }
 
 export default function ReturnReport() {
