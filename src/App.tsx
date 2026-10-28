@@ -1086,11 +1086,12 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 width: '100%', height: '100%', padding: '4px', borderRadius: '14px',
-                border: isToday && !isHalf ? '2px solid var(--accent)' : `1px solid ${isHalf ? 'transparent' : 'var(--glass-border)'}`,
-                background: isHalf ? 'var(--accent)' : 'var(--glass-bg)',
-                backdropFilter: isHalf ? undefined : 'blur(var(--glass-blur)) saturate(var(--glass-saturate))',
-                WebkitBackdropFilter: isHalf ? undefined : 'blur(var(--glass-blur)) saturate(var(--glass-saturate))',
-                boxShadow: isHalf ? undefined : 'inset 0 1px 0 0 rgba(255, 255, 255, 0.1)',
+                position: 'relative',
+                border: isToday && !isHalf ? '2px solid var(--accent)' : `1px solid ${isHalf ? 'transparent' : 'rgba(255, 255, 255, 0.13)'}`,
+                background: isHalf ? 'var(--accent)' : 'linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04) 50%, rgba(255, 255, 255, 0.02))',
+                backdropFilter: isHalf ? undefined : 'blur(20px) saturate(160%)',
+                WebkitBackdropFilter: isHalf ? undefined : 'blur(20px) saturate(160%)',
+                boxShadow: isHalf ? undefined : '0 6px 18px rgba(0, 0, 0, 0.45)',
                 color: isHalf ? '#000' : '#fff', cursor: 'pointer', fontSize: '13px', gap: '4px',
                 transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease'
               }}
