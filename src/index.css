@@ -1,21 +1,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  --bg-primary: #090a0f;
-  --bg-secondary: #0f111a;
+  /* True black page, like Apple's own dark surfaces (Control Center, Music) -
+     glass only reads as "glass" when it's visibly LIGHTER than what it sits
+     on, not a slightly-less-dark shade of the same navy. */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0c;
   --bg-panel: #131722;
-  --border-color: #1e2433;
-  --border-hover: #2e374d;
-  
-  /* Glassmorphism custom variables - Apple-style frosted glass (same recipe
-     proven on the login card and .toast: strong blur + saturate boost reads
-     as "glass", not just "semi-transparent"). Tinted from --bg-panel rather
-     than --bg-primary for a touch of warmth against the flat dark page bg. */
-  --glass-opacity: 0.55;
-  --glass-blur: 28px;
-  --glass-saturate: 1.8;
-  --glass-border-opacity: 0.12;
-  --glass-bg: rgba(19, 23, 34, var(--glass-opacity));
+  --border-color: #232323;
+  --border-hover: #3a3a3a;
+
+  /* Glassmorphism custom variables - genuine Apple-style frosted glass: a
+     WHITE wash (not a dark tint) + strong blur/saturate + a crisp bright
+     hairline border. This is what makes a panel look lit from within
+     against true black, the way iOS Control Center panels do. */
+  --glass-opacity: 0.1;
+  --glass-blur: 40px;
+  --glass-saturate: 2.2;
+  --glass-border-opacity: 0.22;
+  --glass-bg: rgba(255, 255, 255, var(--glass-opacity));
   --glass-border: rgba(255, 255, 255, var(--glass-border-opacity));
   
   --accent: #e2b04e; /* Gold Accent */
@@ -99,15 +102,17 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: 14px;
   padding: 24px;
-  /* Outer shadow for lift + a hairline inner highlight along the top edge -
-     the classic "glass catching light from above" cue. */
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  /* Deep outer shadow for real lift off true black + a brighter inner
+     highlight along the top edge - the classic "glass catching light from
+     above" cue, pushed further so it actually reads at a glance. */
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .card:hover {
-  border-color: rgba(255, 255, 255, calc(var(--glass-border-opacity) * 2.2));
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+  border-color: rgba(255, 255, 255, calc(var(--glass-border-opacity) * 1.6));
+  background: rgba(255, 255, 255, calc(var(--glass-opacity) + 0.03));
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.85), inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
 }
 
 .card-title {
@@ -152,13 +157,15 @@ body {
 }
 
 .btn-secondary {
-  background: #181d2c;
-  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--text-primary);
 }
 .btn-secondary:hover {
-  background: #20273b;
-  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .btn-danger {
@@ -195,12 +202,12 @@ body {
   width: 100%;
   padding: 10px 14px;
   border-radius: 8px;
-  /* Faint frosted haze instead of a flat solid fill - matches the glass
-     surfaces around it without hurting legibility (text stays near-opaque). */
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-color);
+  /* Frosted haze instead of a flat solid fill - matches the glass surfaces
+     around it without hurting legibility (text stays near-opaque). */
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 15px;
@@ -210,7 +217,7 @@ body {
 
 .form-input:focus {
   border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .form-select {
@@ -325,11 +332,13 @@ body {
   width: 100%;
   max-width: 480px;
   height: 68px;
-  /* Frosted tab bar, same recipe as .card - the iOS-style "glass chrome" look. */
-  background: rgba(15, 17, 26, 0.72);
-  backdrop-filter: blur(24px) saturate(1.8);
-  -webkit-backdrop-filter: blur(24px) saturate(1.8);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  /* Frosted tab bar, same white-glass recipe as .card - the iOS-style
+     "glass chrome" look, lit from within against true black. */
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(40px) saturate(2.2);
+  -webkit-backdrop-filter: blur(40px) saturate(2.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 -8px 32px 0 rgba(0, 0, 0, 0.5);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
