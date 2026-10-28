@@ -7231,7 +7231,7 @@ export default function App() {
                                 </td>
                                 <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
                                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(226, 176, 78, 0.3)', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
+                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
                                       {u.code}
                                     </span>
                                     <button
@@ -7306,7 +7306,7 @@ export default function App() {
                               <div><strong>{(u.role === 'screen' ? t('screenLocationLabel') : (lang === 'he' ? 'טלפון:' : 'Phone:'))}</strong> {u.phone}</div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <strong>{lang === 'he' ? 'קוד כניסה:' : 'Passcode:'}</strong>
-                                <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '3px 8px', borderRadius: '10px', border: '1px solid rgba(226, 176, 78, 0.3)', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
+                                <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '3px 8px', borderRadius: '10px', color: 'var(--accent)', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
                                   {u.code}
                                 </span>
                                 <button
@@ -7384,7 +7384,7 @@ export default function App() {
                                   <td><strong>{u.name}</strong></td>
                                   <td>{u.phone}</td>
                                   <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', border: '1px solid rgba(226, 176, 78, 0.3)', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
+                                    <span style={{ background: 'rgba(226, 176, 78, 0.1)', padding: '4px 10px', borderRadius: '10px', color: 'var(--accent)', fontSize: '12px', fontFamily: 'monospace' }}>
                                       {u.code}
                                     </span>
                                   </td>
