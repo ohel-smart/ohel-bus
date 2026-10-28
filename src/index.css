@@ -1,11 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  /* True black page, like Apple's own dark surfaces (Control Center, Music) -
-     glass only reads as "glass" when it's visibly LIGHTER than what it sits
-     on, not a slightly-less-dark shade of the same navy. */
-  --bg-primary: #000000;
-  --bg-secondary: #0a0a0c;
+  /* Near-black page with a faint blue cast (not a pure neutral black) -
+     like Apple's own dark surfaces (Control Center, Music). Glass only
+     reads as "glass" when it's visibly LIGHTER than what it sits on. */
+  --bg-primary: #020306;
+  --bg-secondary: #06070b;
   --bg-panel: #131722;
   --border-color: #232323;
   --border-hover: #3a3a3a;
@@ -13,10 +13,10 @@
   /* Glassmorphism custom variables - genuine Apple-style frosted glass: a
      WHITE wash (not a dark tint) + strong blur/saturate + a crisp bright
      hairline border. This is what makes a panel look lit from within
-     against true black, the way iOS Control Center panels do. */
-  --glass-opacity: 0.1;
-  --glass-blur: 40px;
-  --glass-saturate: 2.2;
+     against near-black, the way iOS Control Center panels do. */
+  --glass-opacity: 0.12;
+  --glass-blur: 56px;
+  --glass-saturate: 2.4;
   --glass-border-opacity: 0.22;
   --glass-bg: rgba(255, 255, 255, var(--glass-opacity));
   --glass-border: rgba(255, 255, 255, var(--glass-border-opacity));
@@ -335,8 +335,8 @@ body {
   /* Frosted tab bar, same white-glass recipe as .card - the iOS-style
      "glass chrome" look, lit from within against true black. */
   background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(40px) saturate(2.2);
-  -webkit-backdrop-filter: blur(40px) saturate(2.2);
+  backdrop-filter: blur(56px) saturate(2.4);
+  -webkit-backdrop-filter: blur(56px) saturate(2.4);
   border-top: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 -8px 32px 0 rgba(0, 0, 0, 0.5);
   display: grid;
@@ -529,8 +529,12 @@ body {
   overflow-y: auto;
   max-height: 65vh;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  /* Transparent - this sits directly inside a .card, so the card's own
+     glass fill/blur should show through, not get painted over by a flat
+     solid color (that was the whole reason this table used to look like
+     a different, flatter design than the central table next to it). */
+  border: none;
+  background: transparent;
 }
 
 .tp-table {
@@ -541,17 +545,17 @@ body {
 }
 
 .tp-table th {
-  background: #111522;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
   font-weight: 600;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 13px;
 }
 
 .tp-table td {
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 
@@ -560,7 +564,7 @@ body {
 }
 
 .tp-table tr:hover {
-  background: #141926;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* Header styles */

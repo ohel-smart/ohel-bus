@@ -1274,7 +1274,7 @@ function HourlySummaryTable({ rows, lang }: { rows: HourlySummaryRow[]; lang: 'h
             </thead>
             <tbody>
               {rows.map((r, rowIdx) => (
-                <tr key={`${r.dateStr}_${r.time}`} style={{ borderTop: '1px solid var(--border-color)' }}>
+                <tr key={`${r.dateStr}_${r.time}`} style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
                   <td style={tdCentral}>{r.parsha}</td>
                   <td style={tdCentral}>{r.hebrewDate}</td>
                   <td style={tdCentral}>{r.dayOfWeek}</td>
@@ -2340,7 +2340,7 @@ export default function App() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr>
+                    <tr style={{ background: 'rgba(255, 255, 255, 0.04)' }}>
                       <th style={thCentral}>{lang === 'he' ? 'שעה' : 'Time'}</th>
                       <th style={thCentral}>{lang === 'he' ? 'נהג' : 'Driver'}</th>
                       <th style={thCentral}>{lang === 'he' ? 'מוצא' : 'Origin'}</th>
@@ -2349,7 +2349,7 @@ export default function App() {
                   </thead>
                   <tbody>
                     {dayScans.map(s => (
-                      <tr key={s.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                      <tr key={s.id} style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
                         <td style={{ ...tdCentral, fontFamily: 'monospace', color: '#fff' }}>
                           {exactTimeStr(new Date(s.scannedAt))}
                         </td>
@@ -6168,7 +6168,7 @@ export default function App() {
                         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '480px' }}>
                             <thead>
-                              <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left' }}>
+                              <tr style={{ color: 'var(--text-secondary)', textAlign: lang === 'he' ? 'right' : 'left', background: 'rgba(255, 255, 255, 0.04)' }}>
                                 {centralSelectMode && <th style={thCentral}></th>}
                                 <th style={thCentral}>{t('parshaHeader')}</th>
                                 <th style={thCentral}>{t('hebrewDateHeader')}</th>
@@ -6187,7 +6187,7 @@ export default function App() {
                             </thead>
                             <tbody>
                               {centralFlatRows.map(r => (
-                                <tr key={r.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                <tr key={r.id} style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
                                   {centralSelectMode && (
                                     <td style={tdCentral}>
                                       <input
