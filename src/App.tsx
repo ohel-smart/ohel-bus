@@ -2152,10 +2152,14 @@ export default function App() {
 
     let totalPassengers = 0;
     let totalTrips = 0;
+    let tripsFromOhel = 0;
+    let tripsFrom770 = 0;
 
     filtered.forEach(scan => {
       totalTrips += 1;
       totalPassengers += (scan.passengersCount || 0);
+      if (scan.departureLocation === 'Ohel') tripsFromOhel += 1;
+      else if (scan.departureLocation === '770') tripsFrom770 += 1;
 
       // Driver Grouping
       if (scan.driverId) {
@@ -2194,7 +2198,9 @@ export default function App() {
       dispatchersList: Object.values(dispatchersMap),
       dailyList,
       totalPassengers,
-      totalTrips
+      totalTrips,
+      tripsFromOhel,
+      tripsFrom770
     };
   }, [scans, situationTimeframe, situationStartDate, situationEndDate, logicalToday, currentLiveTime]);
 
@@ -6351,44 +6357,35 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Custom Date Picker Fields */}
-                    {situationTimeframe === 'custom' && (
-                      <div className="card" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', padding: '16px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים:' : 'Date range:'}</span>
-                        <HebrewRangePicker
-                          fromValue={situationStartDate}
-                          toValue={situationEndDate}
-                          onChange={(from, to) => { setSituationStartDate(from); setSituationEndDate(to); }}
-                          lang={lang}
-                          placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end date'}
-                        />
-                      </div>
-                    )}
+                    {/* Date range picker - always visible; picking a range switches to the custom timeframe */}
+                    <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', padding: '16px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים:' : 'Date range:'}</span>
+                      <HebrewRangePicker
+                        fromValue={situationTimeframe === 'custom' ? situationStartDate : ''}
+                        toValue={situationTimeframe === 'custom' ? situationEndDate : ''}
+                        onChange={(from, to) => {
+                          setSituationStartDate(from);
+                          setSituationEndDate(to);
+                          if (from && to) setSituationTimeframe('custom');
+                        }}
+                        lang={lang}
+                        placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end date'}
+                      />
+                    </div>
 
-                    {/* Overview Cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                      <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ background: 'rgba(51, 204, 255, 0.1)', padding: '12px', borderRadius: '10px' }}>
-                          <Users size={24} color="var(--accent)" />
+                    {/* Overview Cards - one compact row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
+                      {[
+                        { label: lang === 'he' ? 'סה"כ נוסעים' : 'Total Passengers', value: situationData.totalPassengers, color: '#fff' },
+                        { label: lang === 'he' ? 'סה"כ נסיעות' : 'Total Trips', value: situationData.totalTrips, color: '#fff' },
+                        { label: lang === 'he' ? 'נסיעות מהאוהל' : 'Trips from Ohel', value: situationData.tripsFromOhel, color: 'var(--accent)' },
+                        { label: lang === 'he' ? 'נסיעות מ-770' : 'Trips from 770', value: situationData.tripsFrom770, color: '#10b981' }
+                      ].map(stat => (
+                        <div key={stat.label} className="card" style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', textAlign: 'center', minWidth: 0 }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.3 }}>{stat.label}</span>
+                          <strong style={{ fontSize: '20px', color: stat.color }}>{stat.value}</strong>
                         </div>
-                        <div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>
-                            {lang === 'he' ? 'סה"כ נוסעים בטווח' : 'Total Passengers in Range'}
-                          </span>
-                          <strong style={{ fontSize: '20px', color: '#fff' }}>{situationData.totalPassengers}</strong>
-                        </div>
-                      </div>
-                      <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '12px', borderRadius: '10px' }}>
-                          <Navigation size={24} color="#10b981" />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>
-                            {lang === 'he' ? 'סה"כ נסיעות בטווח' : 'Total Trips in Range'}
-                          </span>
-                          <strong style={{ fontSize: '20px', color: '#fff' }}>{situationData.totalTrips}</strong>
-                        </div>
-                      </div>
+                      ))}
                     </div>
 
                     {/* Content Grid */}
