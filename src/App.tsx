@@ -6371,6 +6371,20 @@ export default function App() {
                         lang={lang}
                         placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end date'}
                       />
+                      {situationTimeframe === 'custom' && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            setSituationStartDate('');
+                            setSituationEndDate('');
+                            setSituationTimeframe('today');
+                          }}
+                          style={{ padding: '8px 14px', fontSize: '12px' }}
+                        >
+                          {lang === 'he' ? 'נקה תאריך' : 'Clear dates'}
+                        </button>
+                      )}
                     </div>
 
                     {/* Overview Cards - one compact row */}
