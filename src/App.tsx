@@ -4788,15 +4788,8 @@ export default function App() {
                   <button
                     type="button"
                     onClick={openForgotRideModal}
-                    className="btn btn-secondary"
-                    style={{
-                      width: '100%', padding: '18px 16px', justifyContent: 'center', gap: '8px',
-                      fontSize: '15px', fontWeight: 700, color: 'var(--accent)',
-                      background: 'rgba(226, 176, 78, 0.06)',
-                      border: 'none', borderBottom: '2px solid var(--accent)', borderRadius: '12px'
-                    }}
+                    style={{ display: 'block', margin: '0 auto', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', padding: '4px 8px' }}
                   >
-                    <Clock size={16} />
                     {lang === 'he' ? 'שכחת להוציא נסיעה?' : 'Forgot to log a ride?'}
                   </button>
                   </>
