@@ -6354,48 +6354,14 @@ export default function App() {
                     {/* Custom Date Picker Fields */}
                     {situationTimeframe === 'custom' && (
                       <div className="card" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', padding: '16px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '150px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'מתאריך:' : 'From Date:'}</span>
-                          <input 
-                            type="date" 
-                            value={situationStartDate}
-                            onChange={(e) => setSituationStartDate(e.target.value)}
-                            style={{ 
-                              background: 'rgba(255,255,255,0.05)', 
-                              border: '1px solid var(--border-color)', 
-                              borderRadius: '6px', 
-                              color: '#fff', 
-                              padding: '8px 12px',
-                              fontSize: '13px'
-                            }}
-                          />
-                          {situationStartDate && (
-                            <span style={{ fontSize: '11px', color: 'var(--accent)' }}>
-                              {getHebrewDate(new Date(situationStartDate + 'T12:00:00'))}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '150px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'עד תאריך:' : 'To Date:'}</span>
-                          <input
-                            type="date"
-                            value={situationEndDate}
-                            onChange={(e) => setSituationEndDate(e.target.value)}
-                            style={{
-                              background: 'rgba(255,255,255,0.05)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '6px',
-                              color: '#fff',
-                              padding: '8px 12px',
-                              fontSize: '13px'
-                            }}
-                          />
-                          {situationEndDate && (
-                            <span style={{ fontSize: '11px', color: 'var(--accent)' }}>
-                              {getHebrewDate(new Date(situationEndDate + 'T12:00:00'))}
-                            </span>
-                          )}
-                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים:' : 'Date range:'}</span>
+                        <HebrewRangePicker
+                          fromValue={situationStartDate}
+                          toValue={situationEndDate}
+                          onChange={(from, to) => { setSituationStartDate(from); setSituationEndDate(to); }}
+                          lang={lang}
+                          placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end date'}
+                        />
                       </div>
                     )}
 
