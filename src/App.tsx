@@ -1764,7 +1764,7 @@ export default function App() {
   // lets the admin pick any dispatcher).
   const [showForgotRideModal, setShowForgotRideModal] = useState(false);
   const [forgotRideDriverId, setForgotRideDriverId] = useState('');
-  const [forgotRidePassengers, setForgotRidePassengers] = useState<number>(0);
+  const [forgotRidePassengers, setForgotRidePassengers] = useState<number | null>(null);
   const [forgotRidePaidCount, setForgotRidePaidCount] = useState<number>(0);
   const [forgotRideOrigin, setForgotRideOrigin] = useState<DepartureLocation>('770');
   const [forgotRideTimeLocal, setForgotRideTimeLocal] = useState('');
@@ -1814,7 +1814,8 @@ export default function App() {
   const [expandedDays, setExpandedDays] = useState<{ [date: string]: boolean }>({ [dbService.getLogicalDate()]: true });
   const [showDriverHistory, setShowDriverHistory] = useState<boolean>(false);
   const [scannerModalDriver, setScannerModalDriver] = useState<User | null>(null);
-  const [scannerModalPassengers, setScannerModalPassengers] = useState<number>(0);
+  // null = not typed yet (save is blocked); 0 = explicitly entered "0" (an empty ride).
+  const [scannerModalPassengers, setScannerModalPassengers] = useState<number | null>(null);
   // Headcount of riders who paid for the return ride - only asked/shown when
   // currentDepartureLocation is 'Ohel' (the Ohel-origin, 770-bound direction).
   const [scannerModalPaidCount, setScannerModalPaidCount] = useState<number>(0);
@@ -1824,7 +1825,7 @@ export default function App() {
   const [noPhoneShowForm, setNoPhoneShowForm] = useState<boolean>(false);
   const [noPhoneCode, setNoPhoneCode] = useState<string>('');
   const [noPhoneDispatcher, setNoPhoneDispatcher] = useState<User | null>(null);
-  const [noPhonePassengers, setNoPhonePassengers] = useState<number>(0);
+  const [noPhonePassengers, setNoPhonePassengers] = useState<number | null>(null);
   const [noPhonePaidCount, setNoPhonePaidCount] = useState<number>(0);
 
   const toggleDayExpanded = (date: string) => {
@@ -1987,7 +1988,7 @@ export default function App() {
       triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
     } else {
       setScannerModalDriver(matched);
-      setScannerModalPassengers(0);
+      setScannerModalPassengers(null);
       setScannerModalPaidCount(0);
       setActiveTab('scan');
       triggerToast(t('externalQrSuccess'), 'success');
@@ -2023,7 +2024,7 @@ export default function App() {
         // explain why below instead of letting a double-scan through.
         if (blockedMinutes === null) {
           setScannerModalDriver(targetDriver);
-          setScannerModalPassengers(0);
+          setScannerModalPassengers(null);
           setScannerModalPaidCount(0);
         }
 
@@ -3136,7 +3137,7 @@ export default function App() {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     setForgotRideDriverId('');
-    setForgotRidePassengers(0);
+    setForgotRidePassengers(null);
     setForgotRidePaidCount(0);
     setForgotRideOrigin('770');
     setForgotRideTimeLocal(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
@@ -3150,8 +3151,8 @@ export default function App() {
       triggerToast(lang === 'he' ? 'יש לבחור נהג' : 'Pick a driver', 'danger');
       return;
     }
-    if (forgotRidePassengers <= 0) {
-      triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+    if (forgotRidePassengers === null) {
+      triggerToast(lang === 'he' ? 'נא להזין מספר נוסעים (גם 0 אם יצא ריק)' : 'Enter the number of passengers (0 if it left empty)', 'danger');
       return;
     }
     const when = forgotRideTimeLocal ? new Date(forgotRideTimeLocal) : new Date();
@@ -4443,9 +4444,9 @@ export default function App() {
               <input
                 type="number"
                 className="form-input"
-                value={forgotRidePassengers === 0 ? '' : forgotRidePassengers}
+                value={forgotRidePassengers ?? ''}
                 placeholder="0"
-                onChange={(e) => setForgotRidePassengers(Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={(e) => setForgotRidePassengers(e.target.value === '' ? null : Math.max(0, parseInt(e.target.value) || 0))}
               />
             </div>
 
@@ -4758,7 +4759,7 @@ export default function App() {
                                   triggerToast(t('driverScanBlocked', { name: matched.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
                                 } else {
                                   setScannerModalDriver(matched);
-                                  setScannerModalPassengers(0);
+                                  setScannerModalPassengers(null);
                                   setScannerModalPaidCount(0);
                                 }
                               }
@@ -5536,8 +5537,8 @@ export default function App() {
                               <input
                                 type="number"
                                 className="form-input"
-                                value={noPhonePassengers === 0 ? '' : noPhonePassengers}
-                                onChange={(e) => setNoPhonePassengers(Math.max(0, parseInt(e.target.value) || 0))}
+                                value={noPhonePassengers ?? ''}
+                                onChange={(e) => setNoPhonePassengers(e.target.value === '' ? null : Math.max(0, parseInt(e.target.value) || 0))}
                                 placeholder="0"
                                 style={{ textAlign: 'center', marginBottom: '12px' }}
                               />
@@ -5561,7 +5562,7 @@ export default function App() {
                                   type="button"
                                   className="btn btn-secondary"
                                   style={{ flex: 1, fontSize: '12px' }}
-                                  onClick={() => { setNoPhoneShowForm(false); setNoPhoneDispatcher(null); setNoPhonePassengers(0); setNoPhonePaidCount(0); }}
+                                  onClick={() => { setNoPhoneShowForm(false); setNoPhoneDispatcher(null); setNoPhonePassengers(null); setNoPhonePaidCount(0); }}
                                 >
                                   {t('noPhoneCancel')}
                                 </button>
@@ -5570,8 +5571,8 @@ export default function App() {
                                   className="btn btn-primary"
                                   style={{ flex: 1, fontSize: '12px' }}
                                   onClick={async () => {
-                                    if (noPhonePassengers <= 0) {
-                                      triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+                                    if (noPhonePassengers === null) {
+                                      triggerToast(lang === 'he' ? 'נא להזין מספר נוסעים (גם 0 אם יצא ריק)' : 'Enter the number of passengers (0 if it left empty)', 'danger');
                                       return;
                                     }
                                     const blockedMinutes = getDriverScanBlockMinutes(currentUser.id);
@@ -5579,7 +5580,7 @@ export default function App() {
                                       triggerToast(t('driverScanBlocked', { name: currentUser.name.replace(' (נהג)', ''), minutes: blockedMinutes }), 'danger');
                                       setNoPhoneShowForm(false);
                                       setNoPhoneDispatcher(null);
-                                      setNoPhonePassengers(0);
+                                      setNoPhonePassengers(null);
                                       setNoPhonePaidCount(0);
                                       return;
                                     }
@@ -5588,7 +5589,7 @@ export default function App() {
                                     const paidCountForScan = noPhonePaidCount;
                                     setNoPhoneShowForm(false);
                                     setNoPhoneDispatcher(null);
-                                    setNoPhonePassengers(0);
+                                    setNoPhonePassengers(null);
                                     setNoPhonePaidCount(0);
                                     setIsSavingScan(true);
                                     try {
@@ -8118,8 +8119,8 @@ export default function App() {
                     type="number"
                     className="form-input"
                     style={{ textAlign: 'center', fontSize: '20px', fontWeight: 'bold' }}
-                    value={scannerModalPassengers === 0 ? '' : scannerModalPassengers}
-                    onChange={(e) => setScannerModalPassengers(Math.max(0, parseInt(e.target.value) || 0))}
+                    value={scannerModalPassengers ?? ''}
+                    onChange={(e) => setScannerModalPassengers(e.target.value === '' ? null : Math.max(0, parseInt(e.target.value) || 0))}
                     placeholder="0"
                     autoFocus
                   />
@@ -8147,8 +8148,8 @@ export default function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <button
                     onClick={async () => {
-                      if (scannerModalPassengers <= 0) {
-                        triggerToast(lang === 'he' ? 'נא להזין לפחות נוסע אחד' : 'Please enter at least 1 passenger', 'danger');
+                      if (scannerModalPassengers === null) {
+                        triggerToast(lang === 'he' ? 'נא להזין מספר נוסעים (גם 0 אם יצא ריק)' : 'Enter the number of passengers (0 if it left empty)', 'danger');
                         return;
                       }
                       // Re-checked here too (not just when the modal opened) in case
@@ -8158,7 +8159,7 @@ export default function App() {
                       if (stillBlockedMinutes !== null && scannerModalDriver) {
                         triggerToast(t('driverScanBlocked', { name: scannerModalDriver.name.replace(' (נהג)', ''), minutes: stillBlockedMinutes }), 'danger');
                         setScannerModalDriver(null);
-                        setScannerModalPassengers(0);
+                        setScannerModalPassengers(null);
                         setScannerModalPaidCount(0);
                         return;
                       }
@@ -8172,7 +8173,7 @@ export default function App() {
                       // toast below reflects what actually happened on the server,
                       // not just the optimistic local write.
                       setScannerModalDriver(null);
-                      setScannerModalPassengers(0);
+                      setScannerModalPassengers(null);
                       setScannerModalPaidCount(0);
 
                       setIsSavingScan(true);
@@ -8218,7 +8219,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setScannerModalDriver(null);
-                      setScannerModalPassengers(0);
+                      setScannerModalPassengers(null);
                       setScannerModalPaidCount(0);
                     }}
                     className="btn btn-secondary"
