@@ -2180,6 +2180,17 @@ export default function App() {
     return users.filter(u => u.role === 'dispatcher');
   }, [users]);
 
+  // The name each dispatcher id was recorded under on their scans. Deleting a
+  // dispatcher's account (e.g. they finished their role) must not erase them
+  // from what they did - reports fall back to this name once the user is gone.
+  const dispatcherNameFromScans = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of scans) {
+      if (s.dispatcherId && s.dispatcherName) map[s.dispatcherId] = s.dispatcherName;
+    }
+    return map;
+  }, [scans]);
+
   // Logical Today (01:00 AM reset rule)
   const logicalToday = useMemo(() => {
     return dbService.getLogicalDate(currentLiveTime.toISOString());
@@ -3546,7 +3557,7 @@ export default function App() {
       Object.entries(attendance).forEach(([date, disps]) => {
         Object.entries(disps).forEach(([dispId, data]) => {
           const dispUser = users.find(u => u.id === dispId);
-          const dispName = dispUser ? dispUser.name.replace(' (סדרן)', '') : 'סדרן';
+          const dispName = (dispUser?.name ?? dispatcherNameFromScans[dispId] ?? 'סדרן').replace(' (סדרן)', '');
           
           const first = new Date(data.firstScan);
           const last = new Date(data.lastScan);
@@ -4167,7 +4178,7 @@ export default function App() {
     Object.entries(data).forEach(([date, disps]) => {
       Object.entries(disps).forEach(([dispId, details]) => {
         const dispUser = users.find(u => u.id === dispId);
-        const name = dispUser ? dispUser.name.replace(' (סדרן)', '') : (lang === 'he' ? 'סדרן' : 'Dispatcher');
+        const name = (dispUser?.name ?? dispatcherNameFromScans[dispId] ?? (lang === 'he' ? 'סדרן' : 'Dispatcher')).replace(' (סדרן)', '');
         
         const first = new Date(details.firstScan);
         const last = new Date(details.lastScan);
@@ -4187,7 +4198,7 @@ export default function App() {
     });
 
     return rows.sort((a, b) => b.date.localeCompare(a.date));
-  }, [scans, users, lang]);
+  }, [scans, users, lang, dispatcherNameFromScans]);
 
 
 
