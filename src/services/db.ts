@@ -43,6 +43,9 @@ export interface Scan {
   departureLocation: DepartureLocation;
   etaMinutes?: number;
   expectedArrivalTime?: string;
+  // True when Google couldn't be reached at scan time and etaMinutes is a stand-in;
+  // the WhatsApp bot re-checks such scans (and fixes etaMinutes) before messaging.
+  etaIsEstimate?: boolean;
   actualArrivalTime?: string;
   // Headcount (not money) of riders who paid for the return ride - only
   // meaningful when departureLocation === 'Ohel' (the 770-bound direction).
@@ -395,9 +398,12 @@ class DBService {
     // left hours ago), so skip the Routes API call and leave both fields off.
     let etaMinutes: number | undefined;
     let expectedArrivalTime: string | undefined;
+    let etaIsEstimate = false;
     if (!isLateEntry) {
       const startLoc = targetDirection === 'to_ohel' ? LOCATIONS['770'] : LOCATIONS['Ohel'];
-      etaMinutes = await this.getRouteEtaMinutes(startLoc.latitude, startLoc.longitude, targetDirection);
+      const eta = await this.getRouteEta(startLoc.latitude, startLoc.longitude, targetDirection);
+      etaMinutes = eta.minutes;
+      etaIsEstimate = eta.estimated;
 
       // Calculate expected arrival time clock string
       const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
@@ -414,7 +420,7 @@ class DBService {
       logicalDate: this.getLogicalDate(scanData.scannedAt),
       ...(isLateEntry
         ? { enteredAt: new Date().toISOString() }
-        : { etaMinutes, expectedArrivalTime })
+        : { etaMinutes, expectedArrivalTime, ...(etaIsEstimate ? { etaIsEstimate: true } : {}) })
     };
 
     this.scansCache = [...this.scansCache, newScan];
@@ -641,7 +647,13 @@ class DBService {
   }
 
   public async getRouteEtaMinutes(lat: number, lng: number, direction: Direction): Promise<number> {
-    if (!direction) return 0;
+    return (await this.getRouteEta(lat, lng, direction)).minutes;
+  }
+
+  // `estimated` is true when Google could not be reached and the number is the
+  // history-median / straight-line stand-in - the bot double-checks those.
+  public async getRouteEta(lat: number, lng: number, direction: Direction): Promise<{ minutes: number; estimated: boolean }> {
+    if (!direction) return { minutes: 0, estimated: false };
     const destination = direction === 'to_ohel' ? LOCATIONS['Ohel'] : LOCATIONS['770'];
 
     const config = this.getConfig() as any;
@@ -685,7 +697,7 @@ class DBService {
         if (durationStr) {
           const seconds = parseInt(String(durationStr).replace('s', ''), 10);
           if (!isNaN(seconds) && seconds > 0) {
-            return Math.max(1, Math.round(seconds / 60));
+            return { minutes: Math.max(1, Math.round(seconds / 60)), estimated: false };
           }
         }
         // The call succeeded at the network level but returned no usable route -
@@ -714,7 +726,7 @@ class DBService {
     if (recent.length >= 3) {
       const median = recent[Math.floor(recent.length / 2)];
       console.warn(`ETA fallback used: ${median} min (median of ${recent.length} recent real trips, not live traffic)`);
-      return median;
+      return { minutes: median, estimated: true };
     }
 
     // 2. Fallback: Haversine distance * NYC winding coefficient / typical speed.
@@ -732,7 +744,7 @@ class DBService {
       eta = Math.max(1, eta);
     }
     console.warn(`ETA fallback used: ${eta} min (distance estimate, not live traffic)`);
-    return eta;
+    return { minutes: eta, estimated: true };
   }
 }
 
