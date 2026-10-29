@@ -2785,10 +2785,16 @@ export default function App() {
   }, [scans, logicalToday]);
 
   const activeDriversToday = useMemo(() => {
+    // Closest to arriving first, farthest after it, and drivers not on a trip last.
+    const remaining = (loc: ActiveLocation) => (loc.status === 'en_route' ? (loc.etaMinutes ?? 25) : Infinity);
     return activeLocations.filter(loc => 
       loc.role === 'driver' && 
       (loc.status === 'en_route' || todayScans.some(s => s.driverId === loc.id))
-    );
+    ).sort((a, b) => {
+      const ra = remaining(a), rb = remaining(b);
+      if (ra === rb) return a.name.localeCompare(b.name);
+      return ra - rb;
+    });
   }, [activeLocations, todayScans]);
 
   const filteredStaffList = useMemo(() => {
