@@ -2416,6 +2416,7 @@ export default function App() {
       <div
         key={day.date}
         style={{
+          flexShrink: 0,
           borderRadius: '8px',
           border: '1px solid var(--border-color)',
           background: 'rgba(255,255,255,0.01)',
@@ -4237,7 +4238,7 @@ export default function App() {
       {/* EDIT MODAL DIALOG MOCK */}
       {selectedScanForEdit && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
-          <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', maxHeight: '90dvh', overflowY: 'auto' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>{t('editTripTitle')}</h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '20px' }}>
               {t('editTripSubtitle', { driver: selectedScanForEdit.driverName })}
@@ -4323,7 +4324,7 @@ export default function App() {
           that stays admin-only in the modal above. */}
       {dispatcherEditScan && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
-          <div className="card" style={{ maxWidth: '360px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+          <div className="card" style={{ maxWidth: '360px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', maxHeight: '90dvh', overflowY: 'auto' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>
               {lang === 'he' ? 'עריכת כמות' : 'Edit count'}
             </h3>
@@ -4361,7 +4362,7 @@ export default function App() {
       {/* ADD RIDE MODAL (admin-only, central tab) */}
       {showAddRideModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
-          <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '90%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'var(--border-color)', maxHeight: '90dvh', overflowY: 'auto' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>
               {lang === 'he' ? 'הוספת הסעה ידנית' : 'Add a ride manually'}
             </h3>
@@ -6681,6 +6682,7 @@ export default function App() {
                                 <div
                                   key={monthKeyFull}
                                   style={{
+                                    flexShrink: 0,
                                     borderRadius: '8px',
                                     border: '1px solid var(--border-color)',
                                     background: 'rgba(255,255,255,0.01)',
