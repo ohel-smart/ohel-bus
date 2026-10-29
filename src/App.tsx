@@ -1164,13 +1164,13 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', marginBottom: '8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
         {weekdayLabels.map((w, i) => (
           <div key={i} style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 600 }}>{w}</div>
         ))}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: '1fr', gap: '8px' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridAutoRows: '1fr', gap: '8px' }}>
         {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
         {days.map(day => {
           const isHalf = selectedSet.has(day.ymd);
@@ -1201,7 +1201,8 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
               <span style={{ fontSize: '13px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
               {pax > 0 && (
                 <span style={{
-                  fontSize: '12px', fontWeight: 600, marginTop: '2px', padding: '2px 8px', borderRadius: '20px',
+                  fontSize: '10px', fontWeight: 600, lineHeight: 1.2, marginTop: '1px', padding: '1px 5px', borderRadius: '20px',
+                  maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden',
                   background: isHalf ? 'rgba(0,0,0,0.2)' : 'rgba(226, 176, 78, 0.15)',
                   color: isHalf ? '#000' : 'var(--accent)'
                 }}>
