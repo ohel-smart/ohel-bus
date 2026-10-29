@@ -650,7 +650,13 @@ class DBService {
     const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || config.googleMapsApiKey || DEFAULT_GOOGLE_MAPS_API_KEY;
 
     // 1. Google Routes API (v2) — live traffic-aware ETA.
-    if (apiKey) {
+    // A single failed call (dropped connection, momentary quota/server error)
+    // used to fall straight through to the rough distance estimate, which put a
+    // clearly-wrong "35 min" for a ~55 min Ohel->770 drive into the WhatsApp group.
+    // Retry a couple of times first; the extra second or two is irrelevant here
+    // since this runs once per scan.
+    for (let attempt = 0; apiKey && attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 800 * attempt));
       try {
         const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
           method: 'POST',
@@ -687,10 +693,28 @@ class DBService {
         // all come back as a normal HTTP response with an `error` body, not a
         // thrown exception. Without logging this, a silent fallback to the much
         // less accurate distance-estimate below is completely invisible.
-        console.warn('Routes API returned no duration - falling back to distance estimate. Response:', JSON.stringify(data).slice(0, 500));
+        console.warn(`Routes API returned no duration (attempt ${attempt + 1}/3). Response:`, JSON.stringify(data).slice(0, 500));
       } catch (e) {
-        console.error('Routes API ETA error - falling back to distance estimate:', e);
+        console.error(`Routes API ETA error (attempt ${attempt + 1}/3):`, e);
       }
+    }
+
+    // Routes API unreachable: prefer what this same direction really took
+    // recently over the straight-line guess below, which badly underestimates
+    // this route (it reads ~35 min where real traffic-aware trips run 40-60).
+    const fromLoc = direction === 'to_ohel' ? '770' : 'Ohel';
+    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+    const hav = this.calculateHaversineDistance(lat, lng, destination.latitude, destination.longitude);
+    const havEta = Math.max(1, Math.round((hav * 1.28 / 38) * 60));
+    const recent = this.scansCache
+      .filter(sc => !sc.isLateEntry && sc.departureLocation === fromLoc && typeof sc.etaMinutes === 'number'
+        && sc.etaMinutes !== havEta && new Date(sc.scannedAt).getTime() >= cutoff)
+      .map(sc => sc.etaMinutes as number)
+      .sort((x, y) => x - y);
+    if (recent.length >= 3) {
+      const median = recent[Math.floor(recent.length / 2)];
+      console.warn(`ETA fallback used: ${median} min (median of ${recent.length} recent real trips, not live traffic)`);
+      return median;
     }
 
     // 2. Fallback: Haversine distance * NYC winding coefficient / typical speed.
