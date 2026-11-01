@@ -1061,9 +1061,32 @@ body {
 }
 
 
+/* Number tiles (dashboard stats + situation overview) share one look, on every
+   screen size: each tile gets its own colour as a soft glow rising from the
+   bottom corner over dark glass, with a light top edge. */
+.stat-tile, .glow-tile {
+  background:
+    radial-gradient(100% 85% at 0% 100%, rgba(var(--tile-rgb), 0.38), rgba(var(--tile-rgb), 0) 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.stat-tile:nth-child(1) { --tile-rgb: 226, 176, 78; }
+.stat-tile:nth-child(2) { --tile-rgb: 16, 185, 129; }
+.stat-tile:nth-child(3) { --tile-rgb: 6, 182, 212; }
+.stat-tile:nth-child(4) { --tile-rgb: 59, 130, 246; }
+.glow-tile:nth-child(1) { --tile-rgb: 59, 130, 246; }
+.glow-tile:nth-child(2) { --tile-rgb: 139, 92, 246; }
+.glow-tile:nth-child(3) { --tile-rgb: 226, 176, 78; }
+.glow-tile:nth-child(4) { --tile-rgb: 16, 185, 129; }
+
 /* Phone: the four dashboard stat cards sit in one row of four compact tiles
-   (label on top, big number below) instead of four stacked full-width cards. */
+   (label on top, big number below) instead of four stacked full-width cards;
+   the situation page's four-number row jumps to the very top, above the headings. */
 @media (max-width: 900px) {
+  .situation-overview {
+    order: -1;
+  }
   .stats-row {
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     gap: 8px !important;
@@ -1075,18 +1098,7 @@ body {
     gap: 6px !important;
     padding: 12px 4px !important;
     border-radius: 18px !important;
-    /* Each tile gets its own colour (its icon's colour) as a soft glow
-       rising from the bottom corner over dark glass, with a light top edge. */
-    background:
-      radial-gradient(100% 85% at 0% 100%, rgba(var(--tile-rgb), 0.38), rgba(var(--tile-rgb), 0) 72%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)) !important;
-    border-color: rgba(255, 255, 255, 0.13) !important;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
   }
-  .stat-tile:nth-child(1) { --tile-rgb: 226, 176, 78; }
-  .stat-tile:nth-child(2) { --tile-rgb: 16, 185, 129; }
-  .stat-tile:nth-child(3) { --tile-rgb: 6, 182, 212; }
-  .stat-tile:nth-child(4) { --tile-rgb: 59, 130, 246; }
   .stat-tile-icon {
     padding: 6px !important;
     border-radius: 8px !important;
@@ -1106,4 +1118,12 @@ body {
     line-height: 1.1;
     margin-top: 2px;
   }
+}
+
+/* Keep the numbers on one line even when a label wraps to two lines. */
+.glow-tile > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6em;
 }

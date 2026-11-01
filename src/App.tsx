@@ -6625,14 +6625,14 @@ export default function App() {
                     </div>
 
                     {/* Overview Cards - one compact row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
+                    <div className="situation-overview" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
                       {[
                         { label: lang === 'he' ? 'סה"כ נוסעים' : 'Total Passengers', value: situationData.totalPassengers, color: '#fff' },
                         { label: lang === 'he' ? 'סה"כ הסעות' : 'Total Trips', value: situationData.totalTrips, color: '#fff' },
                         { label: lang === 'he' ? 'הסעות מהאוהל' : 'Trips from Ohel', value: situationData.tripsFromOhel, color: 'var(--accent)' },
                         { label: lang === 'he' ? 'הסעות מ-770' : 'Trips from 770', value: situationData.tripsFrom770, color: '#10b981' }
                       ].map(stat => (
-                        <div key={stat.label} className="card" style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', textAlign: 'center', minWidth: 0 }}>
+                        <div key={stat.label} className="card glow-tile" style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center', textAlign: 'center', minWidth: 0 }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.3 }}>{stat.label}</span>
                           <strong style={{ fontSize: '20px', color: stat.color }}>{stat.value}</strong>
                         </div>
