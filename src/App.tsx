@@ -6131,42 +6131,42 @@ export default function App() {
                     </div>
 
                     {/* Stats Widget Row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ background: 'rgba(226, 176, 78, 0.1)', color: 'var(--accent)', padding: '12px', borderRadius: '8px' }}>
+                    <div className="stats-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                      <div className="card stat-tile" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="stat-tile-icon" style={{ background: 'rgba(226, 176, 78, 0.1)', color: 'var(--accent)', padding: '12px', borderRadius: '8px' }}>
                           <RefreshCw size={22} />
                         </div>
-                        <div>
+                        <div className="stat-tile-text">
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('tripsCompletedToday')}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.tripsToday}</strong>
                         </div>
                       </div>
 
-                      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', padding: '12px', borderRadius: '8px' }}>
+                      <div className="card stat-tile" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="stat-tile-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', padding: '12px', borderRadius: '8px' }}>
                           <Users size={22} />
                         </div>
-                        <div>
+                        <div className="stat-tile-text">
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('totalPassengersToday')}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.passengersToday}</strong>
                         </div>
                       </div>
 
-                      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ background: 'rgba(6, 182, 212, 0.1)', color: '#06b6d4', padding: '12px', borderRadius: '8px' }}>
+                      <div className="card stat-tile" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="stat-tile-icon" style={{ background: 'rgba(6, 182, 212, 0.1)', color: '#06b6d4', padding: '12px', borderRadius: '8px' }}>
                           <UserCheck size={22} />
                         </div>
-                        <div>
+                        <div className="stat-tile-text">
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('driversActiveToday')}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.activeDrivers}</strong>
                         </div>
                       </div>
 
-                      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '12px', borderRadius: '8px' }}>
+                      <div className="card stat-tile" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="stat-tile-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '12px', borderRadius: '8px' }}>
                           <ShieldAlert size={22} />
                         </div>
-                        <div>
+                        <div className="stat-tile-text">
                           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('dispatchersActiveToday')}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.activeDispatchers}</strong>
                         </div>

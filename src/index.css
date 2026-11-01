@@ -1060,3 +1060,39 @@ body {
   }
 }
 
+
+/* Phone: the four dashboard stat cards sit in one row of four compact tiles
+   (label on top, big number below) instead of four stacked full-width cards. */
+@media (max-width: 900px) {
+  .stats-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .stat-tile {
+    flex-direction: column !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 6px !important;
+    padding: 12px 4px !important;
+    border-radius: 18px !important;
+  }
+  .stat-tile-icon {
+    padding: 6px !important;
+    border-radius: 8px !important;
+  }
+  .stat-tile-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .stat-tile-text span {
+    display: block;
+    font-size: 10px !important;
+    line-height: 1.25;
+    min-height: 2.5em;
+  }
+  .stat-tile-text strong {
+    font-size: 22px !important;
+    line-height: 1.1;
+    margin-top: 2px;
+  }
+}
