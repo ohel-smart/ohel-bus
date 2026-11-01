@@ -1087,11 +1087,13 @@ body {
 
 /* Phone: the four dashboard stat cards sit in one row of four compact tiles
    (label on top, big number below) instead of four stacked full-width cards;
-   the situation page's four-number row jumps to the very top, above the headings. */
+   the situation page's four-number row sits between the title card and the date picker. */
 @media (max-width: 900px) {
-  .situation-overview {
-    order: -1;
-  }
+  /* Situation page on a phone: title card, then the four numbers, then the
+     date-range picker, then everything else. */
+  .situation-head { order: -3; }
+  .situation-overview { order: -2; }
+  .situation-range { order: -1; }
   .stats-row {
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     gap: 8px !important;

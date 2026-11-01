@@ -6556,7 +6556,7 @@ export default function App() {
                 {activeTab === 'situation' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     {/* Header Card */}
-                    <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                    <div className="card situation-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                       <div>
                         <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <ShieldAlert size={22} color="var(--accent)" />
@@ -6603,7 +6603,7 @@ export default function App() {
                     </div>
 
                     {/* Date range picker - always visible; picking a range switches to the custom timeframe */}
-                    <div className="card" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', padding: '16px' }}>
+                    <div className="card situation-range" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', padding: '16px' }}>
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טווח תאריכים:' : 'Date range:'}</span>
                       <HebrewRangePicker
                         fromValue={situationTimeframe === 'custom' ? situationStartDate : ''}
