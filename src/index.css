@@ -1080,6 +1080,11 @@ body {
 .glow-tile:nth-child(3) { --tile-rgb: 226, 176, 78; }
 .glow-tile:nth-child(4) { --tile-rgb: 16, 185, 129; }
 
+/* Desktop keeps each stat label on one line; the forced break is phone-only. */
+.stat-br {
+  display: none;
+}
+
 /* Phone: the four dashboard stat cards sit in one row of four compact tiles
    (label on top, big number below) instead of four stacked full-width cards;
    the situation page's four-number row jumps to the very top, above the headings. */
@@ -1112,6 +1117,13 @@ body {
     font-size: 10px !important;
     line-height: 1.25;
     min-height: 2.5em;
+    white-space: nowrap;
+  }
+  html[lang="en"] .stat-tile-text span {
+    font-size: 8px !important;
+  }
+  .stat-br {
+    display: inline;
   }
   .stat-tile-text strong {
     font-size: 22px !important;
@@ -1127,3 +1139,4 @@ body {
   justify-content: center;
   min-height: 2.6em;
 }
+

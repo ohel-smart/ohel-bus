@@ -621,6 +621,14 @@ const TRANSLATIONS = {
   }
 };
 
+// Stat-tile label: everything but the last word on the first line, the last
+// word alone on the second. The break only takes effect on phones (.stat-br).
+function statLabel(text: string) {
+  const i = text.lastIndexOf(' ');
+  if (i < 0) return text;
+  return <>{text.slice(0, i)}{' '}<br className="stat-br" />{text.slice(i + 1)}</>;
+}
+
 // HTML-escapes a value before it's interpolated into the driver/dispatcher PDF
 // report templates (built as raw HTML strings and rendered via document.write).
 // Without this, an admin-entered name containing markup would execute as real
@@ -6137,7 +6145,7 @@ export default function App() {
                           <RefreshCw size={22} />
                         </div>
                         <div className="stat-tile-text">
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('tripsCompletedToday')}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{statLabel(t('tripsCompletedToday'))}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.tripsToday}</strong>
                         </div>
                       </div>
@@ -6147,7 +6155,7 @@ export default function App() {
                           <Users size={22} />
                         </div>
                         <div className="stat-tile-text">
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('totalPassengersToday')}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{statLabel(t('totalPassengersToday'))}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.passengersToday}</strong>
                         </div>
                       </div>
@@ -6157,7 +6165,7 @@ export default function App() {
                           <UserCheck size={22} />
                         </div>
                         <div className="stat-tile-text">
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('driversActiveToday')}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{statLabel(t('driversActiveToday'))}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.activeDrivers}</strong>
                         </div>
                       </div>
@@ -6167,7 +6175,7 @@ export default function App() {
                           <ShieldAlert size={22} />
                         </div>
                         <div className="stat-tile-text">
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('dispatchersActiveToday')}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{statLabel(t('dispatchersActiveToday'))}</span>
                           <strong style={{ fontSize: '24px', display: 'block', color: '#fff', fontWeight: 800 }}>{stats.activeDispatchers}</strong>
                         </div>
                       </div>
