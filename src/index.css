@@ -1075,14 +1075,18 @@ body {
     gap: 6px !important;
     padding: 12px 4px !important;
     border-radius: 18px !important;
-    /* Faint logo-gold tint on the glass: a soft glow at the top fading into
-       the usual see-through sheen, plus a gold hairline. Kept very subtle. */
+    /* Each tile gets its own colour (its icon's colour) as a soft glow
+       rising from the bottom corner over dark glass, with a light top edge. */
     background:
-      radial-gradient(120% 70% at 50% 0%, rgba(226, 176, 78, 0.14), rgba(226, 176, 78, 0) 70%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03) 50%, rgba(255, 255, 255, 0.02)) !important;
-    border-color: rgba(226, 176, 78, 0.22) !important;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(226, 176, 78, 0.18) !important;
+      radial-gradient(100% 85% at 0% 100%, rgba(var(--tile-rgb), 0.38), rgba(var(--tile-rgb), 0) 72%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)) !important;
+    border-color: rgba(255, 255, 255, 0.13) !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
   }
+  .stat-tile:nth-child(1) { --tile-rgb: 226, 176, 78; }
+  .stat-tile:nth-child(2) { --tile-rgb: 16, 185, 129; }
+  .stat-tile:nth-child(3) { --tile-rgb: 6, 182, 212; }
+  .stat-tile:nth-child(4) { --tile-rgb: 59, 130, 246; }
   .stat-tile-icon {
     padding: 6px !important;
     border-radius: 8px !important;
