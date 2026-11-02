@@ -1864,6 +1864,12 @@ export default function App() {
   
   // App navigation tab
   const [activeTab, setActiveTab] = useState<string>('');
+  // The rounding calendar fills the screen exactly; keep the page itself from scrolling under it (phone only, see .rc-page in index.css).
+  useEffect(() => {
+    if (activeTab !== 'roundingCalendar') return;
+    document.documentElement.classList.add('no-page-scroll');
+    return () => document.documentElement.classList.remove('no-page-scroll');
+  }, [activeTab]);
   const [situationTimeframe, setSituationTimeframe] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [situationStartDate, setSituationStartDate] = useState<string>(() => {
     return nyDateStr(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
@@ -8403,7 +8409,7 @@ export default function App() {
                     sized to exactly fill the viewport (no page scrolling) -
                     64px = .desktop-content's own top+bottom padding. */}
                 {activeTab === 'roundingCalendar' && (
-                  <div style={{ width: '100%', height: 'calc(100vh - 64px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div className="rc-page" style={{ width: '100%', height: 'calc(100vh - 64px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       <Clock size={18} color="var(--accent)" />
                       {lang === 'he' ? 'עיגול זמנים לחצי שעה - לפי יום' : 'Half-hour time rounding - by day'}

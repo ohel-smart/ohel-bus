@@ -1394,14 +1394,27 @@ html[dir="rtl"] .mobile-manager-nav {
   .rc-heb-day {
     font-size: 21px !important;
   }
-  /* nearly square days (a touch taller than wide), not tall rectangles */
+  /* The page itself does not scroll: it is exactly as tall as the screen between the top
+     header and the floating bar, and the day squares share all of that height, so the
+     last row ends right above the bar. (57px = mobile header, 16px = content padding,
+     100px = floating bar + a small gap.) */
+  .rc-page {
+    height: calc(100vh - 57px - 16px - 100px - env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(100dvh - 57px - 16px - 100px - env(safe-area-inset-bottom, 0px)) !important;
+    margin-bottom: calc(env(safe-area-inset-bottom, 0px) - 24px);
+  }
+  html.no-page-scroll,
+  html.no-page-scroll body {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
   .rc-grid {
-    flex: none !important;
-    grid-auto-rows: auto !important;
+    flex: 1 1 0 !important;
+    min-height: 0;
+    grid-auto-rows: minmax(0, 1fr) !important;
     gap: 6px !important;
   }
   .rc-grid > * {
-    aspect-ratio: 1 / 1.22;
     min-height: 0;
   }
   /* everything has to fit inside the square */
@@ -1415,7 +1428,7 @@ html[dir="rtl"] .mobile-manager-nav {
     line-height: 1.1;
   }
   .rc-pax {
-    font-size: 9px !important;
+    font-size: 10px !important;
     line-height: 1.1 !important;
     padding: 1px 5px !important;
     margin-top: 0 !important;
