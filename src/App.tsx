@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import {
@@ -6,11 +6,125 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, type LucideIcon
+  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
+// Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
+const Analytics = lazy(() => import('./Analytics'));
+// Drives the sliding highlight of the phone bottom bars (see .bottom-nav in index.css):
+// how many items the bar has, and which one is active (-1 = none, the highlight hides).
+const navVars = (activeIndex: number, count: number): CSSProperties =>
+  ({ '--n': count, '--i': Math.max(activeIndex, 0), '--show': activeIndex < 0 ? 0 : 1 } as CSSProperties);
+// Lets a finger drag the sliding highlight along a phone bottom bar: while dragging, the
+// highlight follows the finger (the CSS transition is off) and turns into a gold lens that
+// shows the item under it enlarged, and on release that item is selected. Items marked data-nodrag (logout) can't be dropped on.
+function attachBarDrag(nav: HTMLElement | null) {
+  if (!nav) return;
+  const tabs = () => Array.from(nav.querySelectorAll<HTMLElement>('.bottom-nav-item:not([data-nodrag])'));
+  let startX = 0;
+  let pointer = -1;
+  let dragging = false;
+  const lens = document.createElement('span');
+  lens.className = 'nav-lens';
+  lens.setAttribute('aria-hidden', 'true');
+  const scene = document.createElement('span');
+  scene.className = 'nav-lens-scene';
+  lens.appendChild(scene);
+  // while dragging, the real items are hidden and this neutral copy of the bar is shown
+  // in their place, with a hole cut out under the glass (so nothing doubles up there)
+  const base = document.createElement('span');
+  base.className = 'nav-base-scene';
+  base.setAttribute('aria-hidden', 'true');
+  nav.appendChild(base);
+  nav.appendChild(lens);
+  const copyOf = (cls: string) => Array.from(nav.querySelectorAll<HTMLElement>('.bottom-nav-item')).map(t => {
+    const cell = document.createElement('span');
+    cell.className = cls;
+    const icon = t.querySelector('svg');
+    const label = t.querySelector('span');
+    if (icon) cell.appendChild(icon.cloneNode(true));
+    if (label) cell.appendChild(label.cloneNode(true));
+    return cell;
+  });
+  const buildScene = () => {
+    const innerW = nav.getBoundingClientRect().width - 12;
+    scene.style.width = `${innerW}px`;
+    scene.replaceChildren(...copyOf('nav-lens-item'));
+    base.replaceChildren(...copyOf('nav-base-item'));
+  };
+  const position = (clientX: number) => {
+    const rect = nav.getBoundingClientRect();
+    const pad = 6;
+    const n = Number(getComputedStyle(nav).getPropertyValue('--n')) || tabs().length || 1;
+    const itemW = (rect.width - 2 * pad) / n;
+    const rtl = getComputedStyle(nav).direction === 'rtl';
+    const raw = (rtl ? rect.right - pad - clientX : clientX - rect.left - pad) / itemW - 0.5;
+    return Math.min(Math.max(raw, 0), Math.max(tabs().length - 1, 0));
+  };
+  const down = (e: PointerEvent) => { pointer = e.pointerId; startX = e.clientX; dragging = false; };
+  const move = (e: PointerEvent) => {
+    if (e.pointerId !== pointer) return;
+    if (!dragging && Math.abs(e.clientX - startX) < 6) return;
+    if (!dragging) {
+      dragging = true;
+      nav.classList.add('dragging');
+      buildScene();
+      try { nav.setPointerCapture(e.pointerId); } catch { /* pointer already gone: keep dragging without capture */ } }
+    nav.style.setProperty('--show', '1');
+    const at = position(e.clientX);
+    nav.style.setProperty('--i', String(at));
+    // the highlight itself is a gold magnifying glass: it shows a scaled-up copy of whatever
+    // part of the bar is under it (the copy stays put while the glass slides over it)
+    const rect = nav.getBoundingClientRect();
+    const n = Number(getComputedStyle(nav).getPropertyValue('--n')) || 1;
+    const itemW = (rect.width - 12) / n;
+    const sign = getComputedStyle(nav).direction === 'rtl' ? -1 : 1;
+    scene.style.transform = `translateX(${-(at * itemW * sign)}px)`;
+    // hole in the neutral copy, exactly where the (enlarged) glass sits
+    const innerW = rect.width - 12;
+    const innerH = rect.height - 12;
+    const w = itemW * 1.28;
+    const h = innerH * 1.28;
+    const r = Math.min(28 * 1.28, h / 2, w / 2);
+    const cx = sign === -1 ? innerW - (at + 0.5) * itemW : (at + 0.5) * itemW;
+    const x = cx - w / 2;
+    const y = (innerH - h) / 2;
+    base.style.clipPath =
+      `path(evenodd, "M -60 -60 H ${innerW + 60} V ${innerH + 60} H -60 Z ` +
+      `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} ` +
+      `H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z")`;
+  };
+  const up = (e: PointerEvent) => {
+    if (e.pointerId !== pointer) return;
+    pointer = -1;
+    if (!dragging) return;
+    dragging = false;
+    nav.classList.remove('dragging');
+    const idx = Math.round(position(e.clientX));
+    nav.style.setProperty('--i', String(idx));
+    tabs()[idx]?.click();
+    // the release also produces a click on the bar itself - swallow it
+    const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
+    nav.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => nav.removeEventListener('click', swallow, true), 0);
+  };
+  nav.addEventListener('pointerdown', down);
+  nav.addEventListener('pointermove', move);
+  nav.addEventListener('pointerup', up);
+  nav.addEventListener('pointercancel', up);
+  return () => {
+    lens.remove();
+    base.remove();
+    nav.removeEventListener('pointerdown', down);
+    nav.removeEventListener('pointermove', move);
+    nav.removeEventListener('pointerup', up);
+    nav.removeEventListener('pointercancel', up);
+  };
+}
+
+const parseScanTime = (scannedAt: string, logicalDate: string) => dbService.parseScannedAt(scannedAt, logicalDate);
 
 // Shared cell styles for the central master summary table.
 const thCentral: CSSProperties = { padding: '8px 12px', fontWeight: 600, fontSize: '11px', whiteSpace: 'nowrap' };
@@ -19,13 +133,14 @@ const tdCentral: CSSProperties = { padding: '8px 12px', whiteSpace: 'nowrap' };
 // The admin dashboard's report tabs an admin can choose to show in their OWN
 // mobile bottom nav (User.mobileTabs) - "Users Management" itself is always
 // shown too (it's where this picker lives), so it's not one of the options.
-const MOBILE_TAB_OPTIONS: { key: string; icon: LucideIcon; label: { he: string; en: string } }[] = [
-  { key: 'dashboard', icon: MapPin, label: { he: 'מפת מעקב', en: 'Live Map' } },
-  { key: 'situation', icon: FileText, label: { he: 'ערכת מצב', en: 'Situation' } },
-  { key: 'history', icon: Calendar, label: { he: 'כלל הפעילות', en: 'Activity' } },
-  { key: 'central', icon: Table, label: { he: 'טבלה מרכזית', en: 'Master Table' } },
-  { key: 'hourlySummary', icon: RefreshCw, label: { he: 'סיכום לפי שעות', en: 'Hourly Summary' } },
-  { key: 'roundingCalendar', icon: Clock, label: { he: 'לוח עיגול זמנים', en: 'Rounding Calendar' } },
+const MOBILE_TAB_OPTIONS: { key: string; icon: LucideIcon; label: { he: string; en: string }; short: { he: string; en: string } }[] = [
+  { key: 'dashboard', icon: MapPin, label: { he: 'מפת מעקב', en: 'Live Map' }, short: { he: 'מפה', en: 'Map' } },
+  { key: 'situation', icon: FileText, label: { he: 'ערכת מצב', en: 'Situation' }, short: { he: 'מצב', en: 'Status' } },
+  { key: 'history', icon: Calendar, label: { he: 'כלל הפעילות', en: 'Activity' }, short: { he: 'פעילות', en: 'Activity' } },
+  { key: 'central', icon: Table, label: { he: 'טבלה מרכזית', en: 'Master Table' }, short: { he: 'טבלה', en: 'Table' } },
+  { key: 'hourlySummary', icon: RefreshCw, label: { he: 'סיכום לפי שעות', en: 'Hourly Summary' }, short: { he: 'שעות', en: 'Hours' } },
+  { key: 'roundingCalendar', icon: Clock, label: { he: 'לוח עיגול זמנים', en: 'Rounding Calendar' }, short: { he: 'עיגול', en: 'Rounding' } },
+  { key: 'analytics', icon: BarChart3, label: { he: 'אנליטיקה', en: 'Analytics' }, short: { he: 'אנליטיקה', en: 'Analytics' } },
 ];
 const DEFAULT_MOBILE_TABS = ['dashboard', 'situation', 'history', 'central'];
 
@@ -5201,34 +5316,34 @@ export default function App() {
               </div>
 
               {/* Dispatcher Bottom Menu */}
-              <nav className="bottom-nav">
+              <nav className="bottom-nav" ref={attachBarDrag} style={navVars(['scan', 'my-history', 'arrivals'].indexOf(activeTab), 4)}>
                 <button 
                   onClick={() => setActiveTab('scan')} 
                   className={`bottom-nav-item ${activeTab === 'scan' ? 'active' : ''}`}
                 >
-                  <QrCode size={18} />
-                  <span>{t('scanDriverTab')}</span>
+                  <QrCode size={22} />
+                  <span>{lang === 'he' ? 'סריקה' : 'Scan'}</span>
                 </button>
                 
                 <button 
                   onClick={() => setActiveTab('my-history')} 
                   className={`bottom-nav-item ${activeTab === 'my-history' ? 'active' : ''}`}
                 >
-                  <Calendar size={18} />
-                  <span>{t('todayScansCount', { count: myScansToday.length })}</span>
+                  <Calendar size={22} />
+                  <span>{lang === 'he' ? 'היום' : 'Today'} {myScansToday.length}</span>
                 </button>
 
                 <button 
                   onClick={() => setActiveTab('arrivals')} 
                   className={`bottom-nav-item ${activeTab === 'arrivals' ? 'active' : ''}`}
                 >
-                  <Clock size={18} />
-                  <span>{lang === 'he' ? 'לוח הגעות' : 'Arrivals Board'}</span>
+                  <Clock size={22} />
+                  <span>{lang === 'he' ? 'הגעות' : 'Arrivals'}</span>
                 </button>
 
-                <button onClick={handleLogout} className="bottom-nav-item">
-                  <LogOut size={18} />
-                  <span>{t('logout')}</span>
+                <button onClick={handleLogout} className="bottom-nav-item" data-nodrag>
+                  <LogOut size={22} />
+                  <span>{lang === 'he' ? 'יציאה' : 'Exit'}</span>
                 </button>
               </nav>
 
@@ -5965,34 +6080,34 @@ export default function App() {
               </div>
 
               {/* Driver Bottom Menu */}
-              <nav className="bottom-nav">
+              <nav className="bottom-nav" ref={attachBarDrag} style={navVars(['qr', 'my-trips', 'arrivals'].indexOf(activeTab), 4)}>
                 <button 
                   onClick={() => setActiveTab('qr')} 
                   className={`bottom-nav-item ${activeTab === 'qr' ? 'active' : ''}`}
                 >
-                  <QrCode size={18} />
-                  <span>{t('myQrTab')}</span>
+                  <QrCode size={22} />
+                  <span>QR</span>
                 </button>
                 
                 <button 
                   onClick={() => setActiveTab('my-trips')} 
                   className={`bottom-nav-item ${activeTab === 'my-trips' ? 'active' : ''}`}
                 >
-                  <Calendar size={18} />
-                  <span>{t('myTripsCount', { count: myTripsToday.length })}</span>
+                  <Calendar size={22} />
+                  <span>{lang === 'he' ? 'נסיעות' : 'Trips'} {myTripsToday.length}</span>
                 </button>
 
                 <button 
                   onClick={() => setActiveTab('arrivals')} 
                   className={`bottom-nav-item ${activeTab === 'arrivals' ? 'active' : ''}`}
                 >
-                  <Clock size={18} />
-                  <span>{lang === 'he' ? 'לוח הגעות' : 'Arrivals Board'}</span>
+                  <Clock size={22} />
+                  <span>{lang === 'he' ? 'הגעות' : 'Arrivals'}</span>
                 </button>
 
-                <button onClick={handleLogout} className="bottom-nav-item">
-                  <LogOut size={18} />
-                  <span>{t('logout')}</span>
+                <button onClick={handleLogout} className="bottom-nav-item" data-nodrag>
+                  <LogOut size={22} />
+                  <span>{lang === 'he' ? 'יציאה' : 'Exit'}</span>
                 </button>
               </nav>
 
@@ -6100,6 +6215,14 @@ export default function App() {
                   >
                     <Clock size={16} />
                     <span>{lang === 'he' ? 'לוח עיגול זמנים' : 'Rounding Calendar'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('analytics')}
+                    className={`sidebar-item ${activeTab === 'analytics' ? 'active' : ''}`}
+                  >
+                    <BarChart3 size={16} />
+                    <span>{lang === 'he' ? 'אנליטיקה' : 'Analytics'}</span>
                   </button>
 
                   <button
@@ -8048,6 +8171,19 @@ export default function App() {
                 {/* TAB 6: HOURLY SUMMARY - fully derived from `scans` (hourlySummaryRows),
                     so any add/edit/delete on the scans table is reflected here on the
                     next render with no separate sync step. Read-only, no driver names. */}
+                {activeTab === 'analytics' && (
+                  <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טוען…' : 'Loading…'}</div>}>
+                    <Analytics
+                      scans={scans}
+                      lang={lang}
+                      todayLogical={logicalToday}
+                      parse={parseScanTime}
+                      rules={dbService.getConfig().analyticsRules}
+                      onRulesChange={(analyticsRules) => dbService.saveConfig({ ...dbService.getConfig(), analyticsRules })}
+                    />
+                  </Suspense>
+                )}
+
                 {activeTab === 'hourlySummary' && (
                   <div style={{ width: '100%', height: 'calc(100vh - 64px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ flexShrink: 0 }}>
@@ -8091,7 +8227,10 @@ export default function App() {
 
               {/* MOBILE BOTTOM NAVIGATION - the admin's own chosen 4 tabs
                   (Users tab picker), Users Management always shown last. */}
-              <nav className="mobile-manager-nav">
+              <nav className="mobile-manager-nav" ref={attachBarDrag} style={navVars(
+                [...MOBILE_TAB_OPTIONS.filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key)).map(opt => opt.key), 'users'].indexOf(activeTab),
+                MOBILE_TAB_OPTIONS.filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key)).length + 1
+              )}>
                 {MOBILE_TAB_OPTIONS
                   .filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key))
                   .map(opt => {
@@ -8102,8 +8241,8 @@ export default function App() {
                         onClick={() => setActiveTab(opt.key)}
                         className={`bottom-nav-item ${activeTab === opt.key ? 'active' : ''}`}
                       >
-                        <Icon size={18} />
-                        <span>{opt.label[lang]}</span>
+                        <Icon size={22} />
+                        <span>{opt.short[lang]}</span>
                       </button>
                     );
                   })}
@@ -8111,8 +8250,8 @@ export default function App() {
                   onClick={() => setActiveTab('users')}
                   className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}
                 >
-                  <Users size={18} />
-                  <span>{t('usersManagement')}</span>
+                  <Users size={22} />
+                  <span>{lang === 'he' ? 'משתמשים' : 'Users'}</span>
                 </button>
                 {/* Settings button removed */}
               </nav>

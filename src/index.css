@@ -257,7 +257,7 @@ body {
   background: #090a0f;
   border-inline: 1px solid var(--border-color);
   position: relative;
-  padding-bottom: 84px; /* for bottom navigation bar */
+  padding-bottom: 112px; /* for the floating bottom navigation bar */
 }
 
 /* Desktop Manager Layout: Elegant Sidebar Navigation (Human-designed feel) */
@@ -724,7 +724,7 @@ body {
   
   .desktop-content {
     padding: 16px !important;
-    padding-bottom: 84px !important;
+    padding-bottom: 112px !important;
     gap: 16px !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -1142,3 +1142,234 @@ body {
   min-height: 2.6em;
 }
 
+
+/* ---- Phone bottom bar: a floating pane of blurred glass --------------------
+   A rounded pill that floats above the page with a little air around it (like
+   the iOS tab bar): dark translucent fill, strong backdrop blur, a light top
+   edge, and the active item sitting on its own lighter pill that slides in.
+   Used by every role's bar (.bottom-nav = driver/dispatcher, .mobile-manager-nav
+   = admin). */
+.bottom-nav,
+.mobile-manager-nav {
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  max-width: 520px;
+  margin: 0 auto;
+  height: 66px;
+  padding: 6px;
+  box-sizing: border-box;
+  border-radius: 34px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(226, 176, 78, 0.08) 100%),
+    rgba(14, 18, 30, 0.38);
+  -webkit-backdrop-filter: blur(36px) saturate(210%);
+  backdrop-filter: blur(36px) saturate(210%);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transform: none;
+  align-items: stretch;
+}
+
+.bottom-nav .bottom-nav-item,
+.mobile-manager-nav .bottom-nav-item {
+  position: relative;
+  border-radius: 28px;
+  padding: 0 2px;
+  color: rgba(255, 255, 255, 0.72);
+  transition: color 0.25s ease, background-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-nav .bottom-nav-item:active,
+.mobile-manager-nav .bottom-nav-item:active {
+  transform: scale(0.95);
+}
+
+/* the active item: one lighter glass pill that slides between the items (it is a
+   pseudo-element of the bar, positioned from --n items and --i active index) */
+.bottom-nav::before,
+.mobile-manager-nav::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  inset-inline-start: 6px;
+  width: calc((100% - 12px) / var(--n, 4));
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 12px rgba(0, 0, 0, 0.3);
+  transform: translateX(calc(var(--i, 0) * 100% * var(--dir, 1)));
+  opacity: var(--show, 1);
+  transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease;
+  pointer-events: none;
+}
+html[dir="rtl"] .bottom-nav,
+html[dir="rtl"] .mobile-manager-nav {
+  --dir: -1;
+}
+
+.bottom-nav .bottom-nav-item.active,
+.mobile-manager-nav .bottom-nav-item.active {
+  color: var(--accent);
+}
+
+.bottom-nav .bottom-nav-item svg,
+.mobile-manager-nav .bottom-nav-item svg {
+  stroke-width: 1.8;
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), filter 0.4s ease;
+}
+.bottom-nav .bottom-nav-item.active svg,
+.mobile-manager-nav .bottom-nav-item.active svg {
+  transform: translateY(-1px) scale(1.1);
+  filter: drop-shadow(0 0 6px rgba(226, 176, 78, 0.6));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav .bottom-nav-item,
+  .mobile-manager-nav .bottom-nav-item,
+  .bottom-nav .bottom-nav-item svg,
+  .mobile-manager-nav .bottom-nav-item svg,
+  .bottom-nav::before,
+  .mobile-manager-nav::before {
+    transition: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .bottom-nav,
+  .mobile-manager-nav {
+    background: rgba(18, 20, 30, 0.96);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* dragging the highlight with a finger: it follows the finger, no easing */
+.bottom-nav,
+.mobile-manager-nav {
+  touch-action: none;
+}
+.bottom-nav.dragging::before,
+.mobile-manager-nav.dragging::before {
+  transition: opacity 0.25s ease;
+}
+.bottom-nav .bottom-nav-item span,
+.mobile-manager-nav .bottom-nav-item span {
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+/* While a finger drags the highlight, every item (including the one that was active)
+   stays neutral; the gold lens below is what carries the effect. */
+.bottom-nav.dragging .bottom-nav-item,
+.mobile-manager-nav.dragging .bottom-nav-item {
+  color: rgba(255, 255, 255, 0.72);
+  transform: none;
+}
+.bottom-nav.dragging .bottom-nav-item svg,
+.mobile-manager-nav.dragging .bottom-nav-item svg,
+.bottom-nav.dragging .bottom-nav-item.active svg,
+.mobile-manager-nav.dragging .bottom-nav-item.active svg {
+  transform: none;
+  filter: none;
+}
+.bottom-nav.dragging .bottom-nav-item.active,
+.mobile-manager-nav.dragging .bottom-nav-item.active {
+  color: rgba(255, 255, 255, 0.72);
+}
+/* Dragging the highlight: the glass pill keeps its colour and just grows (a magnifying
+   glass). What is under it is shown big and gold; the rest of the bar stays as it was.
+   The real items are hidden meanwhile and a neutral copy of the bar (.nav-base-scene) is
+   shown in their place with a hole under the glass, so nothing doubles up. Both copies
+   are real elements added by attachBarDrag in App.tsx. */
+.bottom-nav.dragging::before,
+.mobile-manager-nav.dragging::before {
+  transform: translateX(calc(var(--i, 0) * 100% * var(--dir, 1))) scale(1.28);
+  transition: opacity 0.25s ease;
+}
+.bottom-nav.dragging .bottom-nav-item > *,
+.mobile-manager-nav.dragging .bottom-nav-item > * {
+  opacity: 0;
+}
+.nav-base-scene {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  inset-inline-start: 6px;
+  inset-inline-end: 6px;
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.bottom-nav.dragging .nav-base-scene,
+.mobile-manager-nav.dragging .nav-base-scene {
+  opacity: 1;
+}
+.nav-base-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 600;
+}
+.nav-base-item svg {
+  stroke-width: 1.8;
+}
+.nav-base-item span {
+  white-space: nowrap;
+}
+.nav-lens {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  inset-inline-start: 6px;
+  width: calc((100% - 12px) / var(--n, 4));
+  box-sizing: border-box;
+  border-radius: 28px;
+  overflow: hidden;
+  color: var(--accent);
+  transform: translateX(calc(var(--i, 0) * 100% * var(--dir, 1))) scale(1.28);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+  transition: opacity 0.2s ease;
+}
+.bottom-nav.dragging .nav-lens,
+.mobile-manager-nav.dragging .nav-lens {
+  opacity: 1;
+}
+/* a full copy of the bar's items, in gold, that stays still while the glass slides over it;
+   the glass is scaled up, so what shows through is magnified */
+.nav-lens-scene {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-start: 0;
+  display: flex;
+}
+.nav-lens-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.nav-lens-item svg {
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 6px rgba(226, 176, 78, 0.6));
+}
+.nav-lens-item span {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}

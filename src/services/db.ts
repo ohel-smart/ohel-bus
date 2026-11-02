@@ -90,6 +90,12 @@ export interface GlobalConfig {
   // hour - an admin-only per-day override, not a per-session UI toggle, so
   // everyone viewing that day sees the same rounding.
   halfHourRoundingDates?: string[];
+  // Rules for the admin Analytics tab, shared by every device: whole Hebrew
+  // months (hebcal spelling, e.g. 'Tishrei') left out of the calculations, and
+  // a ceiling on passengers per day (null = no ceiling). Saved as one object so
+  // a "no ceiling" choice is written explicitly instead of being omitted
+  // (merge:true would otherwise keep the old value).
+  analyticsRules?: { maxPaxPerDay: number | null; excludeHebMonths: string[] };
 }
 
 // A driver/dispatcher self-registration request, awaiting admin approval
