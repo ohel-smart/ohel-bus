@@ -11,7 +11,7 @@ import {
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
 import { downloadHtmlAsPdf, downloadHtmlsAsPdf } from './services/pdfDownload';
-import { reportMonthRange, shortRange } from './services/reportPeriod';
+import { reportMonthRange, cycleStartingOn, shortRange } from './services/reportPeriod';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth, hebrewDayLetters } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
 const Analytics = lazy(() => import('./Analytics'));
@@ -4236,7 +4236,9 @@ export default function App() {
   const [bulkBusy, setBulkBusy] = useState(false);
   // The manager's own definition of "month" (see services/reportPeriod.ts), shared via the config.
   const reportMonthRule = dbService.getConfig().reportMonth;
-  const bulkMonthCycle = reportMonthRange(reportMonthRule, dbService.getLogicalDate(new Date().toISOString()));
+  // A specific month picked from the Hebrew calendar for this download only (not saved); it wins over the saved rule.
+  const [bulkPickedMonth, setBulkPickedMonth] = useState<{ from: string; to: string } | null>(null);
+  const bulkMonthCycle = bulkPickedMonth ?? reportMonthRange(reportMonthRule, dbService.getLogicalDate(new Date().toISOString()));
   const [monthRuleOpen, setMonthRuleOpen] = useState(false);
   const [monthStartInput, setMonthStartInput] = useState('');
   const [monthEndInput, setMonthEndInput] = useState('');
@@ -7949,6 +7951,25 @@ export default function App() {
                       {monthRuleOpen && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)' }}>
                           <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש (לפי הלוח העברי)' : 'Which Hebrew dates count as a month'}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'חודש מסוים, לפי הלוח: בוחרים יום והחודש נגמר לבד (א׳ חשוון נגמר בסוף חשוון)' : 'A specific month: pick a day and it ends by itself'}</div>
+                          <HebrewRangePicker
+                            single
+                            fullWidth
+                            fromValue={bulkPickedMonth?.from ?? ''}
+                            toValue={bulkPickedMonth?.from ?? ''}
+                            lang={lang}
+                            placeholder={lang === 'he' ? 'פתח לוח שנה ובחר יום התחלה' : 'Open the calendar and pick a start day'}
+                            onChange={(from) => { if (from) { setBulkPickedMonth(cycleStartingOn(from)); setBulkPeriod('month'); } }}
+                          />
+                          {bulkPickedMonth && (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '12px', color: 'var(--accent)' }}>
+                              <span>{shortRange(bulkPickedMonth)}</span>
+                              <button type="button" onClick={() => setBulkPickedMonth(null)} style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer' }}>
+                                {lang === 'he' ? 'בטל בחירה' : 'Clear'}
+                              </button>
+                            </div>
+                          )}
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{lang === 'he' ? 'או הגדרה קבועה לכל חודש:' : 'Or a standing rule for every month:'}</div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
                               {lang === 'he' ? 'מתאריך (יום בחודש העברי)' : 'From (day of Hebrew month)'}

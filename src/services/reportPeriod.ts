@@ -39,6 +39,22 @@ export function reportMonthRange(rule: ReportMonthRule | undefined, todayYmd: st
   return null;
 }
 
+/**
+ * One specific Hebrew month picked from the calendar: it starts on the picked day and ends the
+ * day before the same day of the next Hebrew month - so picking the 1st gives exactly that
+ * whole month (א׳ חשוון -> the last day of חשוון), picking the 10th gives 10th -> 9th.
+ */
+export function cycleStartingOn(startYmd: string): { from: string; to: string } {
+  const [y, m, d] = startYmd.split('-').map(Number);
+  const h = new HDate(new Date(y, m - 1, d));
+  const abs = h.abs();
+  const month = monthOf(abs);
+  const next = monthOf(month.start + month.len);
+  const day = h.getDate();
+  const to = day === 1 ? month.start + month.len - 1 : next.start + Math.min(day, next.len) - 2;
+  return { from: startYmd, to: ymd(new HDate(to).greg()) };
+}
+
 /** "י׳ חשוון – ט׳ כסלו" style label for a YYYY-MM-DD range (Hebrew dates, year left out). */
 export function shortRange(r: { from: string; to: string }): string {
   const f = (s: string) => {
