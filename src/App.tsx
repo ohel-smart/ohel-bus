@@ -12,7 +12,7 @@ import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
 import { downloadHtmlAsPdf, downloadHtmlsAsPdf } from './services/pdfDownload';
 import { reportMonthRange, shortRange } from './services/reportPeriod';
-import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
+import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth, hebrewDayLetters } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
 const Analytics = lazy(() => import('./Analytics'));
 // Drives the sliding highlight of the phone bottom bars (see .bottom-nav in index.css):
@@ -7905,7 +7905,7 @@ export default function App() {
                         })}
                         <div style={{ width: '1px', background: 'var(--border-color)', margin: '2px 3px', flexShrink: 0 }} />
                         {([['week', lang === 'he' ? 'שבוע' : 'Week'], ['month', lang === 'he' ? 'חודש' : 'Month']] as const).map(([key, label]) => (
-                          <div key={key} style={{ position: 'relative', flex: '1 1 0', minWidth: 0, display: 'flex' }}>
+                          <div key={key} style={{ position: 'relative', flex: key === 'month' ? '1.6 1 0' : '1 1 0', minWidth: 0, display: 'flex' }}>
                             {key === 'month' && (
                               <button
                                 type="button"
@@ -7916,9 +7916,9 @@ export default function App() {
                                 }}
                                 aria-label={lang === 'he' ? 'הגדרת החודש' : 'Month settings'}
                                 title={lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש' : 'Which dates count as a month'}
-                                style={{ position: 'absolute', top: '1px', left: '1px', zIndex: 1, background: 'none', border: 'none', padding: '3px', cursor: 'pointer', display: 'flex', color: bulkPeriod === 'month' ? '#000' : 'var(--text-secondary)', opacity: monthRuleOpen || bulkMonthCycle ? 1 : 0.65 }}
+                                style={{ position: 'absolute', top: '50%', left: '4px', transform: 'translateY(-50%)', zIndex: 1, background: 'rgba(0,0,0,0.12)', border: 'none', borderRadius: '8px', padding: '5px', cursor: 'pointer', display: 'flex', color: bulkPeriod === 'month' ? '#000' : 'var(--text-secondary)', opacity: monthRuleOpen || bulkMonthCycle ? 1 : 0.65 }}
                               >
-                                <Settings size={12} />
+                                <Settings size={18} />
                               </button>
                             )}
                           <button
@@ -7926,7 +7926,7 @@ export default function App() {
                             aria-pressed={bulkPeriod === key}
                             onClick={() => setBulkPeriod(key)}
                             className={`btn ${bulkPeriod === key ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ flex: '1 1 0', width: '100%', minWidth: 0, padding: '9px 4px', fontSize: '12px', whiteSpace: 'nowrap', color: bulkPeriod === key ? '#000' : '#fff', justifyContent: 'center' }}
+                            style={{ flex: '1 1 0', width: '100%', minWidth: 0, padding: key === 'month' ? '9px 4px 9px 32px' : '9px 4px', fontSize: '12px', whiteSpace: 'nowrap', color: bulkPeriod === key ? '#000' : '#fff', justifyContent: 'center' }}
                           >
                             {label}
                           </button>
@@ -7952,11 +7952,17 @@ export default function App() {
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
                               {lang === 'he' ? 'מתאריך (יום בחודש העברי)' : 'From (day of Hebrew month)'}
-                              <input className="form-input" type="number" inputMode="numeric" min={1} max={30} value={monthStartInput} onChange={e => setMonthStartInput(e.target.value)} placeholder="1-30" style={{ height: '36px', fontSize: '14px' }} />
+                              <select className="form-input" value={monthStartInput} onChange={e => setMonthStartInput(e.target.value)} style={{ height: '40px', fontSize: '15px' }}>
+                                <option value="">{lang === 'he' ? 'בחר יום' : 'Pick a day'}</option>
+                                {Array.from({ length: 30 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{lang === 'he' ? hebrewDayLetters(n) : n}</option>)}
+                              </select>
                             </label>
                             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
                               {lang === 'he' ? 'עד תאריך עברי (לא חובה)' : 'To (optional)'}
-                              <input className="form-input" type="number" inputMode="numeric" min={1} max={30} value={monthEndInput} onChange={e => setMonthEndInput(e.target.value)} placeholder={lang === 'he' ? 'ריק = עד לפני התאריך' : 'empty = day before'} style={{ height: '36px', fontSize: '14px' }} />
+                              <select className="form-input" value={monthEndInput} onChange={e => setMonthEndInput(e.target.value)} style={{ height: '40px', fontSize: '15px' }}>
+                                <option value="">{lang === 'he' ? 'ללא – עד היום שלפני' : 'None – until the day before'}</option>
+                                {Array.from({ length: 30 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{lang === 'he' ? hebrewDayLetters(n) : n}</option>)}
+                              </select>
                             </label>
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>

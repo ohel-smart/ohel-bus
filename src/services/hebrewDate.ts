@@ -191,3 +191,8 @@ export function exactTimeStr(date: Date, timeZone = 'America/New_York'): string 
     hour: '2-digit', minute: '2-digit', hour12: false, timeZone
   }).format(date);
 }
+
+/** A day of the Hebrew month as its letter(s): 1 -> א׳, 15 -> ט״ו, 30 -> ל׳. */
+export function hebrewDayLetters(day: number): string {
+  return gematriya(day);
+}
