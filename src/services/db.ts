@@ -97,8 +97,8 @@ export interface GlobalConfig {
   // (merge:true would otherwise keep the old value).
   analyticsRules?: { maxPaxPerDay: number | null; excludeHebMonths: string[] };
   // What "month" means in the admin's bulk driver/dispatcher reports: a cycle that
-  // starts on startDay (1-31) and ends on endDay, or the day before startDay of the next
-  // month when endDay is null. Absent/startDay null = the plain last month.
+  // starts on Hebrew-calendar day startDay (1-30) and ends on endDay, or the day before startDay of the next
+  // Hebrew month when endDay is null. Absent/startDay null = the plain last month.
   reportMonth?: { startDay: number | null; endDay: number | null };
 }
 

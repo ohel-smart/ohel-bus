@@ -7948,20 +7948,20 @@ export default function App() {
                       </div>
                       {monthRuleOpen && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)' }}>
-                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש' : 'Which dates count as a month'}</div>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש (לפי הלוח העברי)' : 'Which Hebrew dates count as a month'}</div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
-                              {lang === 'he' ? 'מתאריך (יום בחודש)' : 'From (day of month)'}
-                              <input className="form-input" type="number" inputMode="numeric" min={1} max={31} value={monthStartInput} onChange={e => setMonthStartInput(e.target.value)} placeholder="1-31" style={{ height: '36px', fontSize: '14px' }} />
+                              {lang === 'he' ? 'מתאריך (יום בחודש העברי)' : 'From (day of Hebrew month)'}
+                              <input className="form-input" type="number" inputMode="numeric" min={1} max={30} value={monthStartInput} onChange={e => setMonthStartInput(e.target.value)} placeholder="1-30" style={{ height: '36px', fontSize: '14px' }} />
                             </label>
                             <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
-                              {lang === 'he' ? 'עד תאריך (לא חובה)' : 'To (optional)'}
-                              <input className="form-input" type="number" inputMode="numeric" min={1} max={31} value={monthEndInput} onChange={e => setMonthEndInput(e.target.value)} placeholder={lang === 'he' ? 'ריק = עד לפני התאריך' : 'empty = day before'} style={{ height: '36px', fontSize: '14px' }} />
+                              {lang === 'he' ? 'עד תאריך עברי (לא חובה)' : 'To (optional)'}
+                              <input className="form-input" type="number" inputMode="numeric" min={1} max={30} value={monthEndInput} onChange={e => setMonthEndInput(e.target.value)} placeholder={lang === 'he' ? 'ריק = עד לפני התאריך' : 'empty = day before'} style={{ height: '36px', fontSize: '14px' }} />
                             </label>
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                             {lang === 'he'
-                              ? 'אם לא כותבים "עד תאריך", החודש נגמר ביום שלפני "מתאריך" בחודש הבא (התאריך עצמו לא נכלל). נלקח תמיד החודש האחרון שכבר הסתיים.'
+                              ? 'אם לא כותבים "עד תאריך", החודש נגמר ביום שלפני "מתאריך" בחודש העברי הבא (התאריך עצמו לא נכלל). נלקח תמיד החודש האחרון שכבר הסתיים.'
                               : 'Without a "to" date the month ends the day before the "from" date next month (that date is not included). The latest finished month is used.'}
                           </div>
                           <div style={{ display: 'flex', gap: '8px' }}>
@@ -7972,8 +7972,8 @@ export default function App() {
                               onClick={() => {
                                 const a = parseInt(monthStartInput, 10);
                                 const b = parseInt(monthEndInput, 10);
-                                if (!a || a < 1 || a > 31) { triggerToast(lang === 'he' ? 'כתוב יום בחודש בין 1 ל-31' : 'Enter a day of the month, 1-31', 'danger'); return; }
-                                saveMonthRule(a, b >= 1 && b <= 31 ? b : null);
+                                if (!a || a < 1 || a > 30) { triggerToast(lang === 'he' ? 'כתוב יום בחודש העברי, בין 1 ל-30' : 'Enter a day of the Hebrew month, 1-30', 'danger'); return; }
+                                saveMonthRule(a, b >= 1 && b <= 30 ? b : null);
                                 setMonthRuleOpen(false);
                               }}
                             >
