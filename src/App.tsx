@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
+import { downloadHtmlAsPdf } from './services/pdfDownload';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
 const Analytics = lazy(() => import('./Analytics'));
@@ -3942,10 +3943,19 @@ export default function App() {
     triggerToast(lang === 'he' ? 'הסיכום לפי שעות יוצא לאקסל בהצלחה' : 'Hourly summary exported to Excel', 'success');
   };
 
-  // --- Per-driver detailed PDF report (via browser print -> "Save as PDF") ---
-  // jsPDF's built-in fonts don't support Hebrew glyphs without embedding a custom
-  // font, so a real browser print window is the reliable way to get correct
-  // Hebrew/RTL rendering in the exported PDF.
+  // Builds the PDF and saves it right away (see services/pdfDownload.ts).
+  const savePdf = (html: string, baseName: string) => {
+    const fileName = `${baseName.replace(/[\\/:*?"<>|]/g, '').trim() || 'report'}.pdf`;
+    triggerToast(lang === 'he' ? 'מכין את ה-PDF…' : 'Preparing the PDF…', 'success');
+    downloadHtmlAsPdf(html, fileName).catch(err => {
+      console.error('PDF export failed', err);
+      triggerToast(lang === 'he' ? 'לא הצלחנו ליצור את ה-PDF, נסה שוב' : 'Could not create the PDF, try again', 'danger');
+    });
+  };
+
+  // --- Per-driver detailed PDF report (laid out by the browser, then saved as a PDF file) ---
+  // jsPDF's built-in fonts don't support Hebrew glyphs, so the report is laid out by the
+  // browser (correct Hebrew/RTL) and turned into pages - see services/pdfDownload.ts.
   const driverNamesForPdf = useMemo(() => {
     const names = new Set<string>();
     users.filter(u => u.role === 'driver').forEach(u => names.add(u.name.replace(' (נהג)', '')));
@@ -4071,14 +4081,8 @@ export default function App() {
         ${section(pdfLang)}
       </body></html>`;
 
-    // A Blob URL is a more reliable way to hand a full document to a new tab
-    // than document.write() - document.write() is a legacy API Chrome
-    // actively intervenes on/deprioritizes in some contexts, which could
-    // leave the trailing <script> (the language toggle) not running.
-    const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    const printWindow = window.open(blobUrl, '_blank');
-    if (!printWindow) { triggerToast(lang === 'he' ? 'החלון נחסם - אפשר חלונות קופצים' : 'Popup blocked - allow popups', 'danger'); return; }
-    printWindow.focus();
+    // Straight to a PDF file on the device: no new tab, no print dialog.
+    savePdf(html, `${pdfLang === 'he' ? 'דוח נהג' : 'Driver report'} - ${driverName}`);
   };
 
   // --- Per-dispatcher detailed PDF report (same print->PDF approach as the driver report) ---
@@ -4206,19 +4210,13 @@ export default function App() {
         ${section(pdfLang)}
       </body></html>`;
 
-    // A Blob URL is a more reliable way to hand a full document to a new tab
-    // than document.write() - document.write() is a legacy API Chrome
-    // actively intervenes on/deprioritizes in some contexts, which could
-    // leave the trailing <script> (the language toggle) not running.
-    const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    const printWindow = window.open(blobUrl, '_blank');
-    if (!printWindow) { triggerToast(lang === 'he' ? 'החלון נחסם - אפשר חלונות קופצים' : 'Popup blocked - allow popups', 'danger'); return; }
-    printWindow.focus();
+    savePdf(html, `${pdfLang === 'he' ? 'דוח סדרן' : 'Dispatcher report'} - ${dispatcherName}`);
   };
 
   // --- Self-service report for a logged-in driver/dispatcher: their own data
   // only, for a period they pick (week/month), no on-screen table - just a
   // period choice and a download, reusing the same PDF builders admins use.
+  const [showMobileMenuSettings, setShowMobileMenuSettings] = useState(false);
   const [selfReportPeriod, setSelfReportPeriod] = useState<'week' | 'month'>('month');
   const [selfReportLang, setSelfReportLang] = useState<'he' | 'en'>(lang);
 
@@ -7759,10 +7757,19 @@ export default function App() {
                         THEIR mobile bottom nav - Users Management itself is
                         always shown, so it's not one of the 6 options here. */}
                     <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Smartphone size={16} color="var(--accent)" />
-                        {lang === 'he' ? 'תצוגת תפריט בנייד (אישי)' : 'Mobile menu (personal)'}
-                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowMobileMenuSettings(v => !v)}
+                        aria-expanded={showMobileMenuSettings}
+                        style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', width: '100%', fontSize: '15px', fontWeight: 700, color: '#fff' }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Smartphone size={16} color="var(--accent)" />
+                          {lang === 'he' ? 'תצוגת תפריט בנייד (אישי)' : 'Mobile menu (personal)'}
+                        </span>
+                        <ChevronDown size={16} color="var(--text-secondary)" style={{ transform: showMobileMenuSettings ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s ease' }} />
+                      </button>
+                      {showMobileMenuSettings && (<>
                       <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
                         {lang === 'he'
                           ? `בחר עד 4 קטגוריות שיוצגו בתפריט התחתון שלך בטלפון (ניהול משתמשים תמיד מוצג). נבחרו: ${(currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).length}/4.`
@@ -7802,6 +7809,7 @@ export default function App() {
                           );
                         })}
                       </div>
+                      </>)}
                     </div>
                   </div>
                 )}
