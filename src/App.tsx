@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
-import { downloadHtmlAsPdf, downloadHtmlsAsPdf } from './services/pdfDownload';
+import { downloadHtmlAsPdf, downloadHtmlsAsZip } from './services/pdfDownload';
 import { reportMonthRange, cycleStartingOn, shortRange } from './services/reportPeriod';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth, hebrewDayLetters } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
@@ -4290,13 +4290,17 @@ export default function App() {
     }
     if (!reports.length) { triggerToast(lang === 'he' ? 'אין נסיעות בתקופה שנבחרה' : 'No rides in the chosen period', 'danger'); return; }
     setBulkBusy(true);
-    triggerToast(lang === 'he' ? `מכין PDF עם ${reports.length} דוחות…` : `Preparing a PDF with ${reports.length} reports…`, 'success');
+    triggerToast(lang === 'he' ? `מכין קובץ ZIP עם ${reports.length} דוחות…` : `Preparing a ZIP with ${reports.length} reports…`, 'success');
     try {
       const kind = bulkRoles.drivers && bulkRoles.dispatchers ? (lang === 'he' ? 'נהגים וסדרנים' : 'Drivers and dispatchers') : bulkRoles.drivers ? (lang === 'he' ? 'נהגים' : 'Drivers') : (lang === 'he' ? 'סדרנים' : 'Dispatchers');
-      await downloadHtmlsAsPdf(reports.map(r => r.html), `${lang === 'he' ? 'דוחות' : 'Reports'} ${kind} ${dateFrom} - ${dateTo}.pdf`);
+      const clean = (n: string) => n.replace(/[\\/:*?"<>|]/g, '').trim() || 'report';
+      await downloadHtmlsAsZip(
+        reports.map(r => ({ html: r.html, fileName: `${clean(r.baseName)}.pdf` })),
+        `${lang === 'he' ? 'דוחות' : 'Reports'} ${kind} ${dateFrom} - ${dateTo}.zip`,
+      );
     } catch (err) {
-      console.error('Bulk PDF export failed', err);
-      triggerToast(lang === 'he' ? 'לא הצלחנו ליצור את ה-PDF, נסה שוב' : 'Could not create the PDF, try again', 'danger');
+      console.error('Bulk ZIP export failed', err);
+      triggerToast(lang === 'he' ? 'לא הצלחנו ליצור את הקובץ, נסה שוב' : 'Could not create the file, try again', 'danger');
     } finally {
       setBulkBusy(false);
     }
@@ -7964,13 +7968,13 @@ export default function App() {
                           type="button"
                           onClick={handleDownloadBulkReports}
                           disabled={bulkBusy}
-                          aria-label={lang === 'he' ? 'הורד הכול כ-PDF אחד' : 'Download all as one PDF'}
-                          title={lang === 'he' ? 'הורד הכול כ-PDF אחד' : 'Download all as one PDF'}
+                          aria-label={lang === 'he' ? 'הורד הכול כקובץ ZIP' : 'Download all as one ZIP'}
+                          title={lang === 'he' ? 'הורד הכול כקובץ ZIP' : 'Download all as one ZIP'}
                           className="btn btn-primary"
                           style={{ flex: '1 1 0', minWidth: 0, padding: '9px 4px', fontSize: '12px', whiteSpace: 'nowrap', opacity: bulkBusy ? 0.6 : 1, justifyContent: 'center', gap: '4px' }}
                         >
                           <Download size={14} />
-                          <span>{bulkBusy ? '…' : 'PDF'}</span>
+                          <span>{bulkBusy ? '…' : 'ZIP'}</span>
                         </button>
                       </div>
                       {monthRuleOpen && (
