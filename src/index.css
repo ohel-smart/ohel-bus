@@ -1394,4 +1394,30 @@ html[dir="rtl"] .mobile-manager-nav {
   .rc-heb-day {
     font-size: 21px !important;
   }
+  /* square days, not tall rectangles: each row is as tall as the cell is wide */
+  .rc-grid {
+    flex: none !important;
+    grid-auto-rows: auto !important;
+    gap: 6px !important;
+  }
+  .rc-grid > * {
+    aspect-ratio: 1 / 1;
+    min-height: 0;
+  }
+  /* everything has to fit inside the square */
+  .rc-grid > button {
+    gap: 1px !important;
+    padding: 2px !important;
+    overflow: hidden;
+  }
+  .rc-heb-day {
+    font-size: 19px !important;
+    line-height: 1.1;
+  }
+  .rc-pax {
+    font-size: 9px !important;
+    line-height: 1.1 !important;
+    padding: 1px 5px !important;
+    margin-top: 0 !important;
+  }
 }

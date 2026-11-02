@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
-import { downloadHtmlAsPdf } from './services/pdfDownload';
+import { downloadHtmlAsPdf, downloadHtmlsAsPdf } from './services/pdfDownload';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
 const Analytics = lazy(() => import('./Analytics'));
@@ -1294,7 +1294,7 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
         ))}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridAutoRows: '1fr', gap: '8px' }}>
+      <div className="rc-grid" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridAutoRows: '1fr', gap: '8px' }}>
         {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
         {days.map(day => {
           const isHalf = selectedSet.has(day.ymd);
@@ -1324,7 +1324,7 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
               <span className="rc-heb-day" style={{ fontWeight: 700, fontSize: '26px' }}>{getHebrewDayLabel(day.gregDate)}</span>
               <span className="rc-greg-day" style={{ fontSize: '13px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
               {pax > 0 && (
-                <span style={{
+                <span className="rc-pax" style={{
                   fontSize: '10px', fontWeight: 600, lineHeight: 1.2, marginTop: '1px', padding: '1px 5px', borderRadius: '20px',
                   maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden',
                   background: isHalf ? 'rgba(0,0,0,0.2)' : 'rgba(226, 176, 78, 0.15)',
@@ -3963,9 +3963,10 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
+  // Builds one driver's report as a complete HTML document (or null when no driver is chosen).
+  const makeDriverReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }): { html: string; baseName: string } | null => {
     const driverName = override?.name ?? selectedDriverForPdf;
-    if (!driverName) return;
+    if (!driverName) return null;
     const pdfLang = override?.lang ?? lang;
     const driverScans = applyCentralFilters(
       scans.filter(s => (s.driverName || '').replace(' (נהג)', '') === driverName),
@@ -4082,7 +4083,11 @@ export default function App() {
       </body></html>`;
 
     // Straight to a PDF file on the device: no new tab, no print dialog.
-    savePdf(html, `${pdfLang === 'he' ? 'דוח נהג' : 'Driver report'} - ${driverName}`);
+    return { html, baseName: `${pdfLang === 'he' ? 'דוח נהג' : 'Driver report'} - ${driverName}` };
+  };
+  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
+    const report = makeDriverReport(override);
+    if (report) savePdf(report.html, report.baseName);
   };
 
   // --- Per-dispatcher detailed PDF report (same print->PDF approach as the driver report) ---
@@ -4093,9 +4098,9 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans]);
 
-  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
+  const makeDispatcherReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }): { html: string; baseName: string } | null => {
     const dispatcherName = override?.name ?? selectedDispatcherForPdf;
-    if (!dispatcherName) return;
+    if (!dispatcherName) return null;
     const pdfLang = override?.lang ?? lang;
     const dispatcherScans = applyCentralFilters(
       scans.filter(s => (s.dispatcherName || '').replace(' (סדרן)', '') === dispatcherName),
@@ -4210,13 +4215,60 @@ export default function App() {
         ${section(pdfLang)}
       </body></html>`;
 
-    savePdf(html, `${pdfLang === 'he' ? 'דוח סדרן' : 'Dispatcher report'} - ${dispatcherName}`);
+    return { html, baseName: `${pdfLang === 'he' ? 'דוח סדרן' : 'Dispatcher report'} - ${dispatcherName}` };
+  };
+  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
+    const report = makeDispatcherReport(override);
+    if (report) savePdf(report.html, report.baseName);
   };
 
   // --- Self-service report for a logged-in driver/dispatcher: their own data
   // only, for a period they pick (week/month), no on-screen table - just a
   // period choice and a download, reusing the same PDF builders admins use.
   const [showMobileMenuSettings, setShowMobileMenuSettings] = useState(false);
+
+  // Admin: one PDF with a report for every driver and/or dispatcher over a period.
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkRoles, setBulkRoles] = useState<{ drivers: boolean; dispatchers: boolean }>({ drivers: true, dispatchers: true });
+  const [bulkPeriod, setBulkPeriod] = useState<'week' | 'month' | 'range'>('month');
+  const [bulkFrom, setBulkFrom] = useState('');
+  const [bulkTo, setBulkTo] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const handleDownloadBulkReports = async () => {
+    let dateFrom: string, dateTo: string;
+    if (bulkPeriod === 'range') {
+      if (!bulkFrom || !bulkTo) { triggerToast(lang === 'he' ? 'בחר טווח תאריכים' : 'Pick a date range', 'danger'); return; }
+      dateFrom = bulkFrom; dateTo = bulkTo;
+    } else {
+      const to = new Date();
+      const from = new Date(to);
+      if (bulkPeriod === 'week') from.setDate(from.getDate() - 7); else from.setMonth(from.getMonth() - 1);
+      dateFrom = dbService.getLogicalDate(from.toISOString());
+      dateTo = dbService.getLogicalDate(to.toISOString());
+    }
+    const inRange = scans.filter(s => s.logicalDate >= dateFrom && s.logicalDate <= dateTo);
+    const reports: { html: string; baseName: string }[] = [];
+    if (bulkRoles.drivers) {
+      const names = Array.from(new Set(inRange.map(s => (s.driverName || '').replace(' (נהג)', '')).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'he'));
+      names.forEach(name => { const r = makeDriverReport({ name, dateFrom, dateTo, lang }); if (r) reports.push(r); });
+    }
+    if (bulkRoles.dispatchers) {
+      const names = Array.from(new Set(inRange.map(s => (s.dispatcherName || '').replace(' (סדרן)', '')).filter(n => n && n !== 'דיווח עצמי' && n !== 'Self report'))).sort((a, b) => a.localeCompare(b, 'he'));
+      names.forEach(name => { const r = makeDispatcherReport({ name, dateFrom, dateTo, lang }); if (r) reports.push(r); });
+    }
+    if (!reports.length) { triggerToast(lang === 'he' ? 'אין נסיעות בתקופה שנבחרה' : 'No rides in the chosen period', 'danger'); return; }
+    setBulkBusy(true);
+    triggerToast(lang === 'he' ? `מכין PDF עם ${reports.length} דוחות…` : `Preparing a PDF with ${reports.length} reports…`, 'success');
+    try {
+      const kind = bulkRoles.drivers && bulkRoles.dispatchers ? (lang === 'he' ? 'נהגים וסדרנים' : 'Drivers and dispatchers') : bulkRoles.drivers ? (lang === 'he' ? 'נהגים' : 'Drivers') : (lang === 'he' ? 'סדרנים' : 'Dispatchers');
+      await downloadHtmlsAsPdf(reports.map(r => r.html), `${lang === 'he' ? 'דוחות' : 'Reports'} ${kind} ${dateFrom} - ${dateTo}.pdf`);
+    } catch (err) {
+      console.error('Bulk PDF export failed', err);
+      triggerToast(lang === 'he' ? 'לא הצלחנו ליצור את ה-PDF, נסה שוב' : 'Could not create the PDF, try again', 'danger');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
   const [selfReportPeriod, setSelfReportPeriod] = useState<'week' | 'month'>('month');
   const [selfReportLang, setSelfReportLang] = useState<'he' | 'en'>(lang);
 
@@ -7809,6 +7861,82 @@ export default function App() {
                           );
                         })}
                       </div>
+                      </>)}
+                    </div>
+
+                    {/* Download one PDF with a report for every driver and/or dispatcher. */}
+                    <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setBulkOpen(v => !v)}
+                        aria-expanded={bulkOpen}
+                        style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', width: '100%', fontSize: '15px', fontWeight: 700, color: '#fff' }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Download size={16} color="var(--accent)" />
+                          {lang === 'he' ? 'הורדת דוחות סדרנים ונהגים' : 'Download dispatcher & driver reports'}
+                        </span>
+                        <ChevronDown size={16} color="var(--text-secondary)" style={{ transform: bulkOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s ease' }} />
+                      </button>
+                      {bulkOpen && (<>
+                        <div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{lang === 'he' ? 'של מי? אפשר לבחור את שניהם' : 'Whose reports? You can pick both'}</div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {([['drivers', lang === 'he' ? 'נהגים' : 'Drivers'], ['dispatchers', lang === 'he' ? 'סדרנים' : 'Dispatchers']] as const).map(([key, label]) => {
+                              const on = bulkRoles[key];
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  aria-pressed={on}
+                                  // at least one of the two always stays on
+                                  onClick={() => setBulkRoles(r => (on && !(key === 'drivers' ? r.dispatchers : r.drivers) ? r : { ...r, [key]: !on }))}
+                                  className={`btn ${on ? 'btn-primary' : 'btn-secondary'}`}
+                                  style={{ padding: '9px 20px', fontSize: '13px', color: on ? '#000' : '#fff' }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{lang === 'he' ? 'איזו תקופה?' : 'Which period?'}</div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {([['week', lang === 'he' ? 'שבוע אחרון' : 'Last week'], ['month', lang === 'he' ? 'חודש אחרון' : 'Last month'], ['range', lang === 'he' ? 'טווח תאריכים' : 'Date range']] as const).map(([key, label]) => (
+                              <button
+                                key={key}
+                                type="button"
+                                aria-pressed={bulkPeriod === key}
+                                onClick={() => setBulkPeriod(key)}
+                                className={`btn ${bulkPeriod === key ? 'btn-primary' : 'btn-secondary'}`}
+                                style={{ padding: '9px 16px', fontSize: '13px', color: bulkPeriod === key ? '#000' : '#fff' }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {bulkPeriod === 'range' && (
+                          <HebrewRangePicker
+                            fromValue={bulkFrom}
+                            toValue={bulkTo}
+                            onChange={(from, to) => { setBulkFrom(from); setBulkTo(to); }}
+                            lang={lang}
+                            placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end date'}
+                            fullWidth
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleDownloadBulkReports}
+                          disabled={bulkBusy}
+                          className="btn btn-primary"
+                          style={{ padding: '12px 18px', fontSize: '14px', opacity: bulkBusy ? 0.6 : 1 }}
+                        >
+                          <Download size={16} />
+                          <span>{bulkBusy ? (lang === 'he' ? 'מכין…' : 'Preparing…') : (lang === 'he' ? 'הורד הכול כ-PDF אחד' : 'Download all as one PDF')}</span>
+                        </button>
                       </>)}
                     </div>
                   </div>
