@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, type CSSProperties } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import {
@@ -1061,16 +1061,41 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [isOpen]);
 
+  // Place the popup next to the trigger: below it when it fits, otherwise above it, and
+  // always inside the screen. It is position:fixed, so it is re-placed whenever the page
+  // scrolls or resizes - otherwise it stays pinned to the glass while the trigger moves away
+  // (or hangs off the bottom edge with its days out of reach).
+  const placePopup = () => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const popupW = 280;
+    const popupH = popupRef.current?.offsetHeight ?? 300;
+    const margin = 8;
+    let top = rect.bottom + 6;
+    if (top + popupH > window.innerHeight - margin) {
+      const above = rect.top - 6 - popupH;
+      top = above >= margin ? above : Math.max(margin, window.innerHeight - popupH - margin);
+    }
+    let left = lang === 'he' ? rect.right - popupW : rect.left;
+    left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - popupW - margin));
+    setPopupPos({ top, left });
+  };
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    placePopup();
+    const onMove = () => placePopup();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => { window.removeEventListener('scroll', onMove, true); window.removeEventListener('resize', onMove); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, viewYM.year, viewYM.monthKey]);
+
   const openPicker = () => {
     const base = fromValue ? new Date(fromValue + 'T12:00:00') : new Date();
     setViewYM(getHebrewYearMonth(base));
     setPendingStart(null);
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    if (rect) {
-      setPopupPos(lang === 'he'
-        ? { top: rect.bottom + 6, right: window.innerWidth - rect.right }
-        : { top: rect.bottom + 6, left: rect.left });
-    }
+    placePopup();
     setIsOpen(true);
   };
 
@@ -1134,7 +1159,7 @@ function HebrewRangePicker({ fromValue, toValue, onChange, lang, placeholder, si
         <div
           ref={popupRef}
           style={{
-            position: 'fixed', top: popupPos.top, left: popupPos.left, right: popupPos.right, zIndex: 9999,
+            position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 9999,
             // Solid, not glass - a floating popup needs to stay legible
             // regardless of whatever happens to be scrolled underneath it.
             background: '#15151a', border: '1px solid var(--border-color)', borderRadius: '12px',
