@@ -7886,7 +7886,7 @@ export default function App() {
                         <Download size={16} color="var(--accent)" />
                         {lang === 'he' ? 'הורדת דוחות סדרנים ונהגים' : 'Download dispatcher & driver reports'}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'nowrap', gap: '5px', minWidth: 0, marginTop: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'nowrap', gap: '5px', minWidth: 0 }}>
                         {([['drivers', lang === 'he' ? 'נהגים' : 'Drivers'], ['dispatchers', lang === 'he' ? 'סדרנים' : 'Dispatchers']] as const).map(([key, label]) => {
                           const on = bulkRoles[key];
                           return (
@@ -7916,9 +7916,9 @@ export default function App() {
                                 }}
                                 aria-label={lang === 'he' ? 'הגדרת החודש' : 'Month settings'}
                                 title={lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש' : 'Which dates count as a month'}
-                                style={{ position: 'absolute', top: '-21px', left: '50%', transform: 'translateX(-50%)', background: 'none', border: 'none', padding: '2px', cursor: 'pointer', display: 'flex', color: monthRuleOpen || bulkMonthCycle ? 'var(--accent)' : 'var(--text-secondary)' }}
+                                style={{ position: 'absolute', top: '1px', left: '1px', zIndex: 1, background: 'none', border: 'none', padding: '3px', cursor: 'pointer', display: 'flex', color: bulkPeriod === 'month' ? '#000' : 'var(--text-secondary)', opacity: monthRuleOpen || bulkMonthCycle ? 1 : 0.65 }}
                               >
-                                <Settings size={15} />
+                                <Settings size={12} />
                               </button>
                             )}
                           <button
