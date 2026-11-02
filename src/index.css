@@ -257,7 +257,7 @@ body {
   background: #090a0f;
   border-inline: 1px solid var(--border-color);
   position: relative;
-  padding-bottom: 112px; /* for the floating bottom navigation bar */
+  padding-bottom: 124px; /* for the floating bottom navigation bar */
 }
 
 /* Desktop Manager Layout: Elegant Sidebar Navigation (Human-designed feel) */
@@ -724,7 +724,7 @@ body {
   
   .desktop-content {
     padding: 16px !important;
-    padding-bottom: 112px !important;
+    padding-bottom: 124px !important;
     gap: 16px !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -1153,7 +1153,7 @@ body {
 .mobile-manager-nav {
   left: 12px;
   right: 12px;
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
   width: auto;
   max-width: 520px;
   margin: 0 auto;
