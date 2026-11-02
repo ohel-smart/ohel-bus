@@ -1383,3 +1383,15 @@ html[dir="rtl"] .mobile-manager-nav {
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* Rounding calendar on a phone: no Gregorian date, a smaller Hebrew date, and just the
+   passenger number (the word "passengers" is only on bigger screens). */
+@media (max-width: 900px) {
+  .rc-greg-day,
+  .rc-pax-word {
+    display: none;
+  }
+  .rc-heb-day {
+    font-size: 16px !important;
+  }
+}

@@ -1321,8 +1321,8 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
                 transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease'
               }}
             >
-              <span style={{ fontWeight: 700, fontSize: '26px' }}>{getHebrewDayLabel(day.gregDate)}</span>
-              <span style={{ fontSize: '13px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
+              <span className="rc-heb-day" style={{ fontWeight: 700, fontSize: '26px' }}>{getHebrewDayLabel(day.gregDate)}</span>
+              <span className="rc-greg-day" style={{ fontSize: '13px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
               {pax > 0 && (
                 <span style={{
                   fontSize: '10px', fontWeight: 600, lineHeight: 1.2, marginTop: '1px', padding: '1px 5px', borderRadius: '20px',
@@ -1330,7 +1330,7 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
                   background: isHalf ? 'rgba(0,0,0,0.2)' : 'rgba(226, 176, 78, 0.15)',
                   color: isHalf ? '#000' : 'var(--accent)'
                 }}>
-                  {pax} {lang === 'he' ? 'נוסעים' : 'pax'}
+                  {pax}<span className="rc-pax-word"> {lang === 'he' ? 'נוסעים' : 'pax'}</span>
                 </span>
               )}
             </button>
