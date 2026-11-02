@@ -1373,3 +1373,13 @@ html[dir="rtl"] .mobile-manager-nav {
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* the bars are controls, not text: no selecting, no long-press callout, no image drag */
+.bottom-nav,
+.mobile-manager-nav,
+.bottom-nav *,
+.mobile-manager-nav * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
