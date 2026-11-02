@@ -1394,14 +1394,14 @@ html[dir="rtl"] .mobile-manager-nav {
   .rc-heb-day {
     font-size: 21px !important;
   }
-  /* square days, not tall rectangles: each row is as tall as the cell is wide */
+  /* nearly square days (a touch taller than wide), not tall rectangles */
   .rc-grid {
     flex: none !important;
     grid-auto-rows: auto !important;
     gap: 6px !important;
   }
   .rc-grid > * {
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 1 / 1.22;
     min-height: 0;
   }
   /* everything has to fit inside the square */

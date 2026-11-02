@@ -6619,11 +6619,13 @@ export default function App() {
                             setCentralYearFilter('');
                             setCentralParshaFilter('');
                             setCentralOriginFilter('');
+                            setSelectedDriverForPdf('');
+                            setSelectedDispatcherForPdf('');
                           }}
                           style={{
                             background: 'none', border: 'none', color: 'var(--danger)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer', padding: '2px',
                             marginInlineStart: 'auto', flexShrink: 0,
-                            visibility: (centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter) ? 'visible' : 'hidden'
+                            visibility: (centralBigBusOnly || centralDateFrom || centralDateTo || centralMonthFilter || centralYearFilter || centralParshaFilter || centralOriginFilter || selectedDriverForPdf || selectedDispatcherForPdf) ? 'visible' : 'hidden'
                           }}
                         >
                           {t('clearAllFilters')}
