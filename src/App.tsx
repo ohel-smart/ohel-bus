@@ -6,11 +6,12 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, type LucideIcon
+  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
 import { downloadHtmlAsPdf, downloadHtmlsAsPdf } from './services/pdfDownload';
+import { reportMonthRange, shortRange } from './services/reportPeriod';
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
 const Analytics = lazy(() => import('./Analytics'));
@@ -1325,7 +1326,7 @@ function HalfHourRoundingCalendar({ selectedDates, onToggle, lang, passengersByD
               <span className="rc-greg-day" style={{ fontSize: '13px', opacity: 0.7 }}>{day.gregDate.getDate()}/{day.gregDate.getMonth() + 1}</span>
               {pax > 0 && (
                 <span className="rc-pax" style={{
-                  fontSize: '10px', fontWeight: 600, lineHeight: 1.2, marginTop: '1px', padding: '1px 5px', borderRadius: '20px',
+                  fontSize: '11px', fontWeight: 600, lineHeight: 1.2, marginTop: '1px', padding: '1px 5px', borderRadius: '20px',
                   maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden',
                   background: isHalf ? 'rgba(0,0,0,0.2)' : 'rgba(226, 176, 78, 0.15)',
                   color: isHalf ? '#000' : 'var(--accent)'
@@ -3956,12 +3957,14 @@ export default function App() {
   // --- Per-driver detailed PDF report (laid out by the browser, then saved as a PDF file) ---
   // jsPDF's built-in fonts don't support Hebrew glyphs, so the report is laid out by the
   // browser (correct Hebrew/RTL) and turned into pages - see services/pdfDownload.ts.
+  // Off: only people who currently have an account. On: also anyone who ever appears on a ride.
+  const [includeFormerPeople, setIncludeFormerPeople] = useState(false);
   const driverNamesForPdf = useMemo(() => {
     const names = new Set<string>();
     users.filter(u => u.role === 'driver').forEach(u => names.add(u.name.replace(' (נהג)', '')));
-    scans.forEach(s => { if (s.driverName) names.add(s.driverName.replace(' (נהג)', '')); });
+    if (includeFormerPeople) scans.forEach(s => { if (s.driverName) names.add(s.driverName.replace(' (נהג)', '')); });
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
-  }, [users, scans]);
+  }, [users, scans, includeFormerPeople]);
 
   // Builds one driver's report as a complete HTML document (or null when no driver is chosen).
   const makeDriverReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }): { html: string; baseName: string } | null => {
@@ -4094,9 +4097,9 @@ export default function App() {
   const dispatcherNamesForPdf = useMemo(() => {
     const names = new Set<string>();
     users.filter(u => u.role === 'dispatcher').forEach(u => names.add(u.name.replace(' (סדרן)', '')));
-    scans.forEach(s => { if (s.dispatcherName) names.add(s.dispatcherName.replace(' (סדרן)', '')); });
+    if (includeFormerPeople) scans.forEach(s => { if (s.dispatcherName) names.add(s.dispatcherName.replace(' (סדרן)', '')); });
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
-  }, [users, scans]);
+  }, [users, scans, includeFormerPeople]);
 
   const makeDispatcherReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }): { html: string; baseName: string } | null => {
     const dispatcherName = override?.name ?? selectedDispatcherForPdf;
@@ -4228,24 +4231,26 @@ export default function App() {
   const [showMobileMenuSettings, setShowMobileMenuSettings] = useState(false);
 
   // Admin: one PDF with a report for every driver and/or dispatcher over a period.
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkRoles, setBulkRoles] = useState<{ drivers: boolean; dispatchers: boolean }>({ drivers: true, dispatchers: true });
-  const [bulkPeriod, setBulkPeriod] = useState<'week' | 'month' | 'range'>('month');
-  const [bulkFrom, setBulkFrom] = useState('');
-  const [bulkTo, setBulkTo] = useState('');
+  const [bulkPeriod, setBulkPeriod] = useState<'week' | 'month'>('month');
   const [bulkBusy, setBulkBusy] = useState(false);
+  // The manager's own definition of "month" (see services/reportPeriod.ts), shared via the config.
+  const reportMonthRule = dbService.getConfig().reportMonth;
+  const bulkMonthCycle = reportMonthRange(reportMonthRule, dbService.getLogicalDate(new Date().toISOString()));
+  const [monthRuleOpen, setMonthRuleOpen] = useState(false);
+  const [monthStartInput, setMonthStartInput] = useState('');
+  const [monthEndInput, setMonthEndInput] = useState('');
+  const saveMonthRule = (startDay: number | null, endDay: number | null) => {
+    dbService.saveConfig({ ...dbService.getConfig(), reportMonth: { startDay, endDay } });
+  };
   const handleDownloadBulkReports = async () => {
-    let dateFrom: string, dateTo: string;
-    if (bulkPeriod === 'range') {
-      if (!bulkFrom || !bulkTo) { triggerToast(lang === 'he' ? 'בחר טווח תאריכים' : 'Pick a date range', 'danger'); return; }
-      dateFrom = bulkFrom; dateTo = bulkTo;
-    } else {
-      const to = new Date();
-      const from = new Date(to);
-      if (bulkPeriod === 'week') from.setDate(from.getDate() - 7); else from.setMonth(from.getMonth() - 1);
-      dateFrom = dbService.getLogicalDate(from.toISOString());
-      dateTo = dbService.getLogicalDate(to.toISOString());
-    }
+    const to = new Date();
+    const from = new Date(to);
+    if (bulkPeriod === 'week') from.setDate(from.getDate() - 7); else from.setMonth(from.getMonth() - 1);
+    let dateFrom = dbService.getLogicalDate(from.toISOString());
+    let dateTo = dbService.getLogicalDate(to.toISOString());
+    // the manager's own definition of "month", when set
+    if (bulkPeriod === 'month' && bulkMonthCycle) { dateFrom = bulkMonthCycle.from; dateTo = bulkMonthCycle.to; }
     const inRange = scans.filter(s => s.logicalDate >= dateFrom && s.logicalDate <= dateTo);
     const reports: { html: string; baseName: string }[] = [];
     if (bulkRoles.drivers) {
@@ -6610,7 +6615,14 @@ export default function App() {
 
                         {/* Always rendered (visibility-toggled) at the fixed end
                             of row 2, so nothing in row 2 shifts when it appears. */}
-                        <button
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                          {currentUser.role === 'admin' && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              <input type="checkbox" checked={includeFormerPeople} onChange={e => setIncludeFormerPeople(e.target.checked)} />
+                              {lang === 'he' ? 'כולל מי שאין לו קוד כרגע' : 'Include people with no current code'}
+                            </label>
+                          )}
+                          <button
                           onClick={() => {
                             setCentralBigBusOnly(false);
                             setCentralDateFrom('');
@@ -6630,6 +6642,7 @@ export default function App() {
                         >
                           {t('clearAllFilters')}
                         </button>
+                        </div>
                       </div>
                     </div>
 
@@ -7866,80 +7879,122 @@ export default function App() {
                       </>)}
                     </div>
 
-                    {/* Download one PDF with a report for every driver and/or dispatcher. */}
-                    <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '10px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setBulkOpen(v => !v)}
-                        aria-expanded={bulkOpen}
-                        style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', width: '100%', fontSize: '15px', fontWeight: 700, color: '#fff' }}
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Download size={16} color="var(--accent)" />
-                          {lang === 'he' ? 'הורדת דוחות סדרנים ונהגים' : 'Download dispatcher & driver reports'}
-                        </span>
-                        <ChevronDown size={16} color="var(--text-secondary)" style={{ transform: bulkOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s ease' }} />
-                      </button>
-                      {bulkOpen && (<>
-                        <div>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{lang === 'he' ? 'של מי? אפשר לבחור את שניהם' : 'Whose reports? You can pick both'}</div>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {([['drivers', lang === 'he' ? 'נהגים' : 'Drivers'], ['dispatchers', lang === 'he' ? 'סדרנים' : 'Dispatchers']] as const).map(([key, label]) => {
-                              const on = bulkRoles[key];
-                              return (
-                                <button
-                                  key={key}
-                                  type="button"
-                                  aria-pressed={on}
-                                  // at least one of the two always stays on
-                                  onClick={() => setBulkRoles(r => (on && !(key === 'drivers' ? r.dispatchers : r.drivers) ? r : { ...r, [key]: !on }))}
-                                  className={`btn ${on ? 'btn-primary' : 'btn-secondary'}`}
-                                  style={{ padding: '9px 20px', fontSize: '13px', color: on ? '#000' : '#fff' }}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{lang === 'he' ? 'איזו תקופה?' : 'Which period?'}</div>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {([['week', lang === 'he' ? 'שבוע אחרון' : 'Last week'], ['month', lang === 'he' ? 'חודש אחרון' : 'Last month'], ['range', lang === 'he' ? 'טווח תאריכים' : 'Date range']] as const).map(([key, label]) => (
+                    {/* Download one PDF with a report for every driver and/or dispatcher
+                        who worked in the chosen period - always open, one row of options. */}
+                    <div className="card" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: 700, color: '#fff' }}>
+                        <Download size={16} color="var(--accent)" />
+                        {lang === 'he' ? 'הורדת דוחות סדרנים ונהגים' : 'Download dispatcher & driver reports'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'stretch', flexWrap: 'nowrap', gap: '5px', minWidth: 0, marginTop: '14px' }}>
+                        {([['drivers', lang === 'he' ? 'נהגים' : 'Drivers'], ['dispatchers', lang === 'he' ? 'סדרנים' : 'Dispatchers']] as const).map(([key, label]) => {
+                          const on = bulkRoles[key];
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              aria-pressed={on}
+                              // at least one of the two always stays on
+                              onClick={() => setBulkRoles(r => (on && !(key === 'drivers' ? r.dispatchers : r.drivers) ? r : { ...r, [key]: !on }))}
+                              className={`btn ${on ? 'btn-primary' : 'btn-secondary'}`}
+                              style={{ flex: '1 1 0', minWidth: 0, padding: '9px 4px', fontSize: '12px', whiteSpace: 'nowrap', color: on ? '#000' : '#fff', justifyContent: 'center' }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                        <div style={{ width: '1px', background: 'var(--border-color)', margin: '2px 3px', flexShrink: 0 }} />
+                        {([['week', lang === 'he' ? 'שבוע' : 'Week'], ['month', lang === 'he' ? 'חודש' : 'Month']] as const).map(([key, label]) => (
+                          <div key={key} style={{ position: 'relative', flex: '1 1 0', minWidth: 0, display: 'flex' }}>
+                            {key === 'month' && (
                               <button
-                                key={key}
                                 type="button"
-                                aria-pressed={bulkPeriod === key}
-                                onClick={() => setBulkPeriod(key)}
-                                className={`btn ${bulkPeriod === key ? 'btn-primary' : 'btn-secondary'}`}
-                                style={{ padding: '9px 16px', fontSize: '13px', color: bulkPeriod === key ? '#000' : '#fff' }}
+                                onClick={() => {
+                                  setMonthStartInput(reportMonthRule?.startDay ? String(reportMonthRule.startDay) : '');
+                                  setMonthEndInput(reportMonthRule?.endDay ? String(reportMonthRule.endDay) : '');
+                                  setMonthRuleOpen(v => !v);
+                                }}
+                                aria-label={lang === 'he' ? 'הגדרת החודש' : 'Month settings'}
+                                title={lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש' : 'Which dates count as a month'}
+                                style={{ position: 'absolute', top: '-21px', left: '50%', transform: 'translateX(-50%)', background: 'none', border: 'none', padding: '2px', cursor: 'pointer', display: 'flex', color: monthRuleOpen || bulkMonthCycle ? 'var(--accent)' : 'var(--text-secondary)' }}
                               >
-                                {label}
+                                <Settings size={15} />
                               </button>
-                            ))}
+                            )}
+                          <button
+                            type="button"
+                            aria-pressed={bulkPeriod === key}
+                            onClick={() => setBulkPeriod(key)}
+                            className={`btn ${bulkPeriod === key ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ flex: '1 1 0', width: '100%', minWidth: 0, padding: '9px 4px', fontSize: '12px', whiteSpace: 'nowrap', color: bulkPeriod === key ? '#000' : '#fff', justifyContent: 'center' }}
+                          >
+                            {label}
+                          </button>
                           </div>
-                        </div>
-                        {bulkPeriod === 'range' && (
-                          <HebrewRangePicker
-                            fromValue={bulkFrom}
-                            toValue={bulkTo}
-                            onChange={(from, to) => { setBulkFrom(from); setBulkTo(to); }}
-                            lang={lang}
-                            placeholder={lang === 'he' ? 'בחר תאריך התחלה וסוף' : 'Pick start and end date'}
-                            fullWidth
-                          />
-                        )}
+                        ))}
+                        <div style={{ width: '1px', background: 'var(--border-color)', margin: '2px 3px', flexShrink: 0 }} />
                         <button
                           type="button"
                           onClick={handleDownloadBulkReports}
                           disabled={bulkBusy}
+                          aria-label={lang === 'he' ? 'הורד הכול כ-PDF אחד' : 'Download all as one PDF'}
+                          title={lang === 'he' ? 'הורד הכול כ-PDF אחד' : 'Download all as one PDF'}
                           className="btn btn-primary"
-                          style={{ padding: '12px 18px', fontSize: '14px', opacity: bulkBusy ? 0.6 : 1 }}
+                          style={{ flex: '1 1 0', minWidth: 0, padding: '9px 4px', fontSize: '12px', whiteSpace: 'nowrap', opacity: bulkBusy ? 0.6 : 1, justifyContent: 'center', gap: '4px' }}
                         >
-                          <Download size={16} />
-                          <span>{bulkBusy ? (lang === 'he' ? 'מכין…' : 'Preparing…') : (lang === 'he' ? 'הורד הכול כ-PDF אחד' : 'Download all as one PDF')}</span>
+                          <Download size={14} />
+                          <span>{bulkBusy ? '…' : 'PDF'}</span>
                         </button>
-                      </>)}
+                      </div>
+                      {monthRuleOpen && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.03)' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#fff' }}>{lang === 'he' ? 'מאיזה תאריך עד איזה תאריך נחשב חודש' : 'Which dates count as a month'}</div>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              {lang === 'he' ? 'מתאריך (יום בחודש)' : 'From (day of month)'}
+                              <input className="form-input" type="number" inputMode="numeric" min={1} max={31} value={monthStartInput} onChange={e => setMonthStartInput(e.target.value)} placeholder="1-31" style={{ height: '36px', fontSize: '14px' }} />
+                            </label>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              {lang === 'he' ? 'עד תאריך (לא חובה)' : 'To (optional)'}
+                              <input className="form-input" type="number" inputMode="numeric" min={1} max={31} value={monthEndInput} onChange={e => setMonthEndInput(e.target.value)} placeholder={lang === 'he' ? 'ריק = עד לפני התאריך' : 'empty = day before'} style={{ height: '36px', fontSize: '14px' }} />
+                            </label>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {lang === 'he'
+                              ? 'אם לא כותבים "עד תאריך", החודש נגמר ביום שלפני "מתאריך" בחודש הבא (התאריך עצמו לא נכלל). נלקח תמיד החודש האחרון שכבר הסתיים.'
+                              : 'Without a "to" date the month ends the day before the "from" date next month (that date is not included). The latest finished month is used.'}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ flex: 1, padding: '8px', fontSize: '13px', justifyContent: 'center' }}
+                              onClick={() => {
+                                const a = parseInt(monthStartInput, 10);
+                                const b = parseInt(monthEndInput, 10);
+                                if (!a || a < 1 || a > 31) { triggerToast(lang === 'he' ? 'כתוב יום בחודש בין 1 ל-31' : 'Enter a day of the month, 1-31', 'danger'); return; }
+                                saveMonthRule(a, b >= 1 && b <= 31 ? b : null);
+                                setMonthRuleOpen(false);
+                              }}
+                            >
+                              {lang === 'he' ? 'שמור' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ flex: 1, padding: '8px', fontSize: '13px', color: '#fff', justifyContent: 'center' }}
+                              onClick={() => { saveMonthRule(null, null); setMonthStartInput(''); setMonthEndInput(''); setMonthRuleOpen(false); }}
+                            >
+                              {lang === 'he' ? 'חזרה לחודש רגיל' : 'Back to plain month'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {lang === 'he'
+                          ? (bulkMonthCycle ? `חודש = ${shortRange(bulkMonthCycle)}. ` : '') + 'שבוע / חודש = השבוע האחרון / החודש האחרון. הקובץ כולל רק מי שעבד בתקופה שנבחרה, לא כל מי שרשום במערכת.'
+                          : 'Week / Month = the last week / last month. Only people who worked in the chosen period are included, not everyone registered.'}
+                      </div>
                     </div>
                   </div>
                 )}
