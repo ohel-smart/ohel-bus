@@ -5,7 +5,6 @@
 // drawn from the same `allDays` list the rest of the tab uses, so it follows every scan.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { HDate } from '@hebcal/core';
 import { dowOf, type DayStat } from './services/analytics';
 import { getHebrewDate } from './services/hebrewDate';
 import { prevDay } from './services/nyTime';
@@ -24,7 +23,6 @@ const CHART_H = 250;
 
 const noon = (ymd: string) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d, 12); };
 const dayNum = (ymd: string) => { const [y, m, d] = ymd.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); };
-const ymdOfNum = (n: number) => new Date(n * 86400000).toISOString().slice(0, 10);
 const hebFull = (ymd: string) => getHebrewDate(noon(ymd));
 const hebShort = (ymd: string) => hebFull(ymd).replace(/\s+\S+$/, ''); // "ג׳ אלול"
 const hebMonthOnly = (ymd: string) => hebShort(ymd).split(' ').slice(1).join(' '); // "אלול"
@@ -93,38 +91,37 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
 
   const geo = useMemo(() => {
     if (pts.length < 2) return null;
-    const d0 = dayNum(pts[0].date), d1 = dayNum(pts[pts.length - 1].date);
-    const span = Math.max(1, d1 - d0);
+    const n = pts.length;
     const vals = pts.map(p => p.v);
     let lo = Math.min(...vals), hi = Math.max(...vals);
     if (mode === 'bars') lo = 0;
     else { const pad = Math.max((hi - lo) * 0.12, hi * 0.02, 1); lo = Math.max(0, lo - pad); hi += pad; }
     const ticks = niceTicks(lo, hi);
     const yMin = ticks[0], yMax = ticks[ticks.length - 1];
-    const x = (date: string) => PAD.l + ((dayNum(date) - d0) / span) * innerW;
+    // one slot per logged day, evenly spaced: a day that is left out (Saturday) leaves no hole
+    const idx = new Map(pts.map((p, i) => [p.date, i]));
+    const xi = (i: number) => PAD.l + (i / (n - 1)) * innerW;
+    const x = (date: string) => xi(idx.get(date) ?? 0);
     const y = (v: number) => PAD.t + (1 - (v - yMin) / (yMax - yMin || 1)) * innerH;
-    return { d0, d1, span, ticks, yMin, yMax, x, y };
+    return { n, ticks, yMin, yMax, x, xi, y };
   }, [pts, mode, innerW, innerH]);
 
-  // labels under the line: a handful of days for short ranges, the start of each Hebrew month for long ones
+  // labels under the line: a handful of logged days for short ranges, the first day of each Hebrew month for long ones
   const xTicks = useMemo(() => {
     if (!geo) return [];
     const maxLabels = Math.max(2, Math.floor(innerW / 58));
     const out: { date: string; label: string }[] = [];
-    if (geo.span <= 45) {
-      const step = [1, 2, 3, 5, 7, 10, 14, 21].find(s => Math.floor(geo.span / s) + 1 <= maxLabels) ?? 21;
-      for (let o = 0; o <= geo.span; o += step) { const date = ymdOfNum(geo.d0 + o); out.push({ date, label: hebShort(date) }); }
+    if (pts.length <= 45) {
+      const stride = Math.max(1, Math.ceil(pts.length / maxLabels));
+      pts.forEach((p, i) => { if (i % stride === 0) out.push({ date: p.date, label: hebShort(p.date) }); });
     } else {
       const starts: string[] = [];
-      for (let n = geo.d0; n <= geo.d1; n++) {
-        const date = ymdOfNum(n);
-        if (new HDate(noon(date)).getDate() === 1) starts.push(date);
-      }
+      pts.forEach((p, i) => { if (i === 0 || hebMonthOnly(p.date) !== hebMonthOnly(pts[i - 1].date)) starts.push(p.date); });
       const stride = Math.max(1, Math.ceil(starts.length / maxLabels));
       starts.forEach((date, i) => { if (i % stride === 0) out.push({ date, label: hebMonthOnly(date) }); });
     }
     return out;
-  }, [geo, innerW]);
+  }, [geo, pts, innerW]);
 
   const selIdx = useMemo(() => (selDate ? pts.findIndex(p => p.date === selDate) : -1), [pts, selDate]);
   const shownIdx = selIdx >= 0 ? selIdx : pts.length - 1;
@@ -136,7 +133,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     const rect = boxRef.current.getBoundingClientRect();
     const px = clientX - rect.left;
     let best = 0, bestD = Infinity;
-    for (let i = 0; i < pts.length; i++) { const dd = Math.abs(geo.x(pts[i].date) - px); if (dd < bestD) { bestD = dd; best = i; } }
+    for (let i = 0; i < pts.length; i++) { const dd = Math.abs(geo.xi(i) - px); if (dd < bestD) { bestD = dd; best = i; } }
     setSelDate(pts[best].date);
     setNotice('');
   };
@@ -153,7 +150,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     let i = series.findIndex(p => p.date >= ymd);
     if (i < 0) i = series.length - 1;
     const hit = series[i];
-    setNotice(hit.date === ymd ? '' : (he ? 'אין נתונים ביום הזה, הוצג היום הקרוב ביותר.' : 'No data on that day, showing the closest one.'));
+    setNotice(hit.date === ymd || dowOf(ymd) === 6 ? '' : (he ? 'אין נתונים ביום הזה, הוצג היום הקרוב ביותר.' : 'No data on that day, showing the closest one.'));
     if (!pts.some(p => p.date === hit.date)) setRange('all');
     setSelDate(hit.date);
   };
@@ -213,7 +210,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
       : shown.day.auto === 'partial' ? (he ? 'יום חריג: כנראה לא נרשם במלואו' : 'Unusual day: probably not fully logged')
       : '';
 
-  const barW = Math.max(1.2, Math.min(16, (innerW / (geo ? geo.span + 1 : 1)) * 0.6));
+  const barW = Math.max(1.2, Math.min(16, (innerW / (geo ? geo.n : 1)) * 0.6));
   const baseY = geo ? geo.y(Math.max(geo.yMin, 0)) : 0;
   const hair = 'rgba(255,255,255,0.08)';
 
