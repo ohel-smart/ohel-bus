@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { HDate } from '@hebcal/core';
-import type { DayStat } from './services/analytics';
+import { dowOf, type DayStat } from './services/analytics';
 import { getHebrewDate } from './services/hebrewDate';
 import { prevDay } from './services/nyTime';
 
@@ -71,6 +71,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const series = useMemo<Pt[]>(() => {
     const out: Pt[] = [];
     for (const d of days) {
+      if (dowOf(d.date) === 6) continue; // Shabbat is left out of the chart
       const v = metric === 'pax' ? d.passengers : metric === 'trips' ? d.trips : d.seats > 0 ? (d.passengers / d.seats) * 100 : null;
       if (v != null) out.push({ date: d.date, v, day: d });
     }
@@ -376,6 +377,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'עלייה מהיום הקודם' : 'up on the day before'}</span>
         <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'ירידה' : 'down'}</span>
         <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
+        <span>{he ? 'בלי ימי שבת' : 'Saturdays left out'}</span>
       </div>
     </div>
   );
