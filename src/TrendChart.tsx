@@ -14,12 +14,13 @@ type Metric = 'pax' | 'trips' | 'load';
 type RangeKey = 'week' | 'month' | 'quarter' | 'year' | 'all';
 type Mode = 'line' | 'bars';
 
-const UP = '46, 204, 140';
-const DOWN = '244, 63, 94';
+const UP = '52, 211, 153';
+const DOWN = '251, 113, 133';
 const FLAT = '165, 174, 196';
+const GOLD = '226, 176, 78';
 const RANGE_DAYS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 90, year: 365, all: Infinity };
-const PAD = { l: 46, r: 12, t: 14, b: 30 };
-const CHART_H = 260;
+const PAD = { l: 40, r: 6, t: 12, b: 24 };
+const CHART_H = 250;
 
 const noon = (ymd: string) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d, 12); };
 const dayNum = (ymd: string) => { const [y, m, d] = ymd.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); };
@@ -178,12 +179,22 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const weekday = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { weekday: 'long' });
   const greg = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  const chip = (active: boolean): CSSProperties => ({
-    all: 'unset', cursor: 'pointer', boxSizing: 'border-box', padding: '6px 12px', borderRadius: '999px', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap',
-    color: active ? '#fff' : 'var(--text-secondary)',
-    background: active ? 'rgba(255,255,255,0.14)' : 'transparent',
-    border: `1px solid ${active ? 'rgba(255,255,255,0.28)' : 'transparent'}`,
+  // quiet controls: a soft segmented pill for the choices, plain text tabs for the period
+  const seg = (active: boolean): CSSProperties => ({
+    all: 'unset', cursor: 'pointer', boxSizing: 'border-box', padding: '6px 11px', borderRadius: '999px', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap',
+    color: active ? '#fff' : 'rgba(255,255,255,0.5)',
+    background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
+    boxShadow: active ? 'inset 0 1px 0 rgba(255,255,255,0.18)' : 'none',
+    transition: 'background .2s, color .2s',
   });
+  const segWrap: CSSProperties = { display: 'inline-flex', gap: '2px', padding: '3px', borderRadius: '999px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)' };
+  const tab = (active: boolean): CSSProperties => ({
+    all: 'unset', cursor: 'pointer', boxSizing: 'border-box', padding: '8px 4px 7px', fontSize: '13px', fontWeight: active ? 700 : 500, whiteSpace: 'nowrap',
+    color: active ? '#fff' : 'rgba(255,255,255,0.45)',
+    borderBottom: `1.5px solid ${active ? `rgb(${GOLD})` : 'transparent'}`,
+    transition: 'color .2s',
+  });
+  const ghost: CSSProperties = { all: 'unset', cursor: 'pointer', width: '34px', height: '34px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.75)', background: 'rgba(255,255,255,0.05)', boxSizing: 'border-box' };
 
   const rangeLabels: Record<RangeKey, string> = he
     ? { week: 'שבוע', month: 'חודש', quarter: '3 חודשים', year: 'שנה', all: 'הכל' }
@@ -191,9 +202,6 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
 
   const selX = geo ? geo.x(shown.date) : 0;
   const selY = geo ? geo.y(shown.v) : 0;
-  const tagLabel = hebShort(shown.date);
-  const tagW = Math.max(54, tagLabel.length * 7.5 + 16);
-  const tagX = Math.min(Math.max(selX, PAD.l + tagW / 2), PAD.l + innerW - tagW / 2);
 
   const excludedNote = shown.day.excluded === 'month'
     ? (he ? 'לא נכלל בממוצעים (חודש שהוצא מהחישוב)' : 'Not counted in the averages (month left out)')
@@ -204,44 +212,53 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
       : shown.day.auto === 'partial' ? (he ? 'יום חריג: כנראה לא נרשם במלואו' : 'Unusual day: probably not fully logged')
       : '';
 
-  const barW = Math.max(1.2, Math.min(18, (innerW / (geo ? geo.span + 1 : 1)) * 0.68));
+  const barW = Math.max(1.2, Math.min(16, (innerW / (geo ? geo.span + 1 : 1)) * 0.6));
   const baseY = geo ? geo.y(Math.max(geo.yMin, 0)) : 0;
+  const hair = 'rgba(255,255,255,0.08)';
+
+  const facts = [
+    { label: he ? 'נוסעים' : 'People', value: shown.day.passengers.toLocaleString('en-US') },
+    { label: he ? 'נסיעות' : 'Trips', value: shown.day.trips.toLocaleString('en-US') },
+    { label: he ? 'עומס' : 'Load', value: shown.day.seats > 0 ? `${Math.round((shown.day.passengers / shown.day.seats) * 100)}%` : '—' },
+  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <style>{`
-        @keyframes tc-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-        .tc-in { animation: tc-in .55s cubic-bezier(.22,1,.36,1) both; }
-        .tc-chip:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
+        @keyframes tc-in { from { opacity: 0; } to { opacity: 1; } }
+        .tc-in { animation: tc-in .6s ease both; }
+        .tc-ctl:focus-visible { outline: 2px solid rgba(255,255,255,.55); outline-offset: 2px; }
         @media (prefers-reduced-motion: reduce) { .tc-in { animation: none; } }
       `}</style>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '0 4px' }}>
-        <div role="group" aria-label={he ? 'מדד' : 'Metric'} style={{ display: 'flex', gap: '2px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+        <div role="group" aria-label={he ? 'מדד' : 'Metric'} style={segWrap}>
           {(['pax', 'trips', 'load'] as Metric[]).map(m => (
-            <button key={m} type="button" className="tc-chip" aria-pressed={metric === m} onClick={() => { setMetric(m); setNotice(''); }} style={chip(metric === m)}>
+            <button key={m} type="button" className="tc-ctl" aria-pressed={metric === m} onClick={() => { setMetric(m); setNotice(''); }} style={seg(metric === m)}>
               {m === 'pax' ? (he ? 'נוסעים' : 'People') : m === 'trips' ? (he ? 'נסיעות' : 'Trips') : (he ? 'עומס' : 'Load')}
             </button>
           ))}
         </div>
-        <div role="group" aria-label={he ? 'סוג גרף' : 'Chart type'} style={{ display: 'flex', gap: '2px' }}>
-          <button type="button" className="tc-chip" aria-pressed={mode === 'line'} onClick={() => setMode('line')} style={chip(mode === 'line')}>{he ? 'קו' : 'Line'}</button>
-          <button type="button" className="tc-chip" aria-pressed={mode === 'bars'} onClick={() => setMode('bars')} style={chip(mode === 'bars')}>{he ? 'עמודות' : 'Bars'}</button>
+        <div role="group" aria-label={he ? 'סוג גרף' : 'Chart type'} style={segWrap}>
+          <button type="button" className="tc-ctl" aria-pressed={mode === 'line'} onClick={() => setMode('line')} style={seg(mode === 'line')}>{he ? 'קו' : 'Line'}</button>
+          <button type="button" className="tc-ctl" aria-pressed={mode === 'bars'} onClick={() => setMode('bars')} style={seg(mode === 'bars')}>{he ? 'עמודות' : 'Bars'}</button>
         </div>
       </div>
 
-      <div style={{ padding: '4px 6px 0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: '4px 12px' }}>
-          <span style={{ fontSize: '34px', fontWeight: 800, color: '#fff', lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>{fmt(shown.v)}</span>
-          <span style={{ fontSize: '15px', fontWeight: 700, color: `rgb(${headRgb})`, fontVariantNumeric: 'tabular-nums' }}>
-            {prevPt || !scrubbing ? deltaText(headDelta, headPct) : '—'}
-          </span>
-          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            {scrubbing ? (he ? 'מהיום הקודם' : 'vs previous day') : (he ? `בתקופה · ${hebShort(first.date)} – ${hebShort(lastPt.date)}` : `over the period · ${hebShort(first.date)} – ${hebShort(lastPt.date)}`)}
-          </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '2px 2px 0' }}>
+        <div style={{ fontSize: '12px', letterSpacing: '0.04em', color: 'rgba(255,255,255,0.55)' }}>
+          {metricLabel} · <span style={{ color: `rgb(${GOLD})`, fontWeight: 600 }}>{hebFull(shown.date)}</span> · {weekday(shown.date)} · {greg(shown.date)}
         </div>
-        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', minHeight: '18px' }}>
-          {metricLabel} · <b style={{ color: '#fff' }}>{hebFull(shown.date)}</b> · {weekday(shown.date)} · <span style={{ color: 'var(--text-secondary)' }}>{greg(shown.date)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px' }}>
+          <span style={{ fontSize: '46px', fontWeight: 300, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{fmt(shown.v)}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: `rgb(${headRgb})`, background: `rgba(${headRgb}, 0.12)`, padding: '4px 10px', borderRadius: '999px', fontVariantNumeric: 'tabular-nums', direction: 'ltr', unicodeBidi: 'isolate' }}>
+              {prevPt || !scrubbing ? deltaText(headDelta, headPct) : '—'}
+            </span>
+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
+              {scrubbing ? (he ? 'מהיום הקודם' : 'vs previous day') : (he ? `בתקופה · ${hebShort(first.date)} – ${hebShort(lastPt.date)}` : `over the period · ${hebShort(first.date)} – ${hebShort(lastPt.date)}`)}
+            </span>
+          </span>
         </div>
       </div>
 
@@ -260,25 +277,20 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
           <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`} style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
             <defs>
               <linearGradient id="tc-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor={`rgb(${overallRgb})`} stopOpacity="0.34" />
+                <stop offset="0" stopColor={`rgb(${overallRgb})`} stopOpacity="0.2" />
                 <stop offset="1" stopColor={`rgb(${overallRgb})`} stopOpacity="0" />
               </linearGradient>
-              <filter id="tc-glow" x="-5%" y="-20%" width="110%" height="140%"><feGaussianBlur stdDeviation="2.6" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
             </defs>
 
             {geo.ticks.map(t => (
               <g key={t}>
-                <line x1={PAD.l} x2={PAD.l + innerW} y1={geo.y(t)} y2={geo.y(t)} stroke="rgba(255,255,255,0.07)" strokeDasharray="2 5" />
-                <text x={PAD.l - 8} y={geo.y(t) + 4} textAnchor="end" fontSize="11" fill="rgba(255,255,255,0.55)" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(t)}</text>
+                <line x1={PAD.l} x2={PAD.l + innerW} y1={geo.y(t)} y2={geo.y(t)} stroke="rgba(255,255,255,0.06)" />
+                <text x={PAD.l - 10} y={geo.y(t) + 3.5} textAnchor="end" fontSize="10.5" fill="rgba(255,255,255,0.4)" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(t)}</text>
               </g>
             ))}
-            <line x1={PAD.l} x2={PAD.l + innerW} y1={PAD.t + innerH} y2={PAD.t + innerH} stroke="rgba(255,255,255,0.22)" />
 
             {xTicks.map(t => (
-              <g key={t.date}>
-                <line x1={geo.x(t.date)} x2={geo.x(t.date)} y1={PAD.t + innerH} y2={PAD.t + innerH + 4} stroke="rgba(255,255,255,0.3)" />
-                <text x={Math.min(Math.max(geo.x(t.date), PAD.l + 14), PAD.l + innerW - 14)} y={PAD.t + innerH + 18} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.62)">{t.label}</text>
-              </g>
+              <text key={t.date} x={Math.min(Math.max(geo.x(t.date), PAD.l + 14), PAD.l + innerW - 14)} y={PAD.t + innerH + 17} textAnchor="middle" fontSize="10.5" fill="rgba(255,255,255,0.45)">{t.label}</text>
             ))}
 
             <g key={`${metric}-${range}-${mode}`} className="tc-in">
@@ -288,7 +300,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
                     d={`M ${geo.x(pts[0].date)} ${geo.y(pts[0].v)} ${pts.slice(1).map(p => `L ${geo.x(p.date)} ${geo.y(p.v)}`).join(' ')} L ${geo.x(lastPt.date)} ${PAD.t + innerH} L ${geo.x(pts[0].date)} ${PAD.t + innerH} Z`}
                     fill="url(#tc-area)"
                   />
-                  <g filter="url(#tc-glow)" strokeWidth={pts.length > 150 ? 1.8 : 2.4} strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  <g strokeWidth={pts.length > 150 ? 1.5 : 1.9} strokeLinecap="round" strokeLinejoin="round" fill="none">
                     {pts.slice(1).map((p, i) => {
                       // a stretch with no logged days (more than 3 in a row) is drawn as a faint dashed bridge, not as a real change
                       const gap = dayNum(p.date) - dayNum(pts[i].date) > 3;
@@ -296,84 +308,75 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
                         <line
                           key={p.date}
                           x1={geo.x(pts[i].date)} y1={geo.y(pts[i].v)} x2={geo.x(p.date)} y2={geo.y(p.v)}
-                          stroke={gap ? 'rgba(165,174,196,0.5)' : `rgb(${colorOf(p.v - pts[i].v)})`}
-                          strokeDasharray={gap ? '3 6' : undefined}
-                          strokeWidth={gap ? 1.4 : undefined}
+                          stroke={gap ? 'rgba(165,174,196,0.4)' : `rgb(${colorOf(p.v - pts[i].v)})`}
+                          strokeDasharray={gap ? '2 6' : undefined}
+                          strokeWidth={gap ? 1.2 : undefined}
                         />
                       );
                     })}
                   </g>
-                  {pts.length <= 60 && pts.map(p => (
-                    <circle key={p.date} cx={geo.x(p.date)} cy={geo.y(p.v)} r={p.day.excluded ? 3.2 : 2.2} fill={p.day.excluded ? 'transparent' : '#0d1220'} stroke="rgba(255,255,255,0.65)" strokeWidth={p.day.excluded ? 1.2 : 1} />
-                  ))}
                 </>
               ) : (
                 pts.map((p, i) => {
                   const rgb = colorOf(i === 0 ? 0 : p.v - pts[i - 1].v);
                   const yy = geo.y(p.v);
-                  return <rect key={p.date} x={geo.x(p.date) - barW / 2} y={yy} width={barW} height={Math.max(1, baseY - yy)} rx={Math.min(3, barW / 2)} fill={`rgb(${rgb})`} fillOpacity={p.day.excluded ? 0.4 : 0.88} />;
+                  return <rect key={p.date} x={geo.x(p.date) - barW / 2} y={yy} width={barW} height={Math.max(1, baseY - yy)} rx={Math.min(2.5, barW / 2)} fill={`rgb(${rgb})`} fillOpacity={p.day.excluded ? 0.35 : 0.8} />;
                 })
               )}
             </g>
 
             {/* the day being looked at */}
-            <line x1={selX} x2={selX} y1={PAD.t} y2={PAD.t + innerH} stroke="rgba(255,255,255,0.5)" strokeDasharray="3 4" />
-            <circle cx={selX} cy={selY} r="9" fill={`rgba(${headRgb}, 0.22)`} />
-            <circle cx={selX} cy={selY} r="4.6" fill={`rgb(${headRgb})`} stroke="#fff" strokeWidth="1.6" />
-            <rect x={tagX - tagW / 2} y={PAD.t + innerH + 5} width={tagW} height="20" rx="10" fill="rgba(20,26,44,0.95)" stroke="rgba(255,255,255,0.4)" />
-            <text x={tagX} y={PAD.t + innerH + 19} textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff">{tagLabel}</text>
+            <line x1={selX} x2={selX} y1={PAD.t} y2={PAD.t + innerH} stroke={`rgba(${GOLD}, 0.55)`} />
+            <circle cx={selX} cy={selY} r="8" fill={`rgba(${headRgb}, 0.18)`} />
+            <circle cx={selX} cy={selY} r="3.6" fill="#0b0f1a" stroke={`rgb(${headRgb})`} strokeWidth="2" />
           </svg>
         )}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '0 2px' }}>
-        <div role="group" aria-label={he ? 'תקופה' : 'Period'} style={{ display: 'flex', gap: '1px', flexWrap: 'wrap' }}>
-          {(Object.keys(RANGE_DAYS) as RangeKey[]).map(k => (
-            <button key={k} type="button" className="tc-chip" aria-pressed={range === k} onClick={() => { setRange(k); setSelDate(null); setNotice(''); }} style={{ ...chip(range === k), padding: '6px 10px' }}>{rangeLabels[k]}</button>
-          ))}
-        </div>
+      <div role="group" aria-label={he ? 'תקופה' : 'Period'} style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${hair}`, paddingTop: '2px' }}>
+        {(Object.keys(RANGE_DAYS) as RangeKey[]).map(k => (
+          <button key={k} type="button" className="tc-ctl" aria-pressed={range === k} onClick={() => { setRange(k); setSelDate(null); setNotice(''); }} style={tab(range === k)}>{rangeLabels[k]}</button>
+        ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
-        {[
-          { label: he ? 'נוסעים' : 'People', value: shown.day.passengers.toLocaleString('en-US') },
-          { label: he ? 'נסיעות' : 'Trips', value: shown.day.trips.toLocaleString('en-US') },
-          { label: he ? 'עומס' : 'Load', value: shown.day.seats > 0 ? `${Math.round((shown.day.passengers / shown.day.seats) * 100)}%` : '—' },
-        ].map(c => (
-          <div key={c.label} style={{ textAlign: 'center', padding: '8px 4px', borderRadius: '14px', background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{c.label}</div>
-            <b style={{ fontSize: '18px', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{c.value}</b>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', padding: '4px 0' }}>
+        {facts.map((c, i) => (
+          <div key={c.label} style={{ textAlign: 'center', borderInlineStart: i ? `1px solid ${hair}` : 'none' }}>
+            <div style={{ fontSize: '11px', letterSpacing: '0.04em', color: 'rgba(255,255,255,0.45)' }}>{c.label}</div>
+            <b style={{ fontSize: '19px', fontWeight: 600, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{c.value}</b>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '0 2px' }}>
-        <button type="button" className="tc-chip" onClick={() => step(-1)} aria-label={he ? 'היום הקודם' : 'Previous day'} style={{ ...chip(false), border: '1px solid rgba(255,255,255,0.2)', padding: '6px 8px', display: 'inline-flex' }}>
-          {he ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
-        <button type="button" className="tc-chip" onClick={() => step(1)} aria-label={he ? 'היום הבא' : 'Next day'} style={{ ...chip(false), border: '1px solid rgba(255,255,255,0.2)', padding: '6px 8px', display: 'inline-flex' }}>
-          {he ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-        </button>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-          {he ? 'מעבר לתאריך' : 'Go to date'}
-          <input
-            type="date"
-            value={shown.date}
-            min={series[0].date}
-            max={series[series.length - 1].date}
-            onChange={e => jumpTo(e.target.value)}
-            style={{ padding: '6px 8px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: '13px', colorScheme: 'dark' }}
-          />
-        </label>
-        {scrubbing && <button type="button" className="tc-chip" onClick={() => { setSelDate(null); setNotice(''); }} style={{ ...chip(false), fontSize: '12px' }}>{he ? 'חזרה להיום האחרון' : 'Back to latest'}</button>}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+          <button type="button" className="tc-ctl" onClick={() => step(-1)} aria-label={he ? 'היום הקודם' : 'Previous day'} style={ghost}>
+            {he ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+          <button type="button" className="tc-ctl" onClick={() => step(1)} aria-label={he ? 'היום הבא' : 'Next day'} style={ghost}>
+            {he ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
+          {scrubbing && <button type="button" className="tc-ctl" onClick={() => { setSelDate(null); setNotice(''); }} style={{ all: 'unset', cursor: 'pointer', fontSize: '12px', color: `rgb(${GOLD})`, padding: '6px 4px' }}>{he ? 'היום האחרון' : 'Latest'}</button>}
+        </div>
+        <input
+          type="date"
+          aria-label={he ? 'מעבר לתאריך' : 'Go to date'}
+          value={shown.date}
+          min={series[0].date}
+          max={series[series.length - 1].date}
+          onChange={e => jumpTo(e.target.value)}
+          style={{ padding: '7px 12px', borderRadius: '999px', border: 'none', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.85)', fontSize: '13px', colorScheme: 'dark', fontFamily: 'inherit' }}
+        />
       </div>
 
       {(excludedNote || notice) && (
-        <p style={{ margin: 0, padding: '0 4px', fontSize: '12px', color: notice ? 'rgb(226,176,78)' : 'var(--text-secondary)' }}>{notice || excludedNote}</p>
+        <p style={{ margin: 0, fontSize: '12px', color: notice ? `rgb(${GOLD})` : 'rgba(255,255,255,0.5)' }}>{notice || excludedNote}</p>
       )}
-      <p style={{ margin: 0, padding: '0 4px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-        {he ? 'ירוק: עלייה לעומת היום שלפניו · אדום: ירידה · קו מקווקו: תקופה בלי ימים רשומים. גררו על הגרף כדי לראות כל יום. היום הנוכחי נכנס רק אחרי שייגמר.' : 'Green: up vs the day before · red: down · dashed: stretch with no logged days. Drag over the chart to see any day. Today is added once it has ended.'}
-      </p>
+      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'עלייה מהיום הקודם' : 'up on the day before'}</span>
+        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'ירידה' : 'down'}</span>
+        <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
+      </div>
     </div>
   );
 }
