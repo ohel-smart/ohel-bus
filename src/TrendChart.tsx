@@ -38,7 +38,24 @@ function niceTicks(lo: number, hi: number, n = 4): number[] {
   return out;
 }
 
-const colorOf = (delta: number) => (delta > 0 ? UP : delta < 0 ? DOWN : FLAT);
+// A day only counts as "up" or "down" when it is clearly different (10% or more); smaller wobbles are steady.
+const SIG = 0.1;
+type Tone = 'up' | 'down' | 'flat';
+const toneRgb = (t: Tone) => (t === 'up' ? UP : t === 'down' ? DOWN : FLAT);
+const toneOf = (v: number, ref: number | null): Tone => (!ref || ref <= 0 ? 'flat' : (v - ref) / ref >= SIG ? 'up' : (v - ref) / ref <= -SIG ? 'down' : 'flat');
+
+/** A smooth curve through the points (Catmull-Rom as beziers), kept inside [yTop, yBottom]. */
+function smoothPath(P: [number, number][], yTop: number, yBottom: number): string {
+  if (P.length < 2) return P.length ? `M ${P[0][0]} ${P[0][1]}` : '';
+  const cy = (v: number) => Math.min(yBottom, Math.max(yTop, v));
+  let d = `M ${P[0][0]} ${P[0][1]}`;
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[i - 1] ?? P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] ?? p2;
+    const t = 0.18;
+    d += ` C ${p1[0] + (p2[0] - p0[0]) * t} ${cy(p1[1] + (p2[1] - p0[1]) * t)}, ${p2[0] - (p3[0] - p1[0]) * t} ${cy(p2[1] - (p3[1] - p1[1]) * t)}, ${p2[0]} ${p2[1]}`;
+  }
+  return d;
+}
 const sign = (n: number) => (n > 0 ? '▲' : n < 0 ? '▼' : '■');
 
 interface Pt { date: string; v: number; day: DayStat }
@@ -77,6 +94,28 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     }
     return out;
   }, [days, metric]);
+
+  // what is normal for each day of the week (so a Friday is judged against Fridays, never against Thursday)
+  const usual = useMemo(() => {
+    // days the manager left out of the averages (e.g. a whole month) only count when a weekday has too few other days
+    const tally = (skipExcluded: boolean) => {
+      const acc = new Map<number, { sum: number; n: number }>();
+      for (const p of series) {
+        if (skipExcluded && p.day.excluded) continue;
+        const k = dowOf(p.date), a = acc.get(k) ?? { sum: 0, n: 0 };
+        a.sum += p.v; a.n += 1; acc.set(k, a);
+      }
+      return acc;
+    };
+    const strict = tally(true), loose = tally(false);
+    const out = new Map<number, number>();
+    for (let k = 0; k < 7; k++) {
+      const a = (strict.get(k)?.n ?? 0) >= 2 ? strict.get(k) : loose.get(k);
+      if (a && a.n >= 2) out.set(k, a.sum / a.n);
+    }
+    return out;
+  }, [series]);
+  const toneOfPt = (p: Pt): Tone => toneOf(p.v, usual.get(dowOf(p.date)) ?? null);
 
   const base = useMemo(() => {
     if (!series.length) return [];
@@ -212,19 +251,27 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   }
 
   const first = pts[0], lastPt = pts[pts.length - 1];
-  const periodDelta = lastPt.v - first.v;
-  const prevPt = shownIdx > 0 ? pts[shownIdx - 1] : null;
-  const dayDelta = prevPt ? shown.v - prevPt.v : 0;
-  const headDelta = scrubbing ? dayDelta : periodDelta;
-  const headBase = scrubbing ? prevPt?.v ?? null : first.v;
+  // over a period, compare the first week with the last week (averaging a week removes the day-of-week effect)
+  const wk = (a: Pt[]) => a.reduce((t, p) => t + p.v, 0) / Math.max(1, a.length);
+  const edge = Math.min(7, Math.floor(pts.length / 2));
+  const periodStart = wk(pts.slice(0, edge)), periodEnd = wk(pts.slice(-edge));
+  const periodDelta = periodEnd - periodStart;
+  const periodTone = toneOf(periodEnd, periodStart);
+  const shownUsual = usual.get(dowOf(shown.date)) ?? null;
+  const dayTone = toneOfPt(shown);
+  const headTone: Tone = scrubbing ? dayTone : periodTone;
+  const headDelta = scrubbing ? (shownUsual != null ? shown.v - shownUsual : 0) : periodDelta;
+  const headBase = scrubbing ? shownUsual : periodStart;
   const headPct = headBase ? (headDelta / headBase) * 100 : null;
-  const headRgb = colorOf(headDelta);
-  const overallRgb = colorOf(periodDelta);
+  const headRgb = toneRgb(headTone);
+  const overallRgb = toneRgb(periodTone);
 
   const deltaText = (d: number, pct: number | null) => {
     const abs = metric === 'load' ? `${Math.abs(Math.round(d * 10) / 10)}` : Math.abs(Math.round(d)).toLocaleString('en-US');
     return `${sign(d)} ${abs}${metric === 'load' ? (he ? ' נק׳' : ' pts') : ''}${pct != null && metric !== 'load' ? ` (${Math.abs(Math.round(pct * 10) / 10)}%)` : ''}`;
   };
+  const toneWord = (t: Tone) => (t === 'up' ? (he ? 'יום חזק' : 'Strong day') : t === 'down' ? (he ? 'יום חלש' : 'Weak day') : (he ? 'יום רגיל' : 'Typical day'));
+  const headText = headTone === 'flat' ? (scrubbing ? `■ ${toneWord('flat')}` : `■ ${he ? 'יציב' : 'Steady'}`) : deltaText(headDelta, headPct);
 
   const weekday = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { weekday: 'long' });
   const greg = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -304,10 +351,10 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
           <span style={{ fontSize: '46px', fontWeight: 300, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{fmt(shown.v)}</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: `rgb(${headRgb})`, background: `rgba(${headRgb}, 0.12)`, padding: '4px 10px', borderRadius: '999px', fontVariantNumeric: 'tabular-nums', direction: 'ltr', unicodeBidi: 'isolate' }}>
-              {prevPt || !scrubbing ? deltaText(headDelta, headPct) : '—'}
+              {headText}
             </span>
             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
-              {scrubbing ? (he ? 'מהיום הקודם' : 'vs previous day') : (he ? `בתקופה · ${hebShort(first.date)} – ${hebShort(lastPt.date)}` : `over the period · ${hebShort(first.date)} – ${hebShort(lastPt.date)}`)}
+              {scrubbing ? (headTone === 'flat' ? '' : toneWord(headTone)) : (he ? `בתקופה · ${hebShort(first.date)} – ${hebShort(lastPt.date)}` : `over the period · ${hebShort(first.date)} – ${hebShort(lastPt.date)}`)}
             </span>
           </span>
         </div>
@@ -351,33 +398,37 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
             ))}
 
             <g key={`${metric}-${range}-${mode}`} className="tc-in">
-              {mode === 'line' ? (
-                <>
-                  <path
-                    d={`M ${geo.x(pts[0].date)} ${geo.y(pts[0].v)} ${pts.slice(1).map(p => `L ${geo.x(p.date)} ${geo.y(p.v)}`).join(' ')} L ${geo.x(lastPt.date)} ${PAD.t + innerH} L ${geo.x(pts[0].date)} ${PAD.t + innerH} Z`}
-                    fill="url(#tc-area)"
-                  />
-                  <g strokeWidth={pts.length > 150 ? 1.5 : 1.9} strokeLinecap="round" strokeLinejoin="round" fill="none">
-                    {pts.slice(1).map((p, i) => {
-                      // a stretch with no logged days (more than 3 in a row) is drawn as a faint dashed bridge, not as a real change
-                      const gap = dayNum(p.date) - dayNum(pts[i].date) > 3;
-                      return (
-                        <line
-                          key={p.date}
-                          x1={geo.x(pts[i].date)} y1={geo.y(pts[i].v)} x2={geo.x(p.date)} y2={geo.y(p.v)}
-                          stroke={gap ? 'rgba(165,174,196,0.4)' : `rgb(${colorOf(p.v - pts[i].v)})`}
-                          strokeDasharray={gap ? '2 6' : undefined}
-                          strokeWidth={gap ? 1.2 : undefined}
-                        />
-                      );
+              {mode === 'line' ? (() => {
+                // runs of days with no long hole between them; a hole is bridged by a faint dashed line, never drawn as a change
+                const runs: Pt[][] = [];
+                pts.forEach((p, i) => { if (i === 0 || dayNum(p.date) - dayNum(pts[i - 1].date) > 3) runs.push([p]); else runs[runs.length - 1].push(p); });
+                const yTop = PAD.t, yBot = PAD.t + innerH;
+                const paths = runs.map(r => smoothPath(r.map(p => [geo.x(p.date), geo.y(p.v)] as [number, number]), yTop, yBot));
+                return (
+                  <>
+                    <defs>
+                      <linearGradient id="tc-stroke" gradientUnits="userSpaceOnUse" x1={PAD.l} x2={PAD.l + innerW} y1="0" y2="0">
+                        {pts.map(p => <stop key={p.date} offset={(geo.x(p.date) - PAD.l) / innerW} stopColor={`rgb(${toneRgb(toneOfPt(p))})`} />)}
+                      </linearGradient>
+                      <filter id="tc-blur" x="-5%" y="-30%" width="110%" height="160%"><feGaussianBlur stdDeviation="3" /></filter>
+                    </defs>
+                    {runs.map((r, i) => (
+                      <path key={`a${i}`} d={`${paths[i]} L ${geo.x(r[r.length - 1].date)} ${yBot} L ${geo.x(r[0].date)} ${yBot} Z`} fill="url(#tc-area)" />
+                    ))}
+                    {runs.slice(1).map((r, i) => {
+                      const a = runs[i][runs[i].length - 1];
+                      return <line key={`g${i}`} x1={geo.x(a.date)} y1={geo.y(a.v)} x2={geo.x(r[0].date)} y2={geo.y(r[0].v)} stroke="rgba(165,174,196,0.4)" strokeWidth="1.2" strokeDasharray="2 6" />;
                     })}
-                  </g>
-                </>
-              ) : (
-                pts.map((p, i) => {
-                  const rgb = colorOf(i === 0 ? 0 : p.v - pts[i - 1].v);
+                    <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      {paths.map((d, i) => <path key={`b${i}`} d={d} stroke="url(#tc-stroke)" strokeWidth="5" opacity="0.28" filter="url(#tc-blur)" />)}
+                      {paths.map((d, i) => <path key={`c${i}`} d={d} stroke="url(#tc-stroke)" strokeWidth={pts.length > 150 ? 1.6 : 2} />)}
+                    </g>
+                  </>
+                );
+              })() : (
+                pts.map(p => {
                   const yy = geo.y(p.v);
-                  return <rect key={p.date} x={geo.x(p.date) - barW / 2} y={yy} width={barW} height={Math.max(1, baseY - yy)} rx={Math.min(2.5, barW / 2)} fill={`rgb(${rgb})`} fillOpacity={p.day.excluded ? 0.35 : 0.8} />;
+                  return <rect key={p.date} x={geo.x(p.date) - barW / 2} y={yy} width={barW} height={Math.max(1, baseY - yy)} rx={Math.min(2.5, barW / 2)} fill={`rgb(${toneRgb(toneOfPt(p))})`} fillOpacity={p.day.excluded ? 0.35 : 0.8} />;
                 })
               )}
             </g>
@@ -386,6 +437,16 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
             <line x1={selX} x2={selX} y1={PAD.t} y2={PAD.t + innerH} stroke={`rgba(${GOLD}, 0.55)`} />
             <circle cx={selX} cy={selY} r="8" fill={`rgba(${headRgb}, 0.18)`} />
             <circle cx={selX} cy={selY} r="3.6" fill="#0b0f1a" stroke={`rgb(${headRgb})`} strokeWidth="2" />
+            {(() => {
+              const label = fmt(shown.v), w = Math.max(40, label.length * 8 + 18);
+              const tx = Math.min(Math.max(selX, PAD.l + w / 2), PAD.l + innerW - w / 2), ty = Math.max(0, selY - 38);
+              return (
+                <g>
+                  <rect x={tx - w / 2} y={ty} width={w} height="22" rx="11" fill="rgba(20,26,44,0.95)" stroke="rgba(255,255,255,0.3)" />
+                  <text x={tx} y={ty + 15} textAnchor="middle" fontSize="11.5" fontWeight="700" fill="#fff">{label}</text>
+                </g>
+              );
+            })()}
           </svg>
         )}
       </div>
@@ -442,8 +503,9 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         <p style={{ margin: 0, fontSize: '12px', color: notice ? `rgb(${GOLD})` : 'rgba(255,255,255,0.5)' }}>{notice || excludedNote}</p>
       )}
       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'עלייה מהיום הקודם' : 'up on the day before'}</span>
-        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'ירידה' : 'down'}</span>
+        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'יום חזק' : 'strong day'}</span>
+        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'יום חלש' : 'weak day'}</span>
+        <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'יום רגיל' : 'typical day'}</span>
         <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
         <span>{he ? 'בלי ימי שבת · צביטה או ‎+ ‎ו‎-‎ מקרבים' : 'Saturdays left out · pinch or +/- to zoom'}</span>
       </div>
