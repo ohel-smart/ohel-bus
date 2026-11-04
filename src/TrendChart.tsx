@@ -204,7 +204,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
       const spread = Math.abs(a - b);
       if (lastSpread.current > 0 && spread > 8) zoomBy(lastSpread.current / spread, anchorOf((a + b) / 2));
       lastSpread.current = spread;
-    } else if (e.pointerType === 'mouse' || e.buttons) pickByX(e.clientX);
+    } else if (e.buttons) pickByX(e.clientX); // the line only moves while pressing / dragging, and stays where it is left
   };
   const onUp = (e: React.PointerEvent) => { fingers.current.delete(e.pointerId); lastSpread.current = 0; };
 
@@ -360,7 +360,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        onPointerLeave={e => { onUp(e); if (e.pointerType === 'mouse') setSelDate(null); }}
+        onPointerLeave={onUp}
         style={{ position: 'relative', width: '100%', height: `${CHART_H}px`, direction: 'ltr', touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair', outline: 'none' }}
       >
         {geo && (
