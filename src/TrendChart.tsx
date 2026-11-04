@@ -310,13 +310,17 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const headDelta = scrubbing ? shown.v - overall : periodDelta;
   const headBase = scrubbing ? overall : periodStart;
   const headPct = headBase ? (headDelta / headBase) * 100 : null;
-  const headRgb = toneRgb(headTone);
+  // for load a high value is bad, so green and red swap (the arrows still show the real direction)
+  const rgbOf = (t: Tone) => toneRgb(metric === 'load' ? (t === 'up' ? 'down' : t === 'down' ? 'up' : t) : t);
+  const headRgb = rgbOf(headTone);
 
   const deltaText = (d: number, pct: number | null) => {
     const abs = metric === 'load' ? `${Math.abs(Math.round(d * 10) / 10)}` : Math.abs(Math.round(d)).toLocaleString('en-US');
     return `${sign(d)} ${abs}${metric === 'load' ? (he ? ' נק׳' : ' pts') : ''}${pct != null && metric !== 'load' ? ` (${Math.abs(Math.round(pct * 10) / 10)}%)` : ''}`;
   };
-  const toneWord = (t: Tone) => (t === 'up' ? (he ? 'יום חזק' : 'Strong day') : t === 'down' ? (he ? 'יום חלש' : 'Weak day') : (he ? 'יום רגיל' : 'Typical day'));
+  const toneWord = (t: Tone) => metric === 'load'
+    ? (t === 'up' ? (he ? 'עומס גבוה' : 'High load') : t === 'down' ? (he ? 'עומס נמוך' : 'Low load') : (he ? 'עומס רגיל' : 'Typical load'))
+    : (t === 'up' ? (he ? 'יום חזק' : 'Strong day') : t === 'down' ? (he ? 'יום חלש' : 'Weak day') : (he ? 'יום רגיל' : 'Typical day'));
   const headText = headTone === 'flat' ? `■ ${scrubbing ? toneWord('flat') : he ? 'מגמה יציבה' : 'Steady trend'}` : deltaText(headDelta, headPct);
 
   const weekday = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { weekday: 'long' });
@@ -447,7 +451,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
                   <>
                     <defs>
                       <linearGradient id="tc-stroke" gradientUnits="userSpaceOnUse" x1={PAD.l} x2={PAD.l + innerW} y1="0" y2="0">
-                        {pts.map(p => <stop key={p.date} offset={(geo.x(p.date) - PAD.l) / innerW} stopColor={`rgb(${toneRgb(toneOfPt(p))})`} />)}
+                        {pts.map(p => <stop key={p.date} offset={(geo.x(p.date) - PAD.l) / innerW} stopColor={`rgb(${rgbOf(toneOfPt(p))})`} />)}
                       </linearGradient>
                       <linearGradient id="tc-vfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity="0.3" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
                       <filter id="tc-blur" x="-5%" y="-30%" width="110%" height="160%"><feGaussianBlur stdDeviation="3" /></filter>
@@ -477,7 +481,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
               })() : (
                 pts.map(p => {
                   const yy = geo.y(p.v);
-                  return <rect key={p.date} x={geo.x(p.date) - barW / 2} y={yy} width={barW} height={Math.max(1, baseY - yy)} rx={Math.min(2.5, barW / 2)} fill={`rgb(${toneRgb(toneOfPt(p))})`} fillOpacity={p.day.excluded ? 0.35 : 0.8} />;
+                  return <rect key={p.date} x={geo.x(p.date) - barW / 2} y={yy} width={barW} height={Math.max(1, baseY - yy)} rx={Math.min(2.5, barW / 2)} fill={`rgb(${rgbOf(toneOfPt(p))})`} fillOpacity={p.day.excluded ? 0.35 : 0.8} />;
                 })
               )}
             </g>
@@ -550,8 +554,17 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px 10px', flexWrap: 'wrap', fontSize: '11px', color: 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
         {notice && <span style={{ color: `rgb(${GOLD})` }}>{notice}</span>}
-        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'חזק' : 'strong'}</span>
-        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'חלש' : 'weak'}</span>
+        {metric === 'load' ? (
+          <>
+            <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'נמוך' : 'low'}</span>
+            <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'גבוה' : 'high'}</span>
+          </>
+        ) : (
+          <>
+            <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'חזק' : 'strong'}</span>
+            <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'חלש' : 'weak'}</span>
+          </>
+        )}
         <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'רגיל' : 'typical'}</span>
         <span>┄ {he ? 'ללא נתונים' : 'no data'}</span>
         {pts.some(p => p.day.excluded) && <span>{he ? '◌ מחוץ לחישוב' : '◌ left out'}</span>}
