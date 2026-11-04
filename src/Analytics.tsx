@@ -9,6 +9,7 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
 import type { Scan } from './services/db';
 import { buildAnalytics, windowSummary, weekdayAverages, dowOf, DEFAULT_RULES, type AnalyticsRules, type DayStat, type HourAvg, type WeekdayAvg } from './services/analytics';
+import TrendChart from './TrendChart';
 import { HEBREW_MONTH_OPTIONS } from './services/hebrewDate';
 import { prevDay } from './services/nyTime';
 
@@ -174,6 +175,11 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
             </p>
           </div>
         )}
+      </GlassCard>
+
+      <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: '4px 4px -8px' }}>{he ? 'מגמה יום אחרי יום' : 'Day-by-day trend'}</h3>
+      <GlassCard style={{ padding: '16px 12px 14px' }}>
+        <TrendChart days={report.allDays} lang={lang} />
       </GlassCard>
 
       <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: '4px 4px -8px' }}>{he ? 'ראשון עד חמישי' : 'Sunday to Thursday'}</h3>
