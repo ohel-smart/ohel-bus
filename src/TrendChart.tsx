@@ -4,7 +4,7 @@
 // over the chart, by the arrows, or by picking a date. Hand-made SVG (no chart library),
 // drawn from the same `allDays` list the rest of the tab uses, so it follows every scan.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { dowOf, type DayStat } from './services/analytics';
 import { getHebrewDate } from './services/hebrewDate';
 import { prevDay } from './services/nyTime';
@@ -280,7 +280,6 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     borderBottom: `1.5px solid ${active ? `rgb(${GOLD})` : 'transparent'}`,
     transition: 'color .2s',
   });
-  const zbtn: CSSProperties = { all: 'unset', cursor: 'pointer', width: '28px', height: '28px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.08)', boxSizing: 'border-box', backdropFilter: 'blur(6px)' };
   const ghost: CSSProperties = { all: 'unset', cursor: 'pointer', width: '34px', height: '34px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.75)', background: 'rgba(255,255,255,0.05)', boxSizing: 'border-box' };
 
   const rangeLabels: Record<RangeKey, string> = he
@@ -364,10 +363,6 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         onPointerLeave={e => { onUp(e); if (e.pointerType === 'mouse') setSelDate(null); }}
         style={{ position: 'relative', width: '100%', height: `${CHART_H}px`, direction: 'ltr', touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair', outline: 'none' }}
       >
-        <div style={{ position: 'absolute', top: '-2px', left: `${PAD.l + 2}px`, display: 'flex', gap: '6px', zIndex: 2 }} onPointerDown={e => e.stopPropagation()}>
-          <button type="button" className="tc-ctl" onClick={() => zoomBy(1 / 1.6)} aria-label={he ? 'הגדלה' : 'Zoom in'} style={zbtn}><Plus size={15} /></button>
-          <button type="button" className="tc-ctl" onClick={() => zoomBy(1.6)} aria-label={he ? 'הקטנה' : 'Zoom out'} disabled={!zoom} style={{ ...zbtn, opacity: zoom ? 1 : 0.35 }}><Minus size={15} /></button>
-        </div>
         {geo && (
           <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`} style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
             <defs>
@@ -499,7 +494,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'יום רגיל' : 'typical day'}</span>
         <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
         {pts.some(p => p.day.excluded) && <span>{he ? 'חצי שקוף: יום שלא נכלל בחישוב' : 'faded: day left out of the calculation'}</span>}
-        <span>{he ? 'בלי ימי שבת · צביטה או ‎+ ‎ו‎-‎ מקרבים' : 'Saturdays left out · pinch or +/- to zoom'}</span>
+        <span>{he ? 'בלי ימי שבת' : 'Saturdays left out'}</span>
       </div>
     </div>
   );
