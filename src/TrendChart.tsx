@@ -298,8 +298,10 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const lastPt = pts[pts.length - 1];
   // the trend over the period: the latest week against all the days before it (by median, so one spike does not decide it)
   const med = (a: Pt[]) => { const t = a.map(p => p.v).sort((x, y) => x - y), m = Math.floor(t.length / 2); return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; };
-  const tail = pts.slice(-Math.min(7, Math.max(1, pts.length - 1)));
-  const before = pts.slice(0, pts.length - tail.length);
+  // days left out of the calculation do not take part unless nothing else is available
+  const usable = pts.filter(p => !p.day.excluded).length >= 2 ? pts.filter(p => !p.day.excluded) : pts;
+  const tail = usable.slice(-Math.min(7, Math.max(1, usable.length - 1)));
+  const before = usable.slice(0, usable.length - tail.length);
   const periodStart = med(before), periodEnd = med(tail);
   const periodDelta = periodEnd - periodStart;
   const periodTone: Tone = toneOf(periodEnd, periodStart);
@@ -309,7 +311,6 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const headBase = scrubbing ? overall : periodStart;
   const headPct = headBase ? (headDelta / headBase) * 100 : null;
   const headRgb = toneRgb(headTone);
-  const overallRgb = toneRgb(periodTone);
 
   const deltaText = (d: number, pct: number | null) => {
     const abs = metric === 'load' ? `${Math.abs(Math.round(d * 10) / 10)}` : Math.abs(Math.round(d)).toLocaleString('en-US');
@@ -422,10 +423,6 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         {geo && (
           <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`} style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
             <defs>
-              <linearGradient id="tc-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor={`rgb(${overallRgb})`} stopOpacity="0.2" />
-                <stop offset="1" stopColor={`rgb(${overallRgb})`} stopOpacity="0" />
-              </linearGradient>
             </defs>
 
             {geo.ticks.map(t => (
@@ -452,11 +449,21 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
                       <linearGradient id="tc-stroke" gradientUnits="userSpaceOnUse" x1={PAD.l} x2={PAD.l + innerW} y1="0" y2="0">
                         {pts.map(p => <stop key={p.date} offset={(geo.x(p.date) - PAD.l) / innerW} stopColor={`rgb(${toneRgb(toneOfPt(p))})`} />)}
                       </linearGradient>
+                      <linearGradient id="tc-vfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity="0.3" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
                       <filter id="tc-blur" x="-5%" y="-30%" width="110%" height="160%"><feGaussianBlur stdDeviation="3" /></filter>
                     </defs>
-                    {runs.map((r, i) => (
-                      <path key={`a${i}`} d={`${paths[i]} L ${geo.x(r[r.length - 1].date)} ${yBot} L ${geo.x(r[0].date)} ${yBot} Z`} fill="url(#tc-area)" />
-                    ))}
+                    {runs.map((r, i) => {
+                      // the light under the line is the line's own colour (green under green, red under red), fading downwards
+                      const x0 = geo.x(r[0].date), x1 = geo.x(r[r.length - 1].date), top = Math.min(...r.map(p => geo.y(p.v)));
+                      return (
+                        <g key={`a${i}`}>
+                          <mask id={`tc-mask-${i}`} maskUnits="userSpaceOnUse" x={x0 - 1} y={top - 1} width={Math.max(1, x1 - x0) + 2} height={Math.max(1, yBot - top) + 2}>
+                            <rect x={x0 - 1} y={top - 1} width={Math.max(1, x1 - x0) + 2} height={Math.max(1, yBot - top) + 2} fill="url(#tc-vfade)" />
+                          </mask>
+                          <path d={`${paths[i]} L ${x1} ${yBot} L ${x0} ${yBot} Z`} fill="url(#tc-stroke)" mask={`url(#tc-mask-${i})`} />
+                        </g>
+                      );
+                    })}
                     {runs.slice(1).map((r, i) => {
                       const a = runs[i][runs[i].length - 1];
                       return <line key={`g${i}`} x1={geo.x(a.date)} y1={geo.y(a.v)} x2={geo.x(r[0].date)} y2={geo.y(r[0].v)} stroke="rgba(165,174,196,0.4)" strokeWidth="1.2" strokeDasharray="2 6" />;
