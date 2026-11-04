@@ -96,24 +96,15 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     return out;
   }, [days, metric]);
 
-  // Every day is compared with real data, never with an average: the same weekday one week earlier (last Tuesday for
-  // this Tuesday), and for the very first days, which have no such day, the day before (the day after for the very first).
-  // So there is always something to compare with.
-  const refs = useMemo(() => {
-    const out = new Map<string, Pt>();
-    series.forEach((p, i) => {
-      // days the manager left out of the calculation are only used as a reference when nothing else exists
-      let r: Pt | undefined;
-      for (const strict of [true, false]) {
-        for (let j = i - 1; j >= 0 && !r; j--) if (dowOf(series[j].date) === dowOf(p.date) && !(strict && series[j].day.excluded)) r = series[j];
-        for (let j = i - 1; j >= 0 && !r; j--) if (!(strict && series[j].day.excluded)) r = series[j];
-        if (r) break;
-      }
-      out.set(p.date, r ?? series[i + 1] ?? p);
-    });
-    return out;
+  // Every day is judged against all the days together: the middle value (median) of every day logged, so a few odd days
+  // cannot drag it. Days the manager left out of the calculation do not count unless nothing else exists.
+  // There is always something to compare with, and it sharpens by itself as days accumulate.
+  const overall = useMemo(() => {
+    const median = (a: number[]) => { const t = [...a].sort((x, y) => x - y), m = Math.floor(t.length / 2); return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; };
+    const counted = series.filter(p => !p.day.excluded);
+    return median((counted.length ? counted : series).map(p => p.v));
   }, [series]);
-  const toneOfPt = (p: Pt): Tone => toneOf(p.v, refs.get(p.date)?.v ?? null);
+  const toneOfPt = (p: Pt): Tone => toneOf(p.v, overall);
 
   const base = useMemo(() => {
     if (!series.length) return [];
@@ -248,17 +239,18 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     return <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', padding: '28px' }}>{he ? 'אין עדיין מספיק ימים להצגת גרף.' : 'Not enough days for a chart yet.'}</div>;
   }
 
-  const first = pts[0], lastPt = pts[pts.length - 1];
-  // over a period: the last day against the first day of the same weekday in the period (real data, like for like)
-  const sameDowFirst = pts.find(p => dowOf(p.date) === dowOf(lastPt.date));
-  const periodRef = sameDowFirst && sameDowFirst !== lastPt ? sameDowFirst : first;
-  const periodDelta = lastPt.v - periodRef.v;
-  const periodTone: Tone = toneOf(lastPt.v, periodRef.v);
-  const shownRef = refs.get(shown.date) ?? null;
+  const lastPt = pts[pts.length - 1];
+  // the trend over the period: the latest week against all the days before it (by median, so one spike does not decide it)
+  const med = (a: Pt[]) => { const t = a.map(p => p.v).sort((x, y) => x - y), m = Math.floor(t.length / 2); return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; };
+  const tail = pts.slice(-Math.min(7, Math.max(1, pts.length - 1)));
+  const before = pts.slice(0, pts.length - tail.length);
+  const periodStart = med(before), periodEnd = med(tail);
+  const periodDelta = periodEnd - periodStart;
+  const periodTone: Tone = toneOf(periodEnd, periodStart);
   const dayTone = toneOfPt(shown);
   const headTone: Tone = scrubbing ? dayTone : periodTone;
-  const headDelta = scrubbing ? (shownRef ? shown.v - shownRef.v : 0) : periodDelta;
-  const headBase = scrubbing ? shownRef?.v ?? null : periodRef.v;
+  const headDelta = scrubbing ? shown.v - overall : periodDelta;
+  const headBase = scrubbing ? overall : periodStart;
   const headPct = headBase ? (headDelta / headBase) * 100 : null;
   const headRgb = toneRgb(headTone);
   const overallRgb = toneRgb(periodTone);
@@ -267,7 +259,8 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     const abs = metric === 'load' ? `${Math.abs(Math.round(d * 10) / 10)}` : Math.abs(Math.round(d)).toLocaleString('en-US');
     return `${sign(d)} ${abs}${metric === 'load' ? (he ? ' נק׳' : ' pts') : ''}${pct != null && metric !== 'load' ? ` (${Math.abs(Math.round(pct * 10) / 10)}%)` : ''}`;
   };
-  const headText = headTone === 'flat' ? `■ ${he ? 'ללא שינוי משמעותי' : 'No real change'}` : deltaText(headDelta, headPct);
+  const toneWord = (t: Tone) => (t === 'up' ? (he ? 'יום חזק' : 'Strong day') : t === 'down' ? (he ? 'יום חלש' : 'Weak day') : (he ? 'יום רגיל' : 'Typical day'));
+  const headText = headTone === 'flat' ? `■ ${scrubbing ? toneWord('flat') : he ? 'מגמה יציבה' : 'Steady trend'}` : deltaText(headDelta, headPct);
 
   const weekday = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { weekday: 'long' });
   const greg = (ymd: string) => noon(ymd).toLocaleDateString(he ? 'he-IL' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -351,8 +344,8 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
             </span>
             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
               {scrubbing
-                ? (shownRef && shownRef !== shown ? (he ? `לעומת ${weekday(shownRef.date)} ${hebShort(shownRef.date)}` : `vs ${weekday(shownRef.date)} ${hebShort(shownRef.date)}`) : '')
-                : (he ? `בתקופה · ${hebShort(periodRef.date)} – ${hebShort(lastPt.date)}` : `over the period · ${hebShort(periodRef.date)} – ${hebShort(lastPt.date)}`)}
+                ? (headTone === 'flat' ? '' : toneWord(headTone))
+                : (he ? `מגמת השבוע האחרון · ${hebShort(tail[0].date)} – ${hebShort(lastPt.date)}` : `latest week · ${hebShort(tail[0].date)} – ${hebShort(lastPt.date)}`)}
             </span>
           </span>
         </div>
@@ -501,9 +494,9 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         <p style={{ margin: 0, fontSize: '12px', color: notice ? `rgb(${GOLD})` : 'rgba(255,255,255,0.5)' }}>{notice || excludedNote}</p>
       )}
       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'עלייה ברורה' : 'clear rise'}</span>
-        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'ירידה ברורה' : 'clear drop'}</span>
-        <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'ללא שינוי משמעותי' : 'no real change'}</span>
+        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'יום חזק' : 'strong day'}</span>
+        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'יום חלש' : 'weak day'}</span>
+        <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'יום רגיל' : 'typical day'}</span>
         <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
         {pts.some(p => p.day.excluded) && <span>{he ? 'חצי שקוף: יום שלא נכלל בחישוב' : 'faded: day left out of the calculation'}</span>}
         <span>{he ? 'בלי ימי שבת · צביטה או ‎+ ‎ו‎-‎ מקרבים' : 'Saturdays left out · pinch or +/- to zoom'}</span>
