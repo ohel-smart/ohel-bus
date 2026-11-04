@@ -4,7 +4,7 @@
 // over the chart, by the arrows, or by picking a date. Hand-made SVG (no chart library),
 // drawn from the same `allDays` list the rest of the tab uses, so it follows every scan.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 import { dowOf, type DayStat } from './services/analytics';
 import { getHebrewDate } from './services/hebrewDate';
 import { prevDay } from './services/nyTime';
@@ -47,6 +47,8 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const he = lang === 'he';
   const [metric, setMetric] = useState<Metric>('pax');
   const [range, setRange] = useState<RangeKey>('quarter');
+  // zoom: a window (first/last index) inside the days of the chosen period; null = the whole period
+  const [zoom, setZoom] = useState<{ from: number; to: number } | null>(null);
   const [mode, setMode] = useState<Mode>('line');
   const [selDate, setSelDate] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
@@ -76,7 +78,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     return out;
   }, [days, metric]);
 
-  const pts = useMemo(() => {
+  const base = useMemo(() => {
     if (!series.length) return [];
     const last = series[series.length - 1].date;
     const n = RANGE_DAYS[range];
@@ -85,6 +87,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     for (let i = 1; i < n; i++) from = prevDay(from);
     return series.filter(p => p.date >= from);
   }, [series, range]);
+  const pts = useMemo(() => (zoom ? base.slice(zoom.from, zoom.to + 1) : base), [base, zoom]);
 
   const innerW = Math.max(60, width - PAD.l - PAD.r);
   const innerH = CHART_H - PAD.t - PAD.b;
@@ -128,6 +131,55 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const shown = pts[shownIdx];
   const scrubbing = selIdx >= 0;
 
+  // zoom in (factor < 1) or out (factor > 1) around a point of the chart (0 = left edge, 1 = right edge)
+  const zoomBy = (factor: number, anchor = 0.5) => {
+    const n = base.length;
+    const from = zoom ? zoom.from : 0, to = zoom ? zoom.to : n - 1;
+    const len = to - from;
+    const newLen = Math.min(n - 1, Math.max(4, Math.round(len * factor)));
+    if (newLen >= n - 1) { setZoom(null); return; }
+    const a = from + anchor * len;
+    const nf = Math.min(n - 1 - newLen, Math.max(0, Math.round(a - anchor * newLen)));
+    setZoom({ from: nf, to: nf + newLen });
+  };
+  const zoomRef = useRef(zoomBy);
+  zoomRef.current = zoomBy;
+  const anchorOf = (clientX: number) => {
+    const rect = boxRef.current?.getBoundingClientRect();
+    return rect ? Math.min(1, Math.max(0, (clientX - rect.left - PAD.l) / Math.max(1, rect.width - PAD.l - PAD.r))) : 0.5;
+  };
+  const anchorRef = useRef(anchorOf);
+  anchorRef.current = anchorOf;
+  // ctrl / cmd + wheel (a trackpad pinch counts as one) zooms; a plain wheel still scrolls the page
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoomRef.current(e.deltaY > 0 ? 1.18 : 1 / 1.18, anchorRef.current(e.clientX));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [series.length < 2]);
+  const fingers = useRef(new Map<number, number>());
+  const lastSpread = useRef(0);
+  const onDown = (e: React.PointerEvent) => {
+    fingers.current.set(e.pointerId, e.clientX);
+    if (fingers.current.size === 1) pickByX(e.clientX);
+    else lastSpread.current = 0;
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (fingers.current.has(e.pointerId)) fingers.current.set(e.pointerId, e.clientX);
+    if (fingers.current.size >= 2) {
+      const [a, b] = [...fingers.current.values()];
+      const spread = Math.abs(a - b);
+      if (lastSpread.current > 0 && spread > 8) zoomBy(lastSpread.current / spread, anchorOf((a + b) / 2));
+      lastSpread.current = spread;
+    } else if (e.pointerType === 'mouse' || e.buttons) pickByX(e.clientX);
+  };
+  const onUp = (e: React.PointerEvent) => { fingers.current.delete(e.pointerId); lastSpread.current = 0; };
+
   const pickByX = (clientX: number) => {
     if (!geo || !boxRef.current) return;
     const rect = boxRef.current.getBoundingClientRect();
@@ -151,7 +203,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     if (i < 0) i = series.length - 1;
     const hit = series[i];
     setNotice(hit.date === ymd || dowOf(ymd) === 6 ? '' : (he ? 'אין נתונים ביום הזה, הוצג היום הקרוב ביותר.' : 'No data on that day, showing the closest one.'));
-    if (!pts.some(p => p.date === hit.date)) setRange('all');
+    if (!pts.some(p => p.date === hit.date)) { if (!base.some(p => p.date === hit.date)) setRange('all'); setZoom(null); }
     setSelDate(hit.date);
   };
 
@@ -192,6 +244,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     borderBottom: `1.5px solid ${active ? `rgb(${GOLD})` : 'transparent'}`,
     transition: 'color .2s',
   });
+  const zbtn: CSSProperties = { all: 'unset', cursor: 'pointer', width: '28px', height: '28px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.08)', boxSizing: 'border-box', backdropFilter: 'blur(6px)' };
   const ghost: CSSProperties = { all: 'unset', cursor: 'pointer', width: '34px', height: '34px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.75)', background: 'rgba(255,255,255,0.05)', boxSizing: 'border-box' };
 
   const rangeLabels: Record<RangeKey, string> = he
@@ -266,11 +319,17 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         role="img"
         aria-label={he ? `גרף ${metricLabel} לפי ימים. חצים ימינה ושמאלה מעבירים בין ימים.` : `Daily ${metricLabel} chart. Left and right arrows move between days.`}
         onKeyDown={e => { if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); } else if (e.key === 'Escape') setSelDate(null); }}
-        onPointerDown={e => pickByX(e.clientX)}
-        onPointerMove={e => { if (e.pointerType === 'mouse' || e.buttons) pickByX(e.clientX); }}
-        onPointerLeave={e => { if (e.pointerType === 'mouse') setSelDate(null); }}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onPointerLeave={e => { onUp(e); if (e.pointerType === 'mouse') setSelDate(null); }}
         style={{ position: 'relative', width: '100%', height: `${CHART_H}px`, direction: 'ltr', touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair', outline: 'none' }}
       >
+        <div style={{ position: 'absolute', top: '-2px', left: `${PAD.l + 2}px`, display: 'flex', gap: '6px', zIndex: 2 }} onPointerDown={e => e.stopPropagation()}>
+          <button type="button" className="tc-ctl" onClick={() => zoomBy(1 / 1.6)} aria-label={he ? 'הגדלה' : 'Zoom in'} style={zbtn}><Plus size={15} /></button>
+          <button type="button" className="tc-ctl" onClick={() => zoomBy(1.6)} aria-label={he ? 'הקטנה' : 'Zoom out'} disabled={!zoom} style={{ ...zbtn, opacity: zoom ? 1 : 0.35 }}><Minus size={15} /></button>
+        </div>
         {geo && (
           <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`} style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
             <defs>
@@ -331,9 +390,21 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         )}
       </div>
 
+      {zoom && (
+        <input
+          type="range"
+          aria-label={he ? 'הזזת החלון בזמן' : 'Move the window in time'}
+          min={0}
+          max={base.length - 1 - (zoom.to - zoom.from)}
+          value={zoom.from}
+          onChange={e => { const f = Number(e.target.value); setZoom({ from: f, to: f + (zoom.to - zoom.from) }); }}
+          style={{ direction: 'ltr', width: '100%', accentColor: `rgb(${GOLD})`, margin: '-4px 0' }}
+        />
+      )}
+
       <div role="group" aria-label={he ? 'תקופה' : 'Period'} style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${hair}`, paddingTop: '2px' }}>
         {(Object.keys(RANGE_DAYS) as RangeKey[]).map(k => (
-          <button key={k} type="button" className="tc-ctl" aria-pressed={range === k} onClick={() => { setRange(k); setSelDate(null); setNotice(''); }} style={tab(range === k)}>{rangeLabels[k]}</button>
+          <button key={k} type="button" className="tc-ctl" aria-pressed={range === k} onClick={() => { setRange(k); setZoom(null); setSelDate(null); setNotice(''); }} style={tab(range === k)}>{rangeLabels[k]}</button>
         ))}
       </div>
 
@@ -374,7 +445,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'עלייה מהיום הקודם' : 'up on the day before'}</span>
         <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'ירידה' : 'down'}</span>
         <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
-        <span>{he ? 'בלי ימי שבת' : 'Saturdays left out'}</span>
+        <span>{he ? 'בלי ימי שבת · צביטה או ‎+ ‎ו‎-‎ מקרבים' : 'Saturdays left out · pinch or +/- to zoom'}</span>
       </div>
     </div>
   );
