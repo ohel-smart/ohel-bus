@@ -38,6 +38,47 @@ function niceTicks(lo: number, hi: number, n = 4): number[] {
   return out;
 }
 
+/**
+ * A scale that gives most of the height to where most of the days are (fine steps there: 150, 200, 250, 300),
+ * and squeezes the rare very low / very high days into coarser steps (100 below, 400, 500, 600 above), so the
+ * line sits in the middle of the screen instead of lying flat at the bottom under one tall spike.
+ * Returns fractions (0 = bottom, 1 = top) through `frac`.
+ */
+function smartScale(vals: number[]): { ticks: number[]; yMin: number; yMax: number; band: [number, number]; frac: (v: number) => number } | null {
+  if (vals.length < 5) return null;
+  const sorted = [...vals].sort((a, b) => a - b);
+  const q = (p: number) => sorted[Math.floor(p * (sorted.length - 1))];
+  const p10 = q(0.1), p90 = q(0.9), min = sorted[0], max = sorted[sorted.length - 1];
+  if (!(p90 > p10) || !(max > min)) return null;
+  const stepOf = (raw: number) => { const mag = 10 ** Math.floor(Math.log10(raw)), r = raw / mag; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * mag; };
+  const fine = stepOf((p90 - p10) / 4), coarse = fine * 2;
+  const bandLo = Math.floor(p10 / fine) * fine, bandHi = Math.max(bandLo + fine, Math.ceil(p90 / fine) * fine);
+  const yMin = Math.max(0, Math.min(bandLo, Math.floor((min - fine * 0.3) / coarse) * coarse));
+  const yMax = Math.max(bandHi, Math.ceil((max + (max - min) * 0.05) / coarse) * coarse);
+  const round = (v: number) => Math.round(v * 1e6) / 1e6;
+  const ticks: number[] = [];
+  for (let v = Math.ceil(yMin / coarse) * coarse; v < bandLo - 1e-9; v += coarse) ticks.push(round(v));
+  for (let v = bandLo; v <= bandHi + 1e-9; v += fine) ticks.push(round(v));
+  for (let v = Math.ceil((bandHi + 1e-9) / coarse) * coarse; v <= yMax + 1e-9; v += coarse) if (v > bandHi + 1e-9) ticks.push(round(v));
+  if (ticks[0] > yMin + 1e-9) ticks.unshift(round(yMin));
+  if (ticks[ticks.length - 1] < yMax - 1e-9) ticks.push(round(yMax));
+  while (ticks.length > 11) { // too crowded: drop the coarse ones outside the band first
+    const i = ticks.findIndex((t, k) => (t < bandLo || t > bandHi) && k > 0 && k < ticks.length - 1);
+    if (i < 0) break;
+    ticks.splice(i, 1);
+  }
+  // heights: the busy band gets most of it; the rest is shared by what is below and above (only if there is any)
+  const wBand = 0.6, wBelow = bandLo > yMin ? 0.14 : 0, wAbove = yMax > bandHi ? 0.26 : 0;
+  const total = wBand + wBelow + wAbove;
+  const fBelow = wBelow / total, fBand = wBand / total;
+  const frac = (v: number) => {
+    if (v <= bandLo) return bandLo > yMin ? Math.max(0, (v - yMin) / (bandLo - yMin)) * fBelow : 0;
+    if (v <= bandHi) return fBelow + ((v - bandLo) / (bandHi - bandLo)) * fBand;
+    return fBelow + fBand + (yMax > bandHi ? Math.min(1, (v - bandHi) / (yMax - bandHi)) * (1 - fBelow - fBand) : 0);
+  };
+  return { ticks, yMin: ticks[0], yMax: ticks[ticks.length - 1], band: [bandLo, bandHi], frac };
+}
+
 // A day only counts as "up" or "down" when it is clearly different (10% or more); smaller wobbles are steady.
 const SIG = 0.1;
 // 'none' = nothing sensible to compare the day with (too few similar days yet)
@@ -124,16 +165,31 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     if (pts.length < 2) return null;
     const n = pts.length;
     const vals = pts.map(p => p.v);
-    let lo = Math.min(...vals), hi = Math.max(...vals);
-    if (mode === 'bars') lo = 0;
-    else { const pad = Math.max((hi - lo) * 0.12, hi * 0.02, 1); lo = Math.max(0, lo - pad); hi += pad; }
-    const ticks = niceTicks(lo, hi);
-    const yMin = ticks[0], yMax = ticks[ticks.length - 1];
+    const smart = mode === 'line' ? smartScale(vals) : null;
+    let ticks: number[], yMin: number, yMax: number;
+    if (smart) ({ ticks, yMin, yMax } = smart);
+    else {
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      if (mode === 'bars') lo = 0;
+      else { const pad = Math.max((hi - lo) * 0.12, hi * 0.02, 1); lo = Math.max(0, lo - pad); hi += pad; }
+      ticks = niceTicks(lo, hi);
+      yMin = ticks[0]; yMax = ticks[ticks.length - 1];
+    }
     // one slot per logged day, evenly spaced: a day that is left out (Saturday) leaves no hole
     const idx = new Map(pts.map((p, i) => [p.date, i]));
     const xi = (i: number) => PAD.l + (i / (n - 1)) * innerW;
     const x = (date: string) => xi(idx.get(date) ?? 0);
-    const y = (v: number) => PAD.t + (1 - (v - yMin) / (yMax - yMin || 1)) * innerH;
+    const y = (v: number) => PAD.t + (1 - (smart ? smart.frac(v) : (v - yMin) / (yMax - yMin || 1))) * innerH;
+    // labels closer than 17px would overlap: keep the coarse one outside the busy band, drop the band's edge one
+    if (smart) {
+      const [bLo, bHi] = smart.band, kept: number[] = [];
+      for (const t of ticks) {
+        const last = kept[kept.length - 1];
+        if (last == null || Math.abs(y(t) - y(last)) >= 17) kept.push(t);
+        else if (last >= bLo && last <= bHi && (t < bLo || t > bHi)) kept[kept.length - 1] = t;
+      }
+      ticks = kept;
+    }
     return { n, ticks, yMin, yMax, x, xi, y };
   }, [pts, mode, innerW, innerH]);
 
