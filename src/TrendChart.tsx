@@ -346,12 +346,12 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const selY = geo ? geo.y(shown.v) : 0;
 
   const excludedNote = shown.day.excluded === 'month'
-    ? (he ? 'לא נכלל בממוצעים (חודש שהוצא מהחישוב)' : 'Not counted in the averages (month left out)')
+    ? (he ? 'מחוץ לחישוב: חודש שהוצא' : 'Left out: excluded month')
     : shown.day.excluded === 'ceiling'
-      ? (he ? 'לא נכלל בממוצעים (מעל התקרה)' : 'Not counted in the averages (over the ceiling)')
-      : shown.day.auto === 'high' ? (he ? 'יום חריג: גבוה מהרגיל' : 'Unusual day: higher than usual')
-      : shown.day.auto === 'low' ? (he ? 'יום חריג: נמוך מהרגיל' : 'Unusual day: lower than usual')
-      : shown.day.auto === 'partial' ? (he ? 'יום חריג: כנראה לא נרשם במלואו' : 'Unusual day: probably not fully logged')
+      ? (he ? 'מחוץ לחישוב: מעל התקרה' : 'Left out: over the ceiling')
+      : shown.day.auto === 'high' ? (he ? 'יום חריג: גבוה' : 'Unusual: high')
+      : shown.day.auto === 'low' ? (he ? 'יום חריג: נמוך' : 'Unusual: low')
+      : shown.day.auto === 'partial' ? (he ? 'יום חריג: חלקי' : 'Unusual: partial')
       : '';
 
   const barW = Math.max(1.2, Math.min(16, (innerW / (geo ? geo.n : 1)) * 0.6));
@@ -399,7 +399,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
             </span>
             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
               {scrubbing
-                ? (headTone === 'flat' ? '' : toneWord(headTone))
+                ? [headTone === 'flat' ? '' : toneWord(headTone), excludedNote].filter(Boolean).join(' · ')
                 : (he ? `מגמת השבוע האחרון · ${hebShort(tail[0].date)} – ${hebShort(lastPt.date)}` : `latest week · ${hebShort(tail[0].date)} – ${hebShort(lastPt.date)}`)}
             </span>
           </span>
@@ -541,16 +541,13 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         />
       </div>
 
-      {(excludedNote || notice) && (
-        <p style={{ margin: 0, fontSize: '12px', color: notice ? `rgb(${GOLD})` : 'rgba(255,255,255,0.5)' }}>{notice || excludedNote}</p>
-      )}
-      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'יום חזק' : 'strong day'}</span>
-        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'יום חלש' : 'weak day'}</span>
-        <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'יום רגיל' : 'typical day'}</span>
-        <span>┄ {he ? 'תקופה בלי ימים רשומים' : 'no logged days'}</span>
-        {pts.some(p => p.day.excluded) && <span>{he ? 'חצי שקוף: יום שלא נכלל בחישוב' : 'faded: day left out of the calculation'}</span>}
-        <span>{he ? 'בלי ימי שבת' : 'Saturdays left out'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px 10px', flexWrap: 'wrap', fontSize: '11px', color: 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
+        {notice && <span style={{ color: `rgb(${GOLD})` }}>{notice}</span>}
+        <span><span style={{ color: `rgb(${UP})` }}>●</span> {he ? 'חזק' : 'strong'}</span>
+        <span><span style={{ color: `rgb(${DOWN})` }}>●</span> {he ? 'חלש' : 'weak'}</span>
+        <span><span style={{ color: `rgb(${FLAT})` }}>●</span> {he ? 'רגיל' : 'typical'}</span>
+        <span>┄ {he ? 'ללא נתונים' : 'no data'}</span>
+        {pts.some(p => p.day.excluded) && <span>{he ? '◌ מחוץ לחישוב' : '◌ left out'}</span>}
       </div>
     </div>
   );
