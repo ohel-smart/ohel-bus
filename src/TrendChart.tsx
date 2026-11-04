@@ -15,7 +15,7 @@ type Mode = 'line' | 'bars';
 
 const UP = '52, 211, 153';
 const DOWN = '251, 113, 133';
-const FLAT = '165, 174, 196';
+const FLAT = '255, 179, 64'; // #FFB340
 const GOLD = '226, 176, 78';
 const RANGE_DAYS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 90, year: 365, all: Infinity };
 const PAD = { l: 40, r: 6, t: 12, b: 24 };
