@@ -3,6 +3,17 @@ import {
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
+import { saveWithCodes } from './scanErrors';
+
+// How long a new scan may wait for the sign-in to the database and for the save itself before
+// the dispatcher is told (with an error code) that it has not reached the server yet. Without
+// these limits a stuck connection left the saving spinner up forever with no explanation.
+const SCAN_AUTH_TIMEOUT_MS = 10_000;
+const SCAN_WRITE_TIMEOUT_MS = 15_000;
+// One Google Routes call; on a stuck connection it used to hang the whole scan before the save.
+const ROUTES_CALL_TIMEOUT_MS = 5_000;
+
+const isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 
 // Types Definitions
 export type UserRole = 'admin' | 'driver' | 'dispatcher' | 'screen';
@@ -391,6 +402,21 @@ class DBService {
     await setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true });
   }
 
+  /**
+   * writeScan for a brand-new scan, with time limits and a ScanSaveError carrying a code the
+   * dispatcher can read out (see scanErrors.ts). On a time-out the Firestore SDK keeps the write
+   * queued, so the scan can still arrive by itself while the page stays open.
+   */
+  private async writeNewScan(scan: Scan) {
+    await saveWithCodes({
+      ready: authReady,
+      write: () => setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true }),
+      isOnline,
+      readyTimeoutMs: SCAN_AUTH_TIMEOUT_MS,
+      writeTimeoutMs: SCAN_WRITE_TIMEOUT_MS,
+    });
+  }
+
   public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity' | 'isBigBus'>) {
     const usersList = this.getUsers();
     const driver = usersList.find(u => u.id === scanData.driverId);
@@ -434,14 +460,16 @@ class DBService {
     };
 
     this.scansCache = [...this.scansCache, newScan];
-    localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+    // A full or blocked localStorage must never stop the scan from being sent to the server.
+    try { localStorage.setItem('tp_scans', JSON.stringify(this.scansCache)); } catch (e) { console.warn('tp_scans not cached locally:', e); }
     this.notify();
     // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
     // fails (e.g. a dropped connection right at scan time) rather than seeing a
     // false "success" while the ride silently never reaches Firestore or the
     // WhatsApp group. The local cache write above already happened, so the scan
     // still shows in this dispatcher's own view even if the sync below fails.
-    await this.writeScan(newScan);
+    // Throws a ScanSaveError whose code tells the manager why (scanErrors.ts).
+    await this.writeNewScan(newScan);
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     if (!isLateEntry) {
@@ -678,9 +706,14 @@ class DBService {
     // Retry a couple of times first; the extra second or two is irrelevant here
     // since this runs once per scan.
     for (let attempt = 0; apiKey && attempt < 3; attempt++) {
+      // Offline: no point retrying, go straight to the fallback so the scan itself is not delayed.
+      if (attempt > 0 && !isOnline()) break;
       if (attempt > 0) await new Promise(r => setTimeout(r, 800 * attempt));
+      const abort = new AbortController();
+      const abortTimer = setTimeout(() => abort.abort(), ROUTES_CALL_TIMEOUT_MS);
       try {
         const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+          signal: abort.signal,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -718,6 +751,8 @@ class DBService {
         console.warn(`Routes API returned no duration (attempt ${attempt + 1}/3). Response:`, JSON.stringify(data).slice(0, 500));
       } catch (e) {
         console.error(`Routes API ETA error (attempt ${attempt + 1}/3):`, e);
+      } finally {
+        clearTimeout(abortTimer);
       }
     }
 

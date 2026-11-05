@@ -182,6 +182,7 @@ import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
 import loginBackground from './assets/login-background.jpg'; // the Rebbe's Ohel - login screen background
 import './App.css';
+import { scanErrorCodeOf, scanErrorReason, scanErrorAdvice, type ScanErrorCode } from './services/scanErrors';
 
 const TRANSLATIONS = {
   he: {
@@ -1892,6 +1893,10 @@ export default function App() {
   // save actually resolves, so the wait is visible instead of the screen going
   // silent between tap and the success/error toast.
   const [isSavingScan, setIsSavingScan] = useState(false);
+  // A scan that did not reach the server: stays on screen (not a 4-second toast) so the
+  // dispatcher can read the code out to the manager. See services/scanErrors.ts for the list.
+  const [scanErrorCode, setScanErrorCode] = useState<ScanErrorCode | null>(null);
+  const showScanError = (err: unknown) => setScanErrorCode(scanErrorCodeOf(err));
 
   // Simulation GPS overrides for dispatcher - defaults to the dispatcher's
   // actual device location rather than a simulated fixed point.
@@ -3311,7 +3316,8 @@ export default function App() {
       setShowAddRideModal(false);
       triggerToast(lang === 'he' ? 'הנסיעה נוספה בהצלחה' : 'Ride added successfully', 'success');
     } catch (e) {
-      triggerToast(lang === 'he' ? 'הוספת הנסיעה נכשלה' : 'Failed to add the ride', 'danger');
+      console.error('Failed to add manual ride:', e);
+      showScanError(e);
     }
   };
 
@@ -3365,7 +3371,8 @@ export default function App() {
       triggerToast(lang === 'he' ? `הנסיעה נרשמה עבור ${driver.name.replace(' (נהג)', '')}` : `Ride logged for ${driver.name}`, 'success');
     } catch (e) {
       console.error('Failed to save forgotten ride:', e);
-      triggerToast(lang === 'he' ? 'הנסיעה לא נשמרה בשרת - נסה שוב' : 'Ride failed to save - try again', 'danger');
+      setShowForgotRideModal(false);
+      showScanError(e);
     } finally {
       setIsSavingForgotRide(false);
     }
@@ -4450,6 +4457,26 @@ export default function App() {
       {(isSavingScan || isLoggingOut) && (
         <div className="saving-overlay">
           <div className="saving-spinner" />
+        </div>
+      )}
+
+      {/* A scan that did not reach the server - stays until closed, with the code to report */}
+      {scanErrorCode && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: '16px' }}>
+          <div className="card" role="alertdialog" aria-labelledby="scan-error-title" style={{ maxWidth: '400px', width: '100%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'rgba(239,68,68,0.6)', textAlign: 'center' }}>
+            <h3 id="scan-error-title" style={{ fontSize: '17px', fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>
+              {lang === 'he' ? 'הסריקה לא הגיעה לשרת' : 'The scan did not reach the server'}
+            </h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px' }}>{scanErrorReason(scanErrorCode, lang)}</p>
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{lang === 'he' ? 'קוד תקלה' : 'Error code'}</div>
+            <div dir="ltr" style={{ fontFamily: "'SF Mono', 'Roboto Mono', ui-monospace, monospace", fontSize: '34px', fontWeight: 800, color: '#ef4444', letterSpacing: '2px', marginBottom: '16px', userSelect: 'all' }}>
+              {scanErrorCode}
+            </div>
+            <p style={{ fontSize: '14px', color: '#fff', lineHeight: '21px', margin: '0 0 20px' }}>{scanErrorAdvice(scanErrorCode, lang)}</p>
+            <button className="btn btn-primary" style={{ width: '100%', padding: '13px', fontWeight: 700, color: '#000' }} onClick={() => setScanErrorCode(null)}>
+              {lang === 'he' ? 'הבנתי' : 'OK'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -5869,12 +5896,7 @@ export default function App() {
                                       triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
                                     } catch (err) {
                                       console.error('Failed to save no-phone scan:', err);
-                                      triggerToast(
-                                        lang === 'he'
-                                          ? 'הסריקה לא נשמרה בשרת (בעיית רשת?) - נסה שוב'
-                                          : 'Scan failed to save to server (network issue?) - try again',
-                                        'danger'
-                                      );
+                                      showScanError(err);
                                     } finally {
                                       setIsSavingScan(false);
                                     }
@@ -8623,12 +8645,7 @@ export default function App() {
                         triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${driverForScan.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${driverForScan.name}`, 'success');
                       } catch (err) {
                         console.error('Failed to save scan:', err);
-                        triggerToast(
-                          lang === 'he'
-                            ? `הסריקה לא נשמרה בשרת (בעיית רשת?) - נסה שוב או בדוק חיבור`
-                            : `Scan failed to save to server (network issue?) - try again or check connection`,
-                          'danger'
-                        );
+                        showScanError(err);
                       } finally {
                         setIsSavingScan(false);
                       }
