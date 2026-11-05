@@ -1,9 +1,9 @@
 import {
-  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs,
+  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, runTransaction,
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
-import { saveWithCodes } from './scanErrors';
+import { saveWithCodes, SaveDeadlinePassed } from './scanErrors';
 
 // How long a new scan may wait for the sign-in to the database and for the save itself before
 // the dispatcher is told (with an error code) that it has not reached the server yet. Without
@@ -238,7 +238,7 @@ class DBService {
 
     onSnapshot(collection(firestore, 'scans'), (snap) => {
       this.scansCache = snap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      try { localStorage.setItem('tp_scans', JSON.stringify(this.scansCache)); } catch (e) { console.warn('tp_scans not cached locally:', e); }
       this.notify();
     }, (e) => console.error('Firestore scans listener error:', e));
 
@@ -404,13 +404,18 @@ class DBService {
 
   /**
    * writeScan for a brand-new scan, with time limits and a ScanSaveError carrying a code the
-   * dispatcher can read out (see scanErrors.ts). On a time-out the Firestore SDK keeps the write
-   * queued, so the scan can still arrive by itself while the page stays open.
+   * dispatcher can read out (see scanErrors.ts). A failed scan must never arrive later, so this
+   * is a transaction rather than setDoc: setDoc is queued by the SDK while offline and delivered
+   * whenever the connection returns, a transaction is not queued, and every retry it makes
+   * checks the deadline first and gives up once it has passed.
    */
   private async writeNewScan(scan: Scan) {
     await saveWithCodes({
       ready: authReady,
-      write: () => setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true }),
+      write: (deadline) => runTransaction(firestore, async (tx) => {
+        if (Date.now() > deadline) throw new SaveDeadlinePassed();
+        tx.set(doc(firestore, 'scans', scan.id), scan, { merge: true });
+      }, { maxAttempts: 3 }),
       isOnline,
       readyTimeoutMs: SCAN_AUTH_TIMEOUT_MS,
       writeTimeoutMs: SCAN_WRITE_TIMEOUT_MS,
@@ -466,10 +471,17 @@ class DBService {
     // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
     // fails (e.g. a dropped connection right at scan time) rather than seeing a
     // false "success" while the ride silently never reaches Firestore or the
-    // WhatsApp group. The local cache write above already happened, so the scan
-    // still shows in this dispatcher's own view even if the sync below fails.
-    // Throws a ScanSaveError whose code tells the manager why (scanErrors.ts).
-    await this.writeNewScan(newScan);
+    // WhatsApp group. Throws a ScanSaveError whose code tells the manager why
+    // (scanErrors.ts). A failed scan is cancelled, not sent later, so it is also
+    // taken back out of this dispatcher's own view.
+    try {
+      await this.writeNewScan(newScan);
+    } catch (e) {
+      this.scansCache = this.scansCache.filter(s => s.id !== newScan.id);
+      try { localStorage.setItem('tp_scans', JSON.stringify(this.scansCache)); } catch { /* cache only */ }
+      this.notify();
+      throw e;
+    }
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     if (!isLateEntry) {

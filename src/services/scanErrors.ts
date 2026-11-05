@@ -1,6 +1,7 @@
 // Error codes shown to a dispatcher when a scan does not reach the server, so they can read the
 // code out to the manager and the manager knows at once whether it is the phone's internet or
-// the database. Pure module (no Firebase, no React).
+// the database. Pure module (no Firebase, no React). A scan that gets a code is cancelled - it
+// is never sent later (manager's decision, 2026-11-05) - so the dispatcher scans again.
 //
 //   7970770  The phone has no internet at all.
 //   7970771  The phone is online but the server did not confirm the save in time
@@ -13,8 +14,8 @@
 
 export type ScanErrorCode = '7970770' | '7970771' | '888770' | '888771' | '888772' | '888779' | '555770';
 
-/** True when the save may still go through by itself once the connection returns. */
-export function mayStillArrive(code: ScanErrorCode): boolean {
+/** A phone connection problem (797...), as opposed to the database (888...) or the site (555...). */
+export function isConnectionCode(code: ScanErrorCode): boolean {
   return code === '7970770' || code === '7970771';
 }
 
@@ -60,28 +61,46 @@ export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TI
   });
 }
 
+/** Thrown inside the write when its deadline has passed, so a late retry never goes through. */
+export class SaveDeadlinePassed extends Error {
+  constructor() { super('Scan save deadline passed - not sending it late'); this.name = 'SaveDeadlinePassed'; }
+}
+
 export interface SaveWithCodesOptions {
   /** Sign-in to the database; must settle before the write starts. */
   ready: Promise<unknown>;
-  /** Starts the actual write (called only after `ready`). */
-  write: () => Promise<unknown>;
+  /**
+   * Starts the actual write (called only after `ready`). It must not be queued for later:
+   * every attempt it makes has to check `deadline` (ms since epoch) and give up with
+   * SaveDeadlinePassed once it has passed.
+   */
+  write: (deadline: number) => Promise<unknown>;
   isOnline: () => boolean;
+  now?: () => number;
   readyTimeoutMs: number;
   writeTimeoutMs: number;
 }
 
 /**
  * Runs a save and turns every way it can go wrong into a ScanSaveError with a code.
- * A write that times out is not cancelled - Firestore keeps it queued and may still deliver it.
+ * A save that fails is final: no internet means it is not even started, and a write that is
+ * still stuck at the time limit is given a deadline that stops any later attempt, so a scan the
+ * dispatcher was told had failed does not suddenly appear (and get announced) minutes later.
  */
 export async function saveWithCodes(o: SaveWithCodesOptions): Promise<void> {
+  const now = o.now ?? Date.now;
+  if (!o.isOnline()) throw new ScanSaveError('7970770');
   if (await withTimeout(o.ready, o.readyTimeoutMs) === TIMED_OUT) {
     throw new ScanSaveError(o.isOnline() ? '888771' : '7970770');
   }
+  if (!o.isOnline()) throw new ScanSaveError('7970770');
+  // Attempts stop a little before the on-screen time limit, so nothing starts after it.
+  const deadline = now() + Math.round(o.writeTimeoutMs * 0.8);
   let result;
   try {
-    result = await withTimeout(o.write(), o.writeTimeoutMs);
+    result = await withTimeout(o.write(deadline), o.writeTimeoutMs);
   } catch (e) {
+    if (e instanceof SaveDeadlinePassed) throw new ScanSaveError(codeForTimeout(o.isOnline()), e);
     throw new ScanSaveError(codeForFirestoreError((e as { code?: string } | null)?.code, o.isOnline()), e);
   }
   if (result === TIMED_OUT) throw new ScanSaveError(codeForTimeout(o.isOnline()));
@@ -106,14 +125,14 @@ export function scanErrorReason(code: ScanErrorCode, lang: 'he' | 'en'): string 
   return REASON[code][lang];
 }
 
-/** What the dispatcher should do next. */
+/** What the dispatcher should do next. The scan is cancelled in every case - it will not be sent later. */
 export function scanErrorAdvice(code: ScanErrorCode, lang: 'he' | 'en'): string {
-  if (mayStillArrive(code)) {
+  if (isConnectionCode(code)) {
     return lang === 'he'
-      ? 'אל תסרוק שוב ואל תסגור או תרענן את הדף - הסריקה תעלה לבד כשהחיבור יחזור. אם היא לא מופיעה בעוד כמה דקות, מסור למנהל את הקוד.'
-      : 'Do not scan again and do not close or refresh the page - the scan will go up by itself once the connection is back. If it does not appear within a few minutes, give the manager this code.';
+      ? 'הסריקה בוטלה ולא תישלח. בדוק שיש אינטרנט וסרוק שוב. אם זה חוזר, מסור למנהל את הקוד.'
+      : 'The scan was cancelled and will not be sent. Check the internet connection and scan again. If it keeps happening, give the manager this code.';
   }
   return lang === 'he'
-    ? 'הסריקה לא נשמרה. מסור למנהל את הקוד.'
-    : 'The scan was not saved. Give the manager this code.';
+    ? 'הסריקה בוטלה ולא תישלח. מסור למנהל את הקוד.'
+    : 'The scan was cancelled and will not be sent. Give the manager this code.';
 }
