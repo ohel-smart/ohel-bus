@@ -64,7 +64,7 @@ export default function BoardView() {
 
   // Pull the latest users/scans so code lookup + the board work even on a cold page load.
   // The board shows live trips, so it is the one public page that needs them.
-  useEffect(() => { dbService.fetchUsers(); dbService.startScans(); }, []);
+  useEffect(() => { dbService.fetchUsers(); dbService.startScans('window'); }, []);
 
   // Live-updating clock in the corner.
   useEffect(() => {

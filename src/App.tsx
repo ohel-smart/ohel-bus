@@ -2042,11 +2042,15 @@ export default function App() {
 
   // Trips are loaded only once somebody is logged in (the login screen needs the users
   // only), and the listener is closed again on logout.
+  // The manager's screens (analytics, central table, monthly summary, attendance, name lists)
+  // read the whole history, so the manager keeps the full list for now. Dispatchers, drivers
+  // and the display screen only work with the current day (+ trips still on the road).
   const isLoggedIn = currentUser !== null;
+  const scansScope = currentUser?.role === 'admin' ? 'full' : 'window';
   useEffect(() => {
-    if (isLoggedIn) dbService.startScans();
+    if (isLoggedIn) dbService.startScans(scansScope);
     else dbService.stopScans();
-  }, [isLoggedIn]);
+  }, [isLoggedIn, scansScope]);
 
   // Sync state from dbService updates
   useEffect(() => {
@@ -2965,10 +2969,36 @@ export default function App() {
     return users.filter(u => u.role === staffFilter);
   }, [users, staffFilter]);
 
+  // A driver's / dispatcher's own earlier days are fetched on demand (last N days, with a
+  // "show earlier days" button) instead of living in the always-loaded trips list, so the
+  // screen's cost stays flat however long the history grows.
+  const MY_HISTORY_STEP_DAYS = 30;
+  const [myHistoryDays, setMyHistoryDays] = useState(MY_HISTORY_STEP_DAYS);
+  const [myHistoryScans, setMyHistoryScans] = useState<Scan[]>([]);
+  const [myHistoryLoading, setMyHistoryLoading] = useState(false);
+  const [myHistoryFailed, setMyHistoryFailed] = useState(false);
+  const myHistoryRole = currentUser?.role === 'driver' || currentUser?.role === 'dispatcher' ? currentUser.role : null;
+  const myHistoryId = currentUser?.id;
+  const historyTabOpen = activeTab === 'my-trips' || activeTab === 'my-history';
+  useEffect(() => {
+    if (!myHistoryRole || !myHistoryId || !historyTabOpen) return;
+    const from = new Date(`${logicalToday}T12:00:00Z`);
+    from.setUTCDate(from.getUTCDate() - myHistoryDays);
+    const dateFrom = from.toISOString().slice(0, 10);
+    let cancelled = false;
+    setMyHistoryLoading(true);
+    setMyHistoryFailed(false);
+    dbService.fetchScansForPerson(myHistoryRole === 'driver' ? 'driverId' : 'dispatcherId', myHistoryId, dateFrom, logicalToday)
+      .then(list => { if (!cancelled) setMyHistoryScans(list); })
+      .catch(e => { console.error('Could not load the earlier trips:', e); if (!cancelled) setMyHistoryFailed(true); })
+      .finally(() => { if (!cancelled) setMyHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [myHistoryRole, myHistoryId, historyTabOpen, myHistoryDays, logicalToday]);
+
   const myTripsHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'driver') return [];
     const groups: { [date: string]: { date: string; tripsCount: number; passengersSum: number; trips: any[] } } = {};
-    scans.forEach(scan => {
+    myHistoryScans.forEach(scan => {
       if (scan.driverId !== currentUser.id) return;
       const date = scan.logicalDate;
       if (date === logicalToday) return;
@@ -2985,12 +3015,12 @@ export default function App() {
         group.trips.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
         return group;
       });
-  }, [scans, currentUser, logicalToday]);
+  }, [myHistoryScans, currentUser, logicalToday]);
 
   const myScansHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'dispatcher') return [];
     const groups: { [date: string]: { date: string; scansCount: number; passengersSum: number; scans: any[] } } = {};
-    scans.forEach(scan => {
+    myHistoryScans.forEach(scan => {
       if (scan.dispatcherId !== currentUser.id) return;
       const date = scan.logicalDate;
       if (date === logicalToday) return;
@@ -3007,9 +3037,29 @@ export default function App() {
         group.scans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
         return group;
       });
-  }, [scans, currentUser, logicalToday]);
+  }, [myHistoryScans, currentUser, logicalToday]);
 
 
+
+  // Under the earlier-days lists: loading / failure notes and the button that reaches further back.
+  const myHistoryFooter = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
+      {myHistoryLoading && (
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{lang === 'he' ? 'טוען...' : 'Loading...'}</div>
+      )}
+      {myHistoryFailed && (
+        <div style={{ fontSize: '12px', color: '#fb7185' }}>{lang === 'he' ? 'לא ניתן לטעון את ההיסטוריה כרגע' : 'Could not load the history right now'}</div>
+      )}
+      <button
+        className="btn btn-secondary"
+        style={{ padding: '6px 12px', fontSize: '12px' }}
+        disabled={myHistoryLoading}
+        onClick={() => setMyHistoryDays(d => d + MY_HISTORY_STEP_DAYS)}
+      >
+        {lang === 'he' ? `הצג ${MY_HISTORY_STEP_DAYS} ימים קודמים` : `Show ${MY_HISTORY_STEP_DAYS} earlier days`}
+      </button>
+    </div>
+  );
 
   const shouldShowQrEvenEnRoute = useMemo(() => {
     const loc = activeLocations.find(l => l.id === currentUser?.id);
@@ -4006,12 +4056,12 @@ export default function App() {
   }, [users, scans, includeFormerPeople]);
 
   // Builds one driver's report as a complete HTML document (or null when no driver is chosen).
-  const makeDriverReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }): { html: string; baseName: string } | null => {
+  const makeDriverReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en'; scans?: Scan[] }): { html: string; baseName: string } | null => {
     const driverName = override?.name ?? selectedDriverForPdf;
     if (!driverName) return null;
     const pdfLang = override?.lang ?? lang;
     const driverScans = applyCentralFilters(
-      scans.filter(s => (s.driverName || '').replace(' (נהג)', '') === driverName),
+      (override?.scans ?? scans).filter(s => (s.driverName || '').replace(' (נהג)', '') === driverName),
       override ? { from: override.dateFrom, to: override.dateTo } : undefined
     )
       .slice()
@@ -4127,7 +4177,7 @@ export default function App() {
     // Straight to a PDF file on the device: no new tab, no print dialog.
     return { html, baseName: `${pdfLang === 'he' ? 'דוח נהג' : 'Driver report'} - ${driverName}` };
   };
-  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
+  const handleExportDriverPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en'; scans?: Scan[] }) => {
     const report = makeDriverReport(override);
     if (report) savePdf(report.html, report.baseName);
   };
@@ -4140,12 +4190,12 @@ export default function App() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'he'));
   }, [users, scans, includeFormerPeople]);
 
-  const makeDispatcherReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }): { html: string; baseName: string } | null => {
+  const makeDispatcherReport = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en'; scans?: Scan[] }): { html: string; baseName: string } | null => {
     const dispatcherName = override?.name ?? selectedDispatcherForPdf;
     if (!dispatcherName) return null;
     const pdfLang = override?.lang ?? lang;
     const dispatcherScans = applyCentralFilters(
-      scans.filter(s => (s.dispatcherName || '').replace(' (סדרן)', '') === dispatcherName),
+      (override?.scans ?? scans).filter(s => (s.dispatcherName || '').replace(' (סדרן)', '') === dispatcherName),
       override ? { from: override.dateFrom, to: override.dateTo } : undefined
     )
       .slice()
@@ -4259,7 +4309,7 @@ export default function App() {
 
     return { html, baseName: `${pdfLang === 'he' ? 'דוח סדרן' : 'Dispatcher report'} - ${dispatcherName}` };
   };
-  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en' }) => {
+  const handleExportDispatcherPdf = (override?: { name: string; dateFrom: string; dateTo: string; lang?: 'he' | 'en'; scans?: Scan[] }) => {
     const report = makeDispatcherReport(override);
     if (report) savePdf(report.html, report.baseName);
   };
@@ -4322,7 +4372,7 @@ export default function App() {
   const [selfReportPeriod, setSelfReportPeriod] = useState<'week' | 'month'>('month');
   const [selfReportLang, setSelfReportLang] = useState<'he' | 'en'>(lang);
 
-  const handleDownloadMyReport = () => {
+  const handleDownloadMyReport = async () => {
     if (!currentUser) return;
     const to = new Date();
     const from = new Date(to);
@@ -4335,10 +4385,23 @@ export default function App() {
     const dateFrom = dbService.getLogicalDate(from.toISOString());
     const dateTo = dbService.getLogicalDate(to.toISOString());
 
+    // Only this person's trips for the chosen period are fetched (the screen itself no longer
+    // keeps the whole history in memory).
+    const field = currentUser.role === 'driver' ? 'driverId' : currentUser.role === 'dispatcher' ? 'dispatcherId' : null;
+    if (!field) return;
+    let myScans: Scan[];
+    try {
+      myScans = await dbService.fetchScansForPerson(field, currentUser.id, dateFrom, dateTo);
+    } catch (e) {
+      console.error('Could not load the trips for the personal report:', e);
+      triggerToast(lang === 'he' ? 'לא ניתן לטעון את הנסיעות כרגע, נסה שוב' : 'Could not load your trips right now, please try again', 'danger');
+      return;
+    }
+
     if (currentUser.role === 'driver') {
-      handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo, lang: selfReportLang });
+      handleExportDriverPdf({ name: currentUser.name.replace(' (נהג)', ''), dateFrom, dateTo, lang: selfReportLang, scans: myScans });
     } else if (currentUser.role === 'dispatcher') {
-      handleExportDispatcherPdf({ name: currentUser.name.replace(' (סדרן)', ''), dateFrom, dateTo, lang: selfReportLang });
+      handleExportDispatcherPdf({ name: currentUser.name.replace(' (סדרן)', ''), dateFrom, dateTo, lang: selfReportLang, scans: myScans });
     }
   };
 
@@ -5382,6 +5445,7 @@ export default function App() {
                             );
                           })
                         )}
+                        {myHistoryFooter}
                       </div>
                     </div>
 
@@ -5527,9 +5591,22 @@ export default function App() {
                   driverScans.sort((x, y) => new Date(y.scannedAt).getTime() - new Date(x.scannedAt).getTime());
                   const latestScan = driverScans[0];
 
+                  // While idle the screen keeps showing the route of the driver's last trip. The
+                  // trips list now only holds the current day, so that last direction is
+                  // remembered on the device too and used when no recent trip is loaded.
+                  const lastDirKey = `tp_last_dir_${currentUser.id}`;
+                  let rememberedDirection: Direction = null;
+                  try {
+                    const stored = localStorage.getItem(lastDirKey);
+                    if (stored === 'to_ohel' || stored === 'to_770') rememberedDirection = stored;
+                    if (latestScan) {
+                      const fresh: Direction = latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770';
+                      if (fresh !== stored) localStorage.setItem(lastDirKey, fresh);
+                    }
+                  } catch (e) { /* storage unavailable: fall back to the live value */ }
                   const currentDriverDirection: Direction = latestScan
                     ? (latestScan.departureLocation === '770' ? 'to_ohel' : 'to_770')
-                    : (loc?.direction ?? null);
+                    : (rememberedDirection ?? loc?.direction ?? null);
 
                   let expectedTimeStr = '--:--';
                   let remainingMinutes: number | null = null;
@@ -6046,6 +6123,7 @@ export default function App() {
                               );
                             })
                           )}
+                          {myHistoryFooter}
                         </div>
                       </div>
                     )}
