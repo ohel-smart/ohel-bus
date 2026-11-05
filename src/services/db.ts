@@ -1,8 +1,9 @@
 import {
-  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs,
+  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, query, where,
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
+import { windowBounds, inWindow, type PersonField, type WindowBounds } from './scanWindow';
 
 // Types Definitions
 export type UserRole = 'admin' | 'driver' | 'dispatcher' | 'screen';
@@ -187,6 +188,8 @@ const DEFAULT_USERS: User[] = [
 
 const SETTINGS_DOC = 'global_config';
 
+export type ScanScope = 'full' | 'window';
+
 class DBService {
   private listeners: Set<() => void> = new Set();
 
@@ -247,38 +250,194 @@ class DBService {
   // The trip list is cached in localStorage so the UI has something to draw before the
   // first snapshot. That store is small (~5 MB) and the full history will outgrow it, so
   // a full store must never stop the UI: the in-memory cache keeps working without it.
+  // The window (day-only) copy lives under its own key so it never overwrites a full copy.
   private persistScans() {
     try {
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      localStorage.setItem(this.scansScope === 'window' ? 'tp_scans_win' : 'tp_scans', JSON.stringify(this.scansCache));
     } catch (e) {
       console.warn('Could not store the trips cache locally (storage full) - continuing without it:', e);
     }
   }
 
   private scansUnsubscribe: (() => void) | null = null;
+  private scansScope: ScanScope | null = null;
 
-  /** Starts the live trips listener (whole collection for now). Safe to call repeatedly. */
-  public startScans() {
-    if (this.scansUnsubscribe) return;
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    this.scansUnsubscribe = () => {
-      cancelled = true;
-      if (unsubscribe) unsubscribe();
-    };
-    authReady.then(() => {
-      if (cancelled) return;
-      unsubscribe = onSnapshot(collection(firestore, 'scans'), (snap) => {
-        this.scansCache = snap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
-        this.persistScans();
-        this.notify();
-      }, (e) => console.error('Firestore scans listener error:', e));
-    });
+  // Trips created on this device whose write to Firestore has not been confirmed yet. The
+  // first thing addScan does is put the trip in the local cache, so without this a trip whose
+  // write failed (dropped connection, quota) would be erased by the next snapshot and lost
+  // for good on a reload. Kept in localStorage and re-sent on the next start.
+  private pendingScans = new Map<string, Scan>();
+  private static readonly PENDING_MAX_AGE_MS = 24 * 3600 * 1000;
+
+  private loadPendingScans() {
+    try {
+      const raw: Scan[] = JSON.parse(localStorage.getItem('tp_pending_scans') || '[]');
+      raw.forEach(s => this.pendingScans.set(s.id, s));
+    } catch (e) { /* nothing stored */ }
+  }
+
+  private savePendingScans() {
+    try {
+      localStorage.setItem('tp_pending_scans', JSON.stringify([...this.pendingScans.values()]));
+    } catch (e) { /* storage full: the in-memory map still protects this session */ }
+  }
+
+  private retryPendingScans() {
+    const now = Date.now();
+    for (const s of [...this.pendingScans.values()]) {
+      const age = now - new Date(s.scannedAt).getTime();
+      if (!Number.isFinite(age) || age > DBService.PENDING_MAX_AGE_MS) {
+        this.pendingScans.delete(s.id); // too old to announce as a new trip
+        continue;
+      }
+      this.writeScan(s).then(() => { this.pendingScans.delete(s.id); this.savePendingScans(); }).catch(() => { /* try again next start */ });
+    }
+    this.savePendingScans();
+  }
+
+  private toScan = (d: { data: () => unknown }): Scan => {
+    const s = d.data() as Scan;
+    return { ...s, logicalDate: this.cleanDate(s.logicalDate) };
+  };
+
+  /** The cache = what the server sent + local trips not yet confirmed by it. */
+  private publishScans(fromServer: Scan[]) {
+    const ids = new Set(fromServer.map(s => s.id));
+    const merged = [...fromServer];
+    this.pendingScans.forEach(s => { if (!ids.has(s.id)) merged.push(s); });
+    this.scansCache = merged;
+    this.persistScans();
+    this.notify();
+  }
+
+  /**
+   * Starts the live trips listener; safe to call repeatedly.
+   *  - 'full': the whole history (the manager's screens need it).
+   *  - 'window': only the current logical day plus whatever left in the last 3 hours - what
+   *    dispatchers, drivers and the arrival board need. Reads per page load stop growing with
+   *    the size of the history.
+   */
+  public startScans(scope: ScanScope = 'full') {
+    if (this.scansUnsubscribe && this.scansScope === scope) return;
+    this.stopScans();
+    this.scansScope = scope;
+    this.loadPendingScans();
+    if (scope === 'window') this.seedWindowFromStorage();
+    this.scansUnsubscribe = scope === 'full' ? this.openFullScans() : this.openWindowScans();
+    authReady.then(() => this.retryPendingScans());
   }
 
   public stopScans() {
     if (this.scansUnsubscribe) this.scansUnsubscribe();
     this.scansUnsubscribe = null;
+    this.scansScope = null;
+  }
+
+  // Window screens draw from storage while the first snapshot is on its way: the day-only copy
+  // if there is one, otherwise the old full copy cut down to the window.
+  private seedWindowFromStorage() {
+    try {
+      const bounds = windowBounds(new Date(), iso => this.getLogicalDate(iso));
+      const own = localStorage.getItem('tp_scans_win');
+      const raw: Scan[] = JSON.parse(own || localStorage.getItem('tp_scans') || '[]');
+      this.scansCache = raw.map(s => ({ ...s, logicalDate: this.cleanDate(s.logicalDate) })).filter(s => inWindow(s, bounds));
+    } catch (e) {
+      this.scansCache = [];
+    }
+  }
+
+  private openFullScans(): () => void {
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    authReady.then(() => {
+      if (cancelled) return;
+      unsubscribe = onSnapshot(collection(firestore, 'scans'), (snap) => {
+        this.publishScans(snap.docs.map(this.toScan));
+      }, (e) => console.error('Firestore scans listener error:', e));
+    });
+    return () => { cancelled = true; if (unsubscribe) unsubscribe(); };
+  }
+
+  // Two listeners (the logical day; the last 3 hours) merged by id. Nothing is published until
+  // BOTH have delivered, so a half-loaded window never briefly hides a trip that is still open.
+  // When the logical day changes (midnight, or the Erev Shabbat early cutover) the next day's
+  // listeners are opened first and the old ones are closed only once the new ones have loaded.
+  private openWindowScans(): () => void {
+    type Win = { day: string; a: Map<string, Scan>; b: Map<string, Scan>; ready: number; close: () => void };
+    let stopped = false;
+    let current: Win | null = null;
+    let opening: Win | null = null;
+
+    const open = (bounds: WindowBounds): Win => {
+      const w: Win = { day: bounds.logicalDate, a: new Map(), b: new Map(), ready: 0, close: () => {} };
+      const unsubs: Array<() => void> = [];
+      w.close = () => unsubs.forEach(u => u());
+      const publishIfCurrent = () => {
+        if (w.ready < 2 || stopped) return;
+        if (current !== w) {
+          const old = current;
+          current = w;
+          opening = null;
+          if (old) old.close();
+        }
+        const union = new Map<string, Scan>(w.a);
+        w.b.forEach((s, id) => union.set(id, s));
+        this.publishScans([...union.values()]);
+      };
+      const listen = (q: ReturnType<typeof query>, into: Map<string, Scan>) => {
+        let first = true;
+        unsubs.push(onSnapshot(q, (snap) => {
+          snap.docChanges().forEach(ch => {
+            if (ch.type === 'removed') into.delete(ch.doc.id);
+            else into.set(ch.doc.id, this.toScan(ch.doc));
+          });
+          if (first) { first = false; w.ready++; }
+          publishIfCurrent();
+        }, (e) => console.error('Firestore scans (window) listener error:', e)));
+      };
+      const col = collection(firestore, 'scans');
+      listen(query(col, where('logicalDate', '==', bounds.logicalDate)), w.a);
+      listen(query(col, where('scannedAt', '>=', bounds.sinceIso)), w.b);
+      return w;
+    };
+
+    const check = () => {
+      if (stopped) return;
+      const bounds = windowBounds(new Date(), iso => this.getLogicalDate(iso));
+      const have = opening ? opening.day : current ? current.day : null;
+      if (have === bounds.logicalDate) return;
+      if (opening) opening.close();
+      opening = open(bounds);
+    };
+
+    authReady.then(check);
+    const timer = setInterval(check, 60_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      if (opening) opening.close();
+      if (current) current.close();
+    };
+  }
+
+  /**
+   * One person's trips in a period (inclusive logical dates), for their own history and
+   * personal reports. Uses a composite index (driverId/dispatcherId + logicalDate); until that
+   * index exists it falls back to the date range alone and filters here - correct but it
+   * reads every person's trips for those days.
+   */
+  public async fetchScansForPerson(field: PersonField, id: string, from: string, to: string): Promise<Scan[]> {
+    await authReady;
+    const col = collection(firestore, 'scans');
+    try {
+      const snap = await getDocs(query(col, where(field, '==', id), where('logicalDate', '>=', from), where('logicalDate', '<=', to)));
+      return snap.docs.map(this.toScan);
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'failed-precondition') throw e;
+      console.warn('Missing composite index for the personal trips query; reading the whole date range instead:', e);
+      const snap = await getDocs(query(col, where('logicalDate', '>=', from), where('logicalDate', '<=', to)));
+      return snap.docs.map(this.toScan).filter(s => s[field] === id);
+    }
   }
 
   private cleanDate(dateStr: string): string {
@@ -472,7 +631,13 @@ class DBService {
     // false "success" while the ride silently never reaches Firestore or the
     // WhatsApp group. The local cache write above already happened, so the scan
     // still shows in this dispatcher's own view even if the sync below fails.
+    // Remembered as "not confirmed yet" until Firestore accepts it, so a failed write is
+    // retried on the next start instead of vanishing with the next snapshot.
+    this.pendingScans.set(newScan.id, newScan);
+    this.savePendingScans();
     await this.writeScan(newScan);
+    this.pendingScans.delete(newScan.id);
+    this.savePendingScans();
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     if (!isLateEntry) {
