@@ -2040,6 +2040,14 @@ export default function App() {
     setTimeout(() => dismissToast(id), 4000);
   };
 
+  // Trips are loaded only once somebody is logged in (the login screen needs the users
+  // only), and the listener is closed again on logout.
+  const isLoggedIn = currentUser !== null;
+  useEffect(() => {
+    if (isLoggedIn) dbService.startScans();
+    else dbService.stopScans();
+  }, [isLoggedIn]);
+
   // Sync state from dbService updates
   useEffect(() => {
     const handleUpdate = () => {

@@ -102,7 +102,7 @@ export default function RegisterRequest() {
   // hardcoded offline default list - real codes 770/777/778/1000 don't
   // exist in production, but if someone submits before this resolves, the
   // uniqueness check below would wrongly flag those as taken).
-  useEffect(() => { dbService.fetchDataFromSheets(); }, []);
+  useEffect(() => { dbService.fetchUsers(); }, []);
 
   const submit = async () => {
     if (!name.trim() || !phone.trim()) { setError(tx.fillAllFields); return; }
@@ -117,7 +117,7 @@ export default function RegisterRequest() {
       // mount-time fetch (or dbService's own offline-fallback default list)
       // happened to leave in the cache - this is the only way to guarantee
       // the uniqueness check reflects the real, current Firestore state.
-      await dbService.fetchDataFromSheets();
+      await dbService.fetchUsers();
       const takenCodes = new Set([
         ...dbService.getUsers().map(u => u.code),
         ...dbService.getPendingRegistrations().map(r => r.code)

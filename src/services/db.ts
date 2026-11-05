@@ -225,11 +225,9 @@ class DBService {
       this.notify();
     }, (e) => console.error('Firestore users listener error:', e));
 
-    onSnapshot(collection(firestore, 'scans'), (snap) => {
-      this.scansCache = snap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
-      this.notify();
-    }, (e) => console.error('Firestore scans listener error:', e));
+    // The scans listener is NOT started here: every page load used to read the whole
+    // trip history, even on the login screen. startScans() starts it once the page
+    // knows it needs trips (after login, or on the public arrival board).
 
     onSnapshot(doc(firestore, 'settings', SETTINGS_DOC), (snap) => {
       if (snap.exists()) {
@@ -246,6 +244,43 @@ class DBService {
     }, (e) => console.error('Firestore pending_registrations listener error:', e));
   }
 
+  // The trip list is cached in localStorage so the UI has something to draw before the
+  // first snapshot. That store is small (~5 MB) and the full history will outgrow it, so
+  // a full store must never stop the UI: the in-memory cache keeps working without it.
+  private persistScans() {
+    try {
+      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+    } catch (e) {
+      console.warn('Could not store the trips cache locally (storage full) - continuing without it:', e);
+    }
+  }
+
+  private scansUnsubscribe: (() => void) | null = null;
+
+  /** Starts the live trips listener (whole collection for now). Safe to call repeatedly. */
+  public startScans() {
+    if (this.scansUnsubscribe) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    this.scansUnsubscribe = () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+    authReady.then(() => {
+      if (cancelled) return;
+      unsubscribe = onSnapshot(collection(firestore, 'scans'), (snap) => {
+        this.scansCache = snap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
+        this.persistScans();
+        this.notify();
+      }, (e) => console.error('Firestore scans listener error:', e));
+    });
+  }
+
+  public stopScans() {
+    if (this.scansUnsubscribe) this.scansUnsubscribe();
+    this.scansUnsubscribe = null;
+  }
+
   private cleanDate(dateStr: string): string {
     if (!dateStr) return '';
     const trimmed = dateStr.trim();
@@ -260,24 +295,20 @@ class DBService {
     return trimmed;
   }
 
-  // Kept for backwards compatibility — ReturnReport.tsx calls this once on mount to
-  // force a fresh read before code lookup. Firestore's onSnapshot listeners already
-  // keep the cache live, but on a very cold page load there can be a brief gap before
-  // the first snapshot arrives, so this does one direct one-shot fetch to close it.
-  public async fetchDataFromSheets() {
+  // The public pages (driver self-report, registration, arrival board) call this once on
+  // mount to force a fresh read of the users before a code lookup. Firestore's onSnapshot
+  // listeners already keep the cache live, but on a very cold page load there can be a
+  // brief gap before the first snapshot arrives, so this does one direct one-shot fetch
+  // to close it. Users only (~22 docs): these pages never needed the trips history.
+  public async fetchUsers() {
     await authReady;
     try {
-      const [usersSnap, scansSnap] = await Promise.all([
-        getDocs(collection(firestore, 'users')),
-        getDocs(collection(firestore, 'scans')),
-      ]);
+      const usersSnap = await getDocs(collection(firestore, 'users'));
       this.usersCache = usersSnap.docs.map(d => d.data() as User);
-      this.scansCache = scansSnap.docs.map(d => ({ ...(d.data() as Scan), logicalDate: this.cleanDate((d.data() as Scan).logicalDate) }));
       localStorage.setItem('tp_users', JSON.stringify(this.usersCache));
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
       this.notify();
     } catch (e) {
-      console.error('Failed to fetch data from Firestore:', e);
+      console.error('Failed to fetch users from Firestore:', e);
     }
   }
 
@@ -434,7 +465,7 @@ class DBService {
     };
 
     this.scansCache = [...this.scansCache, newScan];
-    localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+    this.persistScans();
     this.notify();
     // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
     // fails (e.g. a dropped connection right at scan time) rather than seeing a
@@ -455,7 +486,7 @@ class DBService {
   public addLocalScan(scan: Scan) {
     if (!this.scansCache.some(s => s.id === scan.id)) {
       this.scansCache = [...this.scansCache, scan];
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      this.persistScans();
       this.notify();
     }
   }
@@ -470,7 +501,7 @@ class DBService {
     if (index >= 0) {
       this.scansCache = [...this.scansCache];
       this.scansCache[index] = freshScan;
-      localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+      this.persistScans();
       this.notify();
     }
 
@@ -479,7 +510,7 @@ class DBService {
 
   public async deleteScan(scanId: string) {
     this.scansCache = this.scansCache.filter(s => s.id !== scanId);
-    localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+    this.persistScans();
     this.notify();
 
     await authReady;
@@ -550,7 +581,7 @@ class DBService {
         if (index >= 0) {
           this.scansCache = [...this.scansCache];
           this.scansCache[index] = updated;
-          localStorage.setItem('tp_scans', JSON.stringify(this.scansCache));
+          this.persistScans();
           this.notify();
         }
         await this.writeScan(updated);

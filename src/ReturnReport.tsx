@@ -99,7 +99,7 @@ export default function ReturnReport() {
   }, [lang]);
 
   // Pull the latest users so code lookup works even on a cold page load.
-  useEffect(() => { dbService.fetchDataFromSheets(); }, []);
+  useEffect(() => { dbService.fetchUsers(); }, []);
 
   const verifyCode = () => {
     const u = dbService.loginWithCode(code.trim());
