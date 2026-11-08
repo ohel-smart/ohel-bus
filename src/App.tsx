@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, type CSSProperties } from 'react';
+import { HISTORY_MAX_DAYS, mergeHistory, nextHistorySlice } from './services/personHistory.ts';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import {
@@ -1702,6 +1703,23 @@ async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize
 // screen (devicePixelRatio > 1), which is what was making the logo look soft
 // - a plain <img> doesn't have this problem, but a canvas's intrinsic
 // resolution and display size are independent and both need setting.
+// An invisible marker under a list: when it scrolls into view (the person reached the end of
+// what is loaded) it asks for the next piece. A new observer is created whenever `resetKey` changes,
+// so if the list is still too short to fill the screen after a load, the next piece follows.
+function LoadMoreSentinel({ onVisible, disabled, resetKey }: { onVisible: () => void; disabled: boolean; resetKey: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const cb = useRef(onVisible);
+  cb.current = onVisible;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || disabled || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) cb.current(); }, { rootMargin: '120px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [disabled, resetKey]);
+  return <div ref={ref} aria-hidden="true" style={{ height: 1, width: '100%' }} />;
+}
+
 function QrCodeWithLogo({ data, size = 180 }: { data: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -2987,31 +3005,57 @@ export default function App() {
     return users.filter(u => u.role === staffFilter);
   }, [users, staffFilter]);
 
-  // A driver's / dispatcher's own earlier days are fetched on demand (last N days, with a
-  // "show earlier days" button) instead of living in the always-loaded trips list, so the
-  // screen's cost stays flat however long the history grows.
-  const MY_HISTORY_STEP_DAYS = 30;
-  const [myHistoryDays, setMyHistoryDays] = useState(MY_HISTORY_STEP_DAYS);
+  // A driver's / dispatcher's own earlier days are fetched on demand, one week at a time and never
+  // further back than 30 days (services/personHistory.ts). Opening the history tab loads the first
+  // week; reaching the end of the list loads the next one. Each fetch reads only the new week.
+  const [myHistoryLoadedDays, setMyHistoryLoadedDays] = useState(0);
   const [myHistoryScans, setMyHistoryScans] = useState<Scan[]>([]);
   const [myHistoryLoading, setMyHistoryLoading] = useState(false);
   const [myHistoryFailed, setMyHistoryFailed] = useState(false);
   const myHistoryRole = currentUser?.role === 'driver' || currentUser?.role === 'dispatcher' ? currentUser.role : null;
   const myHistoryId = currentUser?.id;
   const historyTabOpen = activeTab === 'my-trips' || activeTab === 'my-history';
+  const myHistoryKey = `${myHistoryRole}|${myHistoryId}|${logicalToday}`;
+  const myHistoryKeyRef = useRef(myHistoryKey);
+  const myHistoryBusy = useRef(false);
+  const myHistoryNextSlice = nextHistorySlice(logicalToday, myHistoryLoadedDays);
+
+  // A different person or a new day starts the history over.
   useEffect(() => {
-    if (!myHistoryRole || !myHistoryId || !historyTabOpen) return;
-    const from = new Date(`${logicalToday}T12:00:00Z`);
-    from.setUTCDate(from.getUTCDate() - myHistoryDays);
-    const dateFrom = from.toISOString().slice(0, 10);
-    let cancelled = false;
+    myHistoryKeyRef.current = myHistoryKey;
+    myHistoryBusy.current = false;
+    setMyHistoryScans([]);
+    setMyHistoryLoadedDays(0);
+    setMyHistoryLoading(false);
+    setMyHistoryFailed(false);
+  }, [myHistoryKey]);
+
+  const loadMyHistoryWeek = () => {
+    if (!myHistoryRole || !myHistoryId || !myHistoryNextSlice || myHistoryBusy.current) return;
+    const slice = myHistoryNextSlice;
+    const key = myHistoryKey;
+    myHistoryBusy.current = true;
     setMyHistoryLoading(true);
     setMyHistoryFailed(false);
-    dbService.fetchScansForPerson(myHistoryRole === 'driver' ? 'driverId' : 'dispatcherId', myHistoryId, dateFrom, logicalToday)
-      .then(list => { if (!cancelled) setMyHistoryScans(list); })
-      .catch(e => { console.error('Could not load the earlier trips:', e); if (!cancelled) setMyHistoryFailed(true); })
-      .finally(() => { if (!cancelled) setMyHistoryLoading(false); });
-    return () => { cancelled = true; };
-  }, [myHistoryRole, myHistoryId, historyTabOpen, myHistoryDays, logicalToday]);
+    dbService.fetchScansForPerson(myHistoryRole === 'driver' ? 'driverId' : 'dispatcherId', myHistoryId, slice.from, slice.to)
+      .then(list => {
+        if (key !== myHistoryKeyRef.current) return;
+        setMyHistoryScans(prev => mergeHistory(prev, list));
+        setMyHistoryLoadedDays(slice.loadedDaysAfter);
+      })
+      .catch(e => { console.error('Could not load the earlier trips:', e); if (key === myHistoryKeyRef.current) setMyHistoryFailed(true); })
+      .finally(() => {
+        if (key !== myHistoryKeyRef.current) return;
+        myHistoryBusy.current = false;
+        setMyHistoryLoading(false);
+      });
+  };
+
+  // Opening the history tab loads the first week (nothing is read before that).
+  useEffect(() => {
+    if (historyTabOpen && myHistoryLoadedDays === 0 && !myHistoryFailed) loadMyHistoryWeek();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyTabOpen, myHistoryLoadedDays, myHistoryFailed, myHistoryKey]);
 
   const myTripsHistoryByDay = useMemo(() => {
     if (!currentUser || currentUser.role !== 'driver') return [];
@@ -3059,7 +3103,8 @@ export default function App() {
 
 
 
-  // Under the earlier-days lists: loading / failure notes and the button that reaches further back.
+  // Under the earlier-days lists: loading / failure notes; reaching the end loads the next week
+  // (the button is the same thing for anyone who prefers to tap). Stops at 30 days.
   const myHistoryFooter = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
       {myHistoryLoading && (
@@ -3068,14 +3113,23 @@ export default function App() {
       {myHistoryFailed && (
         <div style={{ fontSize: '12px', color: '#fb7185' }}>{lang === 'he' ? 'לא ניתן לטעון את ההיסטוריה כרגע' : 'Could not load the history right now'}</div>
       )}
-      <button
-        className="btn btn-secondary"
-        style={{ padding: '6px 12px', fontSize: '12px' }}
-        disabled={myHistoryLoading}
-        onClick={() => setMyHistoryDays(d => d + MY_HISTORY_STEP_DAYS)}
-      >
-        {lang === 'he' ? `הצג ${MY_HISTORY_STEP_DAYS} ימים קודמים` : `Show ${MY_HISTORY_STEP_DAYS} earlier days`}
-      </button>
+      {myHistoryNextSlice ? (
+        <>
+          <LoadMoreSentinel disabled={myHistoryLoading || myHistoryFailed} resetKey={myHistoryLoadedDays} onVisible={loadMyHistoryWeek} />
+          <button
+            className="btn btn-secondary"
+            style={{ padding: '6px 12px', fontSize: '12px' }}
+            disabled={myHistoryLoading}
+            onClick={() => { setMyHistoryFailed(false); loadMyHistoryWeek(); }}
+          >
+            {lang === 'he' ? 'הצג שבוע קודם' : 'Show the previous week'}
+          </button>
+        </>
+      ) : (
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+          {lang === 'he' ? `מוצגים ${HISTORY_MAX_DAYS} הימים האחרונים` : `Showing the last ${HISTORY_MAX_DAYS} days`}
+        </div>
+      )}
     </div>
   );
 
@@ -4396,8 +4450,9 @@ export default function App() {
     if (!currentUser) return;
     const to = new Date();
     const from = new Date(to);
+    // A month is capped at 30 days: no one sees further back than that (services/personHistory.ts).
     if (selfReportPeriod === 'week') from.setDate(from.getDate() - 7);
-    else from.setMonth(from.getMonth() - 1);
+    else from.setDate(from.getDate() - HISTORY_MAX_DAYS);
     // logicalDate buckets by America/New_York day (not UTC) - using the raw
     // UTC date here used to silently drop the oldest day of the window for
     // anyone downloading roughly 8pm-midnight EDT, once the UTC date had
