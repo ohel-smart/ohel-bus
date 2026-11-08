@@ -1532,3 +1532,17 @@ html[dir="rtl"] .mobile-manager-nav {
     rgba(14, 22, 40, 0.30);
 }
 .scan-error-icon.glass-dialog-icon-gold { color: #e3c08a; }
+
+/* "New version" pill (UpdateWatcher): small glass chip above the bottom edge. */
+.update-pill {
+  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); transform: translateX(-50%);
+  z-index: 100000; display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: 999px; color: #fff; font: 600 14px/1 inherit; cursor: pointer;
+  background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.06)), rgba(14, 22, 40, 0.45);
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.32);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.35);
+  transition: transform 160ms ease-out;
+}
+.update-pill:active { transform: translateX(-50%) scale(0.97); }
+.update-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #d8b070; box-shadow: 0 0 8px #d8b070; }
