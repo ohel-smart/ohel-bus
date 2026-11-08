@@ -7,6 +7,7 @@ import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { windowBounds, inWindow, type PersonField, type WindowBounds } from './scanWindow';
 import { saveWithCodes, SaveDeadlinePassed } from './scanErrors';
 import { prevDay } from './nyTime';
+import { withBotMark, withoutBotMark } from './botMark';
 import { idbGet, idbSet, idbDel } from './idbStore';
 import {
   CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor,
@@ -82,6 +83,9 @@ export interface Scan {
   isLateEntry?: boolean;
   // When the late entry was actually saved (ISO). Only set with isLateEntry.
   enteredAt?: string;
+  // True from the moment a NEW ride is saved until the WhatsApp bot has sent its message (the bot
+  // then sets it to false). Written only by addScan, never by later edits - see botMark.ts.
+  botTodo?: boolean;
 }
 
 export interface ActiveLocation {
@@ -751,7 +755,8 @@ class DBService {
 
   private async writeScan(scan: Scan) {
     await authReady;
-    await setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true });
+    // Edits and end-of-trip writes never carry the bot's "waiting" mark (see botMark.ts).
+    await setDoc(doc(firestore, 'scans', scan.id), withoutBotMark(scan), { merge: true });
   }
 
   /**
@@ -804,7 +809,7 @@ class DBService {
       expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
     }
 
-    const newScan: Scan = {
+    const newScan: Scan = withBotMark({
       ...scanData,
       id: 'scn_' + Math.random().toString(36).substr(2, 9),
       driverCapacity: capacity,
@@ -814,7 +819,7 @@ class DBService {
       ...(isLateEntry
         ? { enteredAt: new Date().toISOString() }
         : { etaMinutes, expectedArrivalTime, ...(etaIsEstimate ? { etaIsEstimate: true } : {}) })
-    };
+    });
 
     this.scansCache = [...this.scansCache, newScan];
     // A full or blocked localStorage must never stop the scan from being sent (persistScans catches).
