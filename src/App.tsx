@@ -2049,14 +2049,26 @@ export default function App() {
   // Trips are loaded only once somebody is logged in (the login screen needs the users
   // only), and the listener is closed again on logout.
   // The manager's screens (analytics, central table, monthly summary, attendance, name lists)
-  // read the whole history, so the manager keeps the full list for now. Dispatchers, drivers
-  // and the display screen only work with the current day (+ trips still on the road).
+  // read the whole history, so the manager keeps the full list - stored on his device and
+  // refreshed only where it changed, if he agreed to that there (see services/adminSync.ts).
+  // Dispatchers, drivers and the display screen only work with the current day (+ trips still
+  // on the road).
   const isLoggedIn = currentUser !== null;
   const scansScope = currentUser?.role === 'admin' ? 'admin' : 'window';
   useEffect(() => {
     if (isLoggedIn) dbService.startScans(scansScope);
     else dbService.stopScans();
   }, [isLoggedIn, scansScope]);
+
+  // Asked once per device, the first time a manager logs in on it.
+  const [askCacheConsent, setAskCacheConsent] = useState(false);
+  useEffect(() => {
+    setAskCacheConsent(currentUser?.role === 'admin' && dbService.getAdminCacheConsent() === null);
+  }, [currentUser]);
+  const answerCacheConsent = (answer: 'yes' | 'no') => {
+    dbService.setAdminCacheConsent(answer);
+    setAskCacheConsent(false);
+  };
 
   // Sync state from dbService updates
   useEffect(() => {
@@ -4529,6 +4541,29 @@ export default function App() {
       {(isSavingScan || isLoggingOut) && (
         <div className="saving-overlay">
           <div className="saving-spinner" />
+        </div>
+      )}
+
+      {/* Manager, first login on this device: may the trip history be stored here? */}
+      {askCacheConsent && !scanErrorCode && (
+        <div className="scan-error-backdrop">
+          <div className="scan-error-glass glass-dialog-gold" role="dialog" aria-labelledby="cache-consent-title">
+            <div className="scan-error-icon glass-dialog-icon-gold" aria-hidden="true"><Smartphone size={22} /></div>
+            <h3 id="cache-consent-title" className="scan-error-title">
+              {lang === 'he' ? 'לשמור את היסטוריית הנסיעות במכשיר הזה?' : 'Keep the trip history on this device?'}
+            </h3>
+            <p className="scan-error-advice" style={{ fontWeight: 500, color: 'rgba(255,255,255,0.8)' }}>
+              {lang === 'he'
+                ? 'כך האתר ייפתח מהר יותר ויוריד מהשרת רק מה שהשתנה מאז הפעם הקודמת, במקום את כל ההיסטוריה בכל פתיחה. הנתונים נשמרים רק במכשיר הזה. נשאל רק הפעם.'
+                : 'The site will open faster and download only what changed since last time, instead of the whole history on every open. The data stays on this device only. We only ask once.'}
+            </p>
+            <button className="btn btn-primary scan-error-ok" onClick={() => answerCacheConsent('yes')}>
+              {lang === 'he' ? 'כן, לשמור' : 'Yes, keep it'}
+            </button>
+            <button className="btn btn-secondary scan-error-ok" style={{ marginTop: '10px', color: '#fff' }} onClick={() => answerCacheConsent('no')}>
+              {lang === 'he' ? 'לא, תודה' : 'No, thanks'}
+            </button>
+          </div>
         </div>
       )}
 

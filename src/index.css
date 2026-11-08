@@ -1523,3 +1523,12 @@ html[dir="rtl"] .mobile-manager-nav {
             backdrop-filter: none;
   }
 }
+
+/* The same glass dialog with the app's gold instead of the error red (e.g. the one-time
+   "keep the history on this device?" question). */
+.scan-error-glass.glass-dialog-gold {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(216, 176, 112, 0.10) 100%),
+    rgba(14, 22, 40, 0.30);
+}
+.scan-error-icon.glass-dialog-icon-gold { color: #e3c08a; }

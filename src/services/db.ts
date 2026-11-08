@@ -7,13 +7,16 @@ import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { windowBounds, inWindow, type PersonField, type WindowBounds } from './scanWindow';
 import { saveWithCodes, SaveDeadlinePassed } from './scanErrors';
 import { prevDay } from './nyTime';
-import { idbGet, idbSet } from './idbStore';
+import { idbGet, idbSet, idbDel } from './idbStore';
 import {
   CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor,
   type AdminCache, type Mark,
 } from './adminSync';
 
 const ADMIN_CACHE_KEY = 'admin_scans';
+// The manager is asked once per device whether the history may be stored on it.
+const ADMIN_CACHE_CONSENT_KEY = 'tp_admin_cache_consent';
+export type CacheConsent = 'yes' | 'no' | null;
 
 // How long a new scan may wait for the sign-in to the database and for the save itself before
 // the dispatcher is told (with an error code) that it has not reached the server yet. Without
@@ -353,6 +356,29 @@ class DBService {
   private adminLive = new Map<string, Scan>();
   private adminLiveFrom = '';
 
+  private adminSaveNow: (() => void) | null = null;
+
+  /** Has the manager answered "store the history on this device?" here ('yes' / 'no'), or not yet (null). */
+  public getAdminCacheConsent(): CacheConsent {
+    try {
+      const v = localStorage.getItem(ADMIN_CACHE_CONSENT_KEY);
+      return v === 'yes' || v === 'no' ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public setAdminCacheConsent(answer: 'yes' | 'no') {
+    try { localStorage.setItem(ADMIN_CACHE_CONSENT_KEY, answer); } catch { /* asked again next time */ }
+    if (answer === 'yes') {
+      // Ask the browser not to clear it under storage pressure (best effort, may be ignored).
+      try { navigator.storage?.persist?.(); } catch { /* ignore */ }
+      if (this.adminSaveNow) this.adminSaveNow();
+    } else {
+      idbDel(ADMIN_CACHE_KEY);
+    }
+  }
+
   private publishAdmin() {
     this.publishScans([...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()]);
   }
@@ -372,8 +398,11 @@ class DBService {
     this.adminLive = new Map();
     this.adminLiveFrom = liveFromDate(today(), prevDay);
 
+    // Nothing is kept on the device unless the manager agreed to it there.
+    const allowed = () => this.getAdminCacheConsent() === 'yes';
+
     const save = () => {
-      if (stopped || !liveReady || !olderReady) return;
+      if (stopped || !liveReady || !olderReady || !allowed()) return;
       const now = Date.now();
       const copy: AdminCache<Scan> = {
         v: CACHE_VERSION,
@@ -422,7 +451,7 @@ class DBService {
     const fetchScans = async (q: ReturnType<typeof query>) => (await getDocs(q)).docs.map(this.toScan);
 
     const syncOlder = async () => {
-      const cache = await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY);
+      const cache = allowed() ? await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY) : null;
       const usable = cache && cache.v === CACHE_VERSION ? cache : null;
       if (usable && !stopped) {
         // Draw the saved copy right away; the live part is replaced as soon as its listener answers.
@@ -475,10 +504,12 @@ class DBService {
       openLive(from);
     };
 
+    this.adminSaveNow = save;
     authReady.then(() => { check(); return syncOlder(); }).catch(e => console.error('Trip history sync failed:', e));
     const timer = setInterval(check, 60_000);
     return () => {
       stopped = true;
+      this.adminSaveNow = null;
       clearInterval(timer);
       if (pending) pending.unsub();
       if (liveUnsub) liveUnsub();
