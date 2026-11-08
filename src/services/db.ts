@@ -1,10 +1,19 @@
 import {
   collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, query, where, runTransaction,
+  orderBy, limit, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { windowBounds, inWindow, type PersonField, type WindowBounds } from './scanWindow';
 import { saveWithCodes, SaveDeadlinePassed } from './scanErrors';
+import { prevDay } from './nyTime';
+import { idbGet, idbSet } from './idbStore';
+import {
+  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor,
+  type AdminCache, type Mark,
+} from './adminSync';
+
+const ADMIN_CACHE_KEY = 'admin_scans';
 
 // How long a new scan may wait for the sign-in to the database and for the save itself before
 // the dispatcher is told (with an error code) that it has not reached the server yet. Without
@@ -199,7 +208,7 @@ const DEFAULT_USERS: User[] = [
 
 const SETTINGS_DOC = 'global_config';
 
-export type ScanScope = 'full' | 'window';
+export type ScanScope = 'admin' | 'window';
 
 class DBService {
   private listeners: Set<() => void> = new Set();
@@ -263,6 +272,8 @@ class DBService {
   // a full store must never stop the UI: the in-memory cache keeps working without it.
   // The window (day-only) copy lives under its own key so it never overwrites a full copy.
   private persistScans() {
+    // The manager's copy is far too big for localStorage; it lives in IndexedDB (openAdminScans).
+    if (this.scansScope === 'admin') return;
     try {
       localStorage.setItem(this.scansScope === 'window' ? 'tp_scans_win' : 'tp_scans', JSON.stringify(this.scansCache));
     } catch (e) {
@@ -293,19 +304,26 @@ class DBService {
 
   /**
    * Starts the live trips listener; safe to call repeatedly.
-   *  - 'full': the whole history (the manager's screens need it).
+   *  - 'admin': the whole history, kept on the manager's device and refreshed only where it
+   *    may have changed (see adminSync.ts) - the manager's screens need all of it.
    *  - 'window': only the current logical day plus whatever left in the last 3 hours - what
    *    dispatchers, drivers and the arrival board need. Reads per page load stop growing with
    *    the size of the history.
    */
-  public startScans(scope: ScanScope = 'full') {
+  public startScans(scope: ScanScope = 'admin') {
     if (this.scansUnsubscribe && this.scansScope === scope) return;
     this.stopScans();
     this.scansScope = scope;
     // An older preview build kept unconfirmed scans here to re-send them; never re-send.
     try { localStorage.removeItem('tp_pending_scans'); } catch { /* ignore */ }
     if (scope === 'window') this.seedWindowFromStorage();
-    this.scansUnsubscribe = scope === 'full' ? this.openFullScans() : this.openWindowScans();
+    if (scope === 'admin') {
+      // The manager's history now lives in IndexedDB; the old full copy is no longer kept up to
+      // date, so drop it rather than ever draw stale trips from it.
+      try { localStorage.removeItem('tp_scans'); } catch { /* ignore */ }
+      this.scansCache = [];
+    }
+    this.scansUnsubscribe = scope === 'admin' ? this.openAdminScans() : this.openWindowScans();
   }
 
   public stopScans() {
@@ -327,16 +345,159 @@ class DBService {
     }
   }
 
-  private openFullScans(): () => void {
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    authReady.then(() => {
-      if (cancelled) return;
-      unsubscribe = onSnapshot(collection(firestore, 'scans'), (snap) => {
-        this.publishScans(snap.docs.map(this.toScan));
-      }, (e) => console.error('Firestore scans listener error:', e));
-    });
-    return () => { cancelled = true; if (unsubscribe) unsubscribe(); };
+  // The manager's history. Days older than `adminLiveFrom` come from the copy on this device
+  // (refreshed only where they may have changed, see adminSync.ts); the last LIVE_DAYS days come
+  // from a live listener, exactly as before. Both are kept on the instance so the manager's own
+  // edits/deletes/late entries on older days show at once (the next sync refetches those days).
+  private adminOlder: Scan[] = [];
+  private adminLive = new Map<string, Scan>();
+  private adminLiveFrom = '';
+
+  private publishAdmin() {
+    this.publishScans([...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()]);
+  }
+
+  private openAdminScans(): () => void {
+    let stopped = false;
+    let liveReady = false;
+    let olderReady = false;
+    let liveUnsub: (() => void) | null = null;
+    let pending: { from: string; unsub: () => void } | null = null;
+    let syncedAtMs = 0;
+    let fullAtMs = 0;
+    const col = collection(firestore, 'scans');
+    const marksCol = collection(firestore, 'scan_days');
+    const today = () => this.getLogicalDate(new Date().toISOString());
+    this.adminOlder = [];
+    this.adminLive = new Map();
+    this.adminLiveFrom = liveFromDate(today(), prevDay);
+
+    const save = () => {
+      if (stopped || !liveReady || !olderReady) return;
+      const now = Date.now();
+      const copy: AdminCache<Scan> = {
+        v: CACHE_VERSION,
+        scans: [...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()],
+        savedAtMs: now,
+        settledBefore: settledBeforeDate(now, iso => this.getLogicalDate(iso)),
+        syncedAtMs,
+        fullAtMs,
+      };
+      idbSet(ADMIN_CACHE_KEY, copy).then(ok => { if (!ok) console.warn('Trip history copy not saved on this device - the next open reads it again.'); });
+    };
+
+    // A new live listener is opened first; the old one is closed only once the new one has
+    // delivered, so a day rollover never briefly hides recent trips. Trips of a day that leaves
+    // the live part move to the older part as last seen (they are refreshed later if needed).
+    const openLive = (from: string) => {
+      if (pending) pending.unsub();
+      const docs = new Map<string, Scan>();
+      let first = true;
+      const unsub = onSnapshot(query(col, where('logicalDate', '>=', from)), (snap) => {
+        snap.docChanges().forEach(ch => {
+          if (ch.type === 'removed') docs.delete(ch.doc.id);
+          else docs.set(ch.doc.id, this.toScan(ch.doc));
+        });
+        if (stopped) return;
+        if (first) {
+          first = false;
+          if (from > this.adminLiveFrom) {
+            this.adminLive.forEach(s => { if (s.logicalDate < from) this.adminOlder.push(s); });
+          }
+          const old = liveUnsub;
+          liveUnsub = unsub;
+          pending = null;
+          this.adminLiveFrom = from;
+          this.adminLive = docs;
+          if (old) old();
+          const wasReady = liveReady;
+          liveReady = true;
+          if (!wasReady) save();
+        }
+        if (this.adminLive === docs) this.publishAdmin();
+      }, (e) => console.error('Firestore scans (manager live) listener error:', e));
+      pending = { from, unsub };
+    };
+
+    const fetchScans = async (q: ReturnType<typeof query>) => (await getDocs(q)).docs.map(this.toScan);
+
+    const syncOlder = async () => {
+      const cache = await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY);
+      const usable = cache && cache.v === CACHE_VERSION ? cache : null;
+      if (usable && !stopped) {
+        // Draw the saved copy right away; the live part is replaced as soon as its listener answers.
+        this.adminOlder = usable.scans.filter(s => s.logicalDate < this.adminLiveFrom);
+        if (!liveReady) usable.scans.forEach(s => { if (s.logicalDate >= this.adminLiveFrom) this.adminLive.set(s.id, s); });
+        this.publishAdmin();
+      }
+      await authReady;
+      if (stopped) return;
+      const liveFrom = this.adminLiveFrom;
+      const marks: Mark[] = usable
+        ? (await getDocs(query(marksCol, where('updatedAt', '>', Timestamp.fromMillis(usable.syncedAtMs))))).docs
+            .map(d => ({ date: d.id, updatedAtMs: (d.data().updatedAt as Timestamp | undefined)?.toMillis() ?? 0 }))
+        : [];
+      const plan = planSync(usable, marks, liveFrom, Date.now());
+      if (plan.kind === 'full') {
+        // Newest mark BEFORE reading: anything written after it is picked up by the next sync.
+        const newest = await getDocs(query(marksCol, orderBy('updatedAt', 'desc'), limit(1)));
+        syncedAtMs = newest.empty ? 0 : ((newest.docs[0].data().updatedAt as Timestamp | undefined)?.toMillis() ?? 0);
+        const older = await fetchScans(query(col, where('logicalDate', '<', liveFrom)));
+        if (stopped) return;
+        // keepMoved: trips of a day that left the live part while this was reading (midnight).
+        this.adminOlder = [...older, ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
+        fullAtMs = Date.now();
+        console.info(`Trip history: full read (${plan.reason}), ${older.length} trips.`);
+      } else {
+        syncedAtMs = nextSyncedAt(usable!.syncedAtMs, marks);
+        fullAtMs = usable!.fullAtMs;
+        const fetched: Scan[] = [];
+        if (plan.rangeFrom !== null) {
+          fetched.push(...await fetchScans(query(col, where('logicalDate', '>=', plan.rangeFrom), where('logicalDate', '<', liveFrom))));
+        }
+        for (let i = 0; i < plan.dates.length; i += 30) {
+          fetched.push(...await fetchScans(query(col, where('logicalDate', 'in', plan.dates.slice(i, i + 30)))));
+        }
+        if (stopped) return;
+        this.adminOlder = [...applyPartial(usable!.scans, plan, fetched, liveFrom), ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
+        console.info(`Trip history: from this device, ${plan.dates.length} changed day(s)${plan.rangeFrom ? ` + days since ${plan.rangeFrom}` : ''} refreshed (${fetched.length} trips read).`);
+      }
+      olderReady = true;
+      this.publishAdmin();
+      save();
+    };
+
+    const check = () => {
+      if (stopped) return;
+      const from = liveFromDate(today(), prevDay);
+      const have = pending ? pending.from : liveUnsub ? this.adminLiveFrom : null;
+      if (have === from) return;
+      openLive(from);
+    };
+
+    authReady.then(() => { check(); return syncOlder(); }).catch(e => console.error('Trip history sync failed:', e));
+    const timer = setInterval(check, 60_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      if (pending) pending.unsub();
+      if (liveUnsub) liveUnsub();
+    };
+  }
+
+  /** Marks the logical days a trip write touched, so the manager's device refreshes them. */
+  private markScanDays(dates: Array<string | undefined | null>) {
+    for (const d of marksFor(dates)) {
+      setDoc(doc(firestore, 'scan_days', d), { updatedAt: serverTimestamp() }, { merge: true })
+        .catch(e => console.warn('Could not mark a changed trip day:', d, e));
+    }
+  }
+
+  /** Keeps the manager's older part in step with this device's own writes. */
+  private patchAdminOlder(id: string, scan: Scan | null) {
+    if (this.scansScope !== 'admin') return;
+    const rest = this.adminOlder.filter(s => s.id !== id);
+    this.adminOlder = scan && scan.logicalDate < this.adminLiveFrom ? [...rest, scan] : rest;
   }
 
   // Two listeners (the logical day; the last 3 hours) merged by id. Nothing is published until
@@ -647,6 +808,8 @@ class DBService {
       throw e;
     }
     this.savingScans.delete(newScan.id);
+    this.markScanDays([newScan.logicalDate]);
+    this.patchAdminOlder(newScan.id, newScan);
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     if (!isLateEntry) {
@@ -672,23 +835,35 @@ class DBService {
     };
 
     const index = this.scansCache.findIndex(s => s.id === freshScan.id);
+    const previousDate = index >= 0 ? this.scansCache[index].logicalDate : undefined;
     if (index >= 0) {
       this.scansCache = [...this.scansCache];
       this.scansCache[index] = freshScan;
       this.persistScans();
       this.notify();
     }
+    this.patchAdminOlder(freshScan.id, freshScan);
 
     await this.writeScan(freshScan);
+    // Both days: an edit can move a trip to another day.
+    this.markScanDays([previousDate, freshScan.logicalDate]);
   }
 
   public async deleteScan(scanId: string) {
+    const deletedDate = this.scansCache.find(s => s.id === scanId)?.logicalDate;
     this.scansCache = this.scansCache.filter(s => s.id !== scanId);
     this.persistScans();
     this.notify();
+    this.patchAdminOlder(scanId, null);
 
     await authReady;
     await deleteDoc(doc(firestore, 'scans', scanId));
+    // An unknown day (trip not in this device's list) marks everything rather than miss it.
+    this.markScanDays([deletedDate ?? null]);
+    if (!deletedDate) {
+      setDoc(doc(firestore, 'scan_days', '_all'), { updatedAt: serverTimestamp() }, { merge: true })
+        .catch(e => console.warn('Could not mark all trip days:', e));
+    }
   }
 
   // --- Active Locations ---
@@ -759,6 +934,7 @@ class DBService {
           this.notify();
         }
         await this.writeScan(updated);
+        this.markScanDays([updated.logicalDate]);
       }
     }
   }

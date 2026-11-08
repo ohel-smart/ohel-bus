@@ -10,7 +10,7 @@
 // equation entirely, same fix as api/approve-registration.js.
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 function getDb() {
   if (!getApps().length) {
@@ -132,6 +132,10 @@ export default async function handler(req, res) {
       // user's id.
       if (previousName && previousName !== userDoc.name) {
         await renameUserAcrossScans(db, userId, userDoc.name);
+        // The manager's device keeps a copy of the trip history (src/services/adminSync.ts)
+        // and refreshes only days marked as changed; a rename touches trips on any day, so
+        // it marks "everything" and the next open reloads the whole history once.
+        await db.collection('scan_days').doc('_all').set({ updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       }
     } else {
       await db.collection('users').doc(id).set(userDoc);

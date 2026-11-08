@@ -2052,7 +2052,7 @@ export default function App() {
   // read the whole history, so the manager keeps the full list for now. Dispatchers, drivers
   // and the display screen only work with the current day (+ trips still on the road).
   const isLoggedIn = currentUser !== null;
-  const scansScope = currentUser?.role === 'admin' ? 'full' : 'window';
+  const scansScope = currentUser?.role === 'admin' ? 'admin' : 'window';
   useEffect(() => {
     if (isLoggedIn) dbService.startScans(scansScope);
     else dbService.stopScans();
