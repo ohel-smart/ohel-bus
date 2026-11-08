@@ -1,9 +1,20 @@
 import {
-  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, query, where,
+  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, query, where, runTransaction,
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { windowBounds, inWindow, type PersonField, type WindowBounds } from './scanWindow';
+import { saveWithCodes, SaveDeadlinePassed } from './scanErrors';
+
+// How long a new scan may wait for the sign-in to the database and for the save itself before
+// the dispatcher is told (with an error code) that it has not reached the server yet. Without
+// these limits a stuck connection left the saving spinner up forever with no explanation.
+const SCAN_AUTH_TIMEOUT_MS = 10_000;
+const SCAN_WRITE_TIMEOUT_MS = 15_000;
+// One Google Routes call; on a stuck connection it used to hang the whole scan before the save.
+const ROUTES_CALL_TIMEOUT_MS = 5_000;
+
+const isOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 
 // Types Definitions
 export type UserRole = 'admin' | 'driver' | 'dispatcher' | 'screen';
@@ -262,49 +273,19 @@ class DBService {
   private scansUnsubscribe: (() => void) | null = null;
   private scansScope: ScanScope | null = null;
 
-  // Trips created on this device whose write to Firestore has not been confirmed yet. The
-  // first thing addScan does is put the trip in the local cache, so without this a trip whose
-  // write failed (dropped connection, quota) would be erased by the next snapshot and lost
-  // for good on a reload. Kept in localStorage and re-sent on the next start.
-  private pendingScans = new Map<string, Scan>();
-  private static readonly PENDING_MAX_AGE_MS = 24 * 3600 * 1000;
-
-  private loadPendingScans() {
-    try {
-      const raw: Scan[] = JSON.parse(localStorage.getItem('tp_pending_scans') || '[]');
-      raw.forEach(s => this.pendingScans.set(s.id, s));
-    } catch (e) { /* nothing stored */ }
-  }
-
-  private savePendingScans() {
-    try {
-      localStorage.setItem('tp_pending_scans', JSON.stringify([...this.pendingScans.values()]));
-    } catch (e) { /* storage full: the in-memory map still protects this session */ }
-  }
-
-  private retryPendingScans() {
-    const now = Date.now();
-    for (const s of [...this.pendingScans.values()]) {
-      const age = now - new Date(s.scannedAt).getTime();
-      if (!Number.isFinite(age) || age > DBService.PENDING_MAX_AGE_MS) {
-        this.pendingScans.delete(s.id); // too old to announce as a new trip
-        continue;
-      }
-      this.writeScan(s).then(() => { this.pendingScans.delete(s.id); this.savePendingScans(); }).catch(() => { /* try again next start */ });
-    }
-    this.savePendingScans();
-  }
-
+  // Trips this device is saving right now. Memory only: a scan whose save fails is cancelled
+  // and is never kept or re-sent later (manager's decision, 2026-11-05) - see addScan.
+  private savingScans = new Map<string, Scan>();
   private toScan = (d: { data: () => unknown }): Scan => {
     const s = d.data() as Scan;
     return { ...s, logicalDate: this.cleanDate(s.logicalDate) };
   };
 
-  /** The cache = what the server sent + local trips not yet confirmed by it. */
+  /** The cache = what the server sent + trips this device is saving right now. */
   private publishScans(fromServer: Scan[]) {
     const ids = new Set(fromServer.map(s => s.id));
     const merged = [...fromServer];
-    this.pendingScans.forEach(s => { if (!ids.has(s.id)) merged.push(s); });
+    this.savingScans.forEach(s => { if (!ids.has(s.id)) merged.push(s); });
     this.scansCache = merged;
     this.persistScans();
     this.notify();
@@ -321,10 +302,10 @@ class DBService {
     if (this.scansUnsubscribe && this.scansScope === scope) return;
     this.stopScans();
     this.scansScope = scope;
-    this.loadPendingScans();
+    // An older preview build kept unconfirmed scans here to re-send them; never re-send.
+    try { localStorage.removeItem('tp_pending_scans'); } catch { /* ignore */ }
     if (scope === 'window') this.seedWindowFromStorage();
     this.scansUnsubscribe = scope === 'full' ? this.openFullScans() : this.openWindowScans();
-    authReady.then(() => this.retryPendingScans());
   }
 
   public stopScans() {
@@ -581,6 +562,26 @@ class DBService {
     await setDoc(doc(firestore, 'scans', scan.id), scan, { merge: true });
   }
 
+  /**
+   * writeScan for a brand-new scan, with time limits and a ScanSaveError carrying a code the
+   * dispatcher can read out (see scanErrors.ts). A failed scan must never arrive later, so this
+   * is a transaction rather than setDoc: setDoc is queued by the SDK while offline and delivered
+   * whenever the connection returns, a transaction is not queued, and every retry it makes
+   * checks the deadline first and gives up once it has passed.
+   */
+  private async writeNewScan(scan: Scan) {
+    await saveWithCodes({
+      ready: authReady,
+      write: (deadline) => runTransaction(firestore, async (tx) => {
+        if (Date.now() > deadline) throw new SaveDeadlinePassed();
+        tx.set(doc(firestore, 'scans', scan.id), scan, { merge: true });
+      }, { maxAttempts: 3 }),
+      isOnline,
+      readyTimeoutMs: SCAN_AUTH_TIMEOUT_MS,
+      writeTimeoutMs: SCAN_WRITE_TIMEOUT_MS,
+    });
+  }
+
   public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity' | 'isBigBus'>) {
     const usersList = this.getUsers();
     const driver = usersList.find(u => u.id === scanData.driverId);
@@ -624,20 +625,28 @@ class DBService {
     };
 
     this.scansCache = [...this.scansCache, newScan];
+    // A full or blocked localStorage must never stop the scan from being sent (persistScans catches).
     this.persistScans();
     this.notify();
     // Awaited (not fire-and-forget): the dispatcher needs real feedback if this
     // fails (e.g. a dropped connection right at scan time) rather than seeing a
     // false "success" while the ride silently never reaches Firestore or the
-    // WhatsApp group. The local cache write above already happened, so the scan
-    // still shows in this dispatcher's own view even if the sync below fails.
-    // Remembered as "not confirmed yet" until Firestore accepts it, so a failed write is
-    // retried on the next start instead of vanishing with the next snapshot.
-    this.pendingScans.set(newScan.id, newScan);
-    this.savePendingScans();
-    await this.writeScan(newScan);
-    this.pendingScans.delete(newScan.id);
-    this.savePendingScans();
+    // WhatsApp group. Throws a ScanSaveError whose code tells the manager why
+    // (scanErrors.ts). A failed scan is cancelled, not sent later (manager's
+    // decision), so it is also taken back out of this dispatcher's own view.
+    // While the save is in flight it is kept in the view even if a snapshot from
+    // another trip arrives first (a transaction has no local pending copy).
+    this.savingScans.set(newScan.id, newScan);
+    try {
+      await this.writeNewScan(newScan);
+    } catch (e) {
+      this.savingScans.delete(newScan.id);
+      this.scansCache = this.scansCache.filter(s => s.id !== newScan.id);
+      this.persistScans();
+      this.notify();
+      throw e;
+    }
+    this.savingScans.delete(newScan.id);
 
     // Trigger driver driving simulation to the opposite location of departure with precomputed ETA
     if (!isLateEntry) {
@@ -874,9 +883,14 @@ class DBService {
     // Retry a couple of times first; the extra second or two is irrelevant here
     // since this runs once per scan.
     for (let attempt = 0; apiKey && attempt < 3; attempt++) {
+      // Offline: no point retrying, go straight to the fallback so the scan itself is not delayed.
+      if (attempt > 0 && !isOnline()) break;
       if (attempt > 0) await new Promise(r => setTimeout(r, 800 * attempt));
+      const abort = new AbortController();
+      const abortTimer = setTimeout(() => abort.abort(), ROUTES_CALL_TIMEOUT_MS);
       try {
         const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+          signal: abort.signal,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -914,6 +928,8 @@ class DBService {
         console.warn(`Routes API returned no duration (attempt ${attempt + 1}/3). Response:`, JSON.stringify(data).slice(0, 500));
       } catch (e) {
         console.error(`Routes API ETA error (attempt ${attempt + 1}/3):`, e);
+      } finally {
+        clearTimeout(abortTimer);
       }
     }
 

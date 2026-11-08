@@ -10,6 +10,7 @@ import { nyLocalInput, nyDateStr, nyWallToDate } from './services/nyTime';
 import type { User, DepartureLocation } from './services/db';
 import logo from './assets/logo.png';
 import './App.css';
+import { scanErrorCodeOf, scanErrorReason, scanErrorAdvice } from './services/scanErrors';
 
 const TXT = {
   he: {
@@ -132,8 +133,10 @@ export default function ReturnReport() {
         ...(typeof paidParsed === 'number' && !isNaN(paidParsed) ? { paidCount: paidParsed } : {}),
       });
       setDone(true);
-    } catch {
-      setError(tx.submitError);
+    } catch (e) {
+      console.error('Self-report failed to save:', e);
+      const code = scanErrorCodeOf(e);
+      setError(`${scanErrorReason(code, lang)} - ${lang === 'he' ? 'קוד' : 'code'} ${code}. ${scanErrorAdvice(code, lang)}`);
     } finally {
       setSubmitting(false);
     }
