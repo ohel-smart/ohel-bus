@@ -4550,12 +4550,12 @@ export default function App() {
           <div className="scan-error-glass glass-dialog-gold" role="dialog" aria-labelledby="cache-consent-title">
             <div className="scan-error-icon glass-dialog-icon-gold" aria-hidden="true"><Smartphone size={22} /></div>
             <h3 id="cache-consent-title" className="scan-error-title">
-              {lang === 'he' ? 'לשמור את היסטוריית הנסיעות במכשיר הזה?' : 'Keep the trip history on this device?'}
+              {lang === 'he' ? 'לשמור את היסטוריית הנסיעות במטמון של המכשיר הזה?' : 'Keep the trip history in this device\'s cache?'}
             </h3>
             <p className="scan-error-advice" style={{ fontWeight: 500, color: 'rgba(255,255,255,0.8)' }}>
               {lang === 'he'
-                ? 'כך האתר ייפתח מהר יותר ויוריד מהשרת רק מה שהשתנה מאז הפעם הקודמת, במקום את כל ההיסטוריה בכל פתיחה. הנתונים נשמרים רק במכשיר הזה. נשאל רק הפעם.'
-                : 'The site will open faster and download only what changed since last time, instead of the whole history on every open. The data stays on this device only. We only ask once.'}
+                ? 'שאלה למנהלים בלבד. ההיסטוריה תישמר במטמון (cache) של הדפדפן במכשיר הזה, כך שהאתר ייפתח מהר יותר ויוריד מהשרת רק מה שהשתנה מאז הפעם הקודמת, במקום את כל ההיסטוריה בכל פתיחה. המטמון נשאר רק במכשיר הזה. נשאל רק הפעם.'
+                : 'Managers only. The history will be kept in this browser\'s cache on this device, so the site opens faster and downloads only what changed since last time, instead of the whole history on every open. The cache stays on this device only. We only ask once.'}
             </p>
             <button className="btn btn-primary scan-error-ok" onClick={() => answerCacheConsent('yes')}>
               {lang === 'he' ? 'כן, לשמור' : 'Yes, keep it'}
