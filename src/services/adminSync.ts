@@ -83,3 +83,16 @@ export function applyPartial<S extends { logicalDate: string }>(
 export function marksFor(dates: Array<string | undefined | null>): string[] {
   return [...new Set(dates.filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d)))];
 }
+
+/**
+ * After the older part is brought up to date, its size is compared with what the server says it
+ * holds (a count query: one read per 1000 trips). A difference means the copy is missing trips or
+ * keeps deleted ones, whatever the cause (an answer that came from the browser's own cache on a bad
+ * connection, a change made outside the site) - so the whole older history is read again, once.
+ * If the server's own answer was just read in full, a difference can only come from a write that
+ * landed in between: accept it and let the next open check again.
+ */
+export function integrityVerdict(input: { localCount: number; serverCount: number; justReadInFull: boolean }): 'ok' | 'reload' | 'accept' {
+  if (input.localCount === input.serverCount) return 'ok';
+  return input.justReadInFull ? 'accept' : 'reload';
+}

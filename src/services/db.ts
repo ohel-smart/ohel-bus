@@ -1,5 +1,5 @@
 import {
-  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, query, where, runTransaction,
+  collection, doc, onSnapshot, setDoc, deleteDoc, getDocs, getDocsFromServer, getCountFromServer, query, where, runTransaction,
   orderBy, limit, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
 import { db as firestore, authReady } from './firebase';
@@ -10,7 +10,7 @@ import { prevDay } from './nyTime';
 import { withBotMark, withoutBotMark } from './botMark';
 import { idbGet, idbSet, idbDel } from './idbStore';
 import {
-  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor,
+  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict,
   type AdminCache, type Mark,
 } from './adminSync';
 
@@ -426,12 +426,16 @@ class DBService {
       if (pending) pending.unsub();
       const docs = new Map<string, Scan>();
       let first = true;
-      const unsub = onSnapshot(query(col, where('logicalDate', '>=', from)), (snap) => {
+      // includeMetadataChanges: tells us when the answer came from the browser's own cache instead
+      // of the server. Such an answer is drawn but never counted as "the live part is loaded" (and
+      // so never saved to the device) - only the server-confirmed one is.
+      const unsub = onSnapshot(query(col, where('logicalDate', '>=', from)), { includeMetadataChanges: true }, (snap) => {
         snap.docChanges().forEach(ch => {
           if (ch.type === 'removed') docs.delete(ch.doc.id);
           else docs.set(ch.doc.id, this.toScan(ch.doc));
         });
         if (stopped) return;
+        if (first && snap.metadata.fromCache) return;
         if (first) {
           first = false;
           if (from > this.adminLiveFrom) {
@@ -452,7 +456,25 @@ class DBService {
       pending = { from, unsub };
     };
 
-    const fetchScans = async (q: ReturnType<typeof query>) => (await getDocs(q)).docs.map(this.toScan);
+    // Sync reads are forced to the SERVER: on a bad connection a plain getDocs may answer from the
+    // browser's cache - incomplete - and the copy on the device would then be built from that.
+    // Offline, these throw instead, and the copy already on the device stays untouched.
+    const fetchScans = async (q: ReturnType<typeof query>) => (await getDocsFromServer(q)).docs.map(this.toScan);
+
+    // The whole older history from the server. The newest mark is read BEFORE the trips: anything
+    // written after it is picked up by the next sync.
+    const readOlderInFull = async (liveFrom: string, reason: string) => {
+      const newest = await getDocsFromServer(query(marksCol, orderBy('updatedAt', 'desc'), limit(1)));
+      const newestMs = newest.empty ? 0 : ((newest.docs[0].data().updatedAt as Timestamp | undefined)?.toMillis() ?? 0);
+      const older = await fetchScans(query(col, where('logicalDate', '<', liveFrom)));
+      if (stopped) return false;
+      syncedAtMs = newestMs;
+      // keepMoved: trips of a day that left the live part while this was reading (midnight).
+      this.adminOlder = [...older, ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
+      fullAtMs = Date.now();
+      console.info(`Trip history: full read (${reason}), ${older.length} trips.`);
+      return true;
+    };
 
     const syncOlder = async () => {
       const cache = allowed() ? await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY) : null;
@@ -467,20 +489,12 @@ class DBService {
       if (stopped) return;
       const liveFrom = this.adminLiveFrom;
       const marks: Mark[] = usable
-        ? (await getDocs(query(marksCol, where('updatedAt', '>', Timestamp.fromMillis(usable.syncedAtMs))))).docs
+        ? (await getDocsFromServer(query(marksCol, where('updatedAt', '>', Timestamp.fromMillis(usable.syncedAtMs))))).docs
             .map(d => ({ date: d.id, updatedAtMs: (d.data().updatedAt as Timestamp | undefined)?.toMillis() ?? 0 }))
         : [];
       const plan = planSync(usable, marks, liveFrom, Date.now());
       if (plan.kind === 'full') {
-        // Newest mark BEFORE reading: anything written after it is picked up by the next sync.
-        const newest = await getDocs(query(marksCol, orderBy('updatedAt', 'desc'), limit(1)));
-        syncedAtMs = newest.empty ? 0 : ((newest.docs[0].data().updatedAt as Timestamp | undefined)?.toMillis() ?? 0);
-        const older = await fetchScans(query(col, where('logicalDate', '<', liveFrom)));
-        if (stopped) return;
-        // keepMoved: trips of a day that left the live part while this was reading (midnight).
-        this.adminOlder = [...older, ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
-        fullAtMs = Date.now();
-        console.info(`Trip history: full read (${plan.reason}), ${older.length} trips.`);
+        if (!(await readOlderInFull(liveFrom, plan.reason))) return;
       } else {
         syncedAtMs = nextSyncedAt(usable!.syncedAtMs, marks);
         fullAtMs = usable!.fullAtMs;
@@ -495,6 +509,12 @@ class DBService {
         this.adminOlder = [...applyPartial(usable!.scans, plan, fetched, liveFrom), ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
         console.info(`Trip history: from this device, ${plan.dates.length} changed day(s)${plan.rangeFrom ? ` + days since ${plan.rangeFrom}` : ''} refreshed (${fetched.length} trips read).`);
       }
+      // Integrity check: the server's own count of the older trips against what we now hold.
+      const heldOlder = () => this.adminOlder.filter(s => s.logicalDate < liveFrom).length;
+      const serverOlder = (await getCountFromServer(query(col, where('logicalDate', '<', liveFrom)))).data().count;
+      const verdict = integrityVerdict({ localCount: heldOlder(), serverCount: serverOlder, justReadInFull: plan.kind === 'full' });
+      if (verdict !== 'ok') console.warn(`Trip history: ${heldOlder()} trips held, server has ${serverOlder} (${verdict}).`);
+      if (verdict === 'reload' && !(await readOlderInFull(liveFrom, 'integrity check'))) return;
       olderReady = true;
       this.publishAdmin();
       save();

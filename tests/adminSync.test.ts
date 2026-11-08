@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor,
+  liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict,
   CACHE_VERSION, FULL_REFRESH_MS, SETTLE_MS, type AdminCache,
 } from '../src/services/adminSync.ts';
 
@@ -136,4 +136,12 @@ test('end to end on a simulated month: the device copy always equals the server'
     else if (r < 0.80) open();                                                                                     // manager opens the site
   }
   open();
+});
+
+test('integrity check: equal counts are fine; a difference triggers one full re-read, unless the full read was just done', () => {
+  assert.equal(integrityVerdict({ localCount: 341, serverCount: 341, justReadInFull: false }), 'ok');
+  assert.equal(integrityVerdict({ localCount: 340, serverCount: 341, justReadInFull: false }), 'reload', 'a trip missing from the copy');
+  assert.equal(integrityVerdict({ localCount: 342, serverCount: 341, justReadInFull: false }), 'reload', 'a deleted trip still in the copy');
+  assert.equal(integrityVerdict({ localCount: 340, serverCount: 341, justReadInFull: true }), 'accept', 'no loop: the server was just read in full');
+  assert.equal(integrityVerdict({ localCount: 0, serverCount: 0, justReadInFull: true }), 'ok');
 });
