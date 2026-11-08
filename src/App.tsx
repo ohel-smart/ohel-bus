@@ -6,7 +6,8 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, type LucideIcon
+  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, WifiOff, Database,
+  type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
 import type { User, Scan, ActiveLocation, DepartureLocation, DriverStatus, Direction, PendingRegistration } from './services/db';
@@ -182,7 +183,7 @@ import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
 import loginBackground from './assets/login-background.jpg'; // the Rebbe's Ohel - login screen background
 import './App.css';
-import { scanErrorCodeOf, scanErrorReason, scanErrorAdvice, type ScanErrorCode } from './services/scanErrors';
+import { scanErrorCodeOf, scanErrorReason, scanErrorAdvice, isConnectionCode, type ScanErrorCode } from './services/scanErrors';
 
 const TRANSLATIONS = {
   he: {
@@ -4462,18 +4463,21 @@ export default function App() {
 
       {/* A scan that did not reach the server - stays until closed, with the code to report */}
       {scanErrorCode && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4000, padding: '16px' }}>
-          <div className="card" role="alertdialog" aria-labelledby="scan-error-title" style={{ maxWidth: '400px', width: '100%', padding: '24px', background: 'var(--bg-secondary)', borderColor: 'rgba(239,68,68,0.6)', textAlign: 'center' }}>
-            <h3 id="scan-error-title" style={{ fontSize: '17px', fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>
+        <div className="scan-error-backdrop">
+          <div className="scan-error-glass" role="alertdialog" aria-labelledby="scan-error-title">
+            <div className="scan-error-icon" aria-hidden="true">
+              {isConnectionCode(scanErrorCode) ? <WifiOff size={22} /> : <Database size={22} />}
+            </div>
+            <h3 id="scan-error-title" className="scan-error-title">
               {lang === 'he' ? 'הסריקה לא הגיעה לשרת' : 'The scan did not reach the server'}
             </h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px' }}>{scanErrorReason(scanErrorCode, lang)}</p>
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{lang === 'he' ? 'קוד תקלה' : 'Error code'}</div>
-            <div dir="ltr" style={{ fontFamily: "'SF Mono', 'Roboto Mono', ui-monospace, monospace", fontSize: '34px', fontWeight: 800, color: '#ef4444', letterSpacing: '2px', marginBottom: '16px', userSelect: 'all' }}>
-              {scanErrorCode}
+            <p className="scan-error-reason">{scanErrorReason(scanErrorCode, lang)}</p>
+            <div className="scan-error-code-chip">
+              <span className="scan-error-code-label">{lang === 'he' ? 'קוד תקלה' : 'Error code'}</span>
+              <span dir="ltr" className="scan-error-code">{scanErrorCode}</span>
             </div>
-            <p style={{ fontSize: '14px', color: '#fff', lineHeight: '21px', margin: '0 0 20px' }}>{scanErrorAdvice(scanErrorCode, lang)}</p>
-            <button className="btn btn-primary" style={{ width: '100%', padding: '13px', fontWeight: 700, color: '#000' }} onClick={() => setScanErrorCode(null)}>
+            <p className="scan-error-advice">{scanErrorAdvice(scanErrorCode, lang)}</p>
+            <button className="btn btn-primary scan-error-ok" onClick={() => setScanErrorCode(null)}>
               {lang === 'he' ? 'הבנתי' : 'OK'}
             </button>
           </div>
