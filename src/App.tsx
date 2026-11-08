@@ -6,7 +6,7 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, WifiOff, Database,
+  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, WifiOff, Database, TriangleAlert,
   type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
@@ -4466,7 +4466,7 @@ export default function App() {
         <div className="scan-error-backdrop">
           <div className="scan-error-glass" role="alertdialog" aria-labelledby="scan-error-title">
             <div className="scan-error-icon" aria-hidden="true">
-              {isConnectionCode(scanErrorCode) ? <WifiOff size={22} /> : <Database size={22} />}
+              {isConnectionCode(scanErrorCode) ? <WifiOff size={22} /> : scanErrorCode === '555770' ? <TriangleAlert size={22} /> : <Database size={22} />}
             </div>
             <h3 id="scan-error-title" className="scan-error-title">
               {lang === 'he' ? 'הסריקה לא הגיעה לשרת' : 'The scan did not reach the server'}
