@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict,
+  liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict, uniqueById,
   CACHE_VERSION, FULL_REFRESH_MS, SETTLE_MS, type AdminCache,
 } from '../src/services/adminSync.ts';
 
@@ -144,4 +144,20 @@ test('integrity check: equal counts are fine; a difference triggers one full re-
   assert.equal(integrityVerdict({ localCount: 342, serverCount: 341, justReadInFull: false }), 'reload', 'a deleted trip still in the copy');
   assert.equal(integrityVerdict({ localCount: 340, serverCount: 341, justReadInFull: true }), 'accept', 'no loop: the server was just read in full');
   assert.equal(integrityVerdict({ localCount: 0, serverCount: 0, justReadInFull: true }), 'ok');
+});
+
+test('C5: a trip that moved to another day never shows twice, and the freshly read copy wins', () => {
+  const liveFrom = '2026-11-08';
+  const stale = { id: 't1', logicalDate: '2026-11-03', n: 'old' };
+  const other = { id: 't2', logicalDate: '2026-11-03', n: 'x' };
+  const moved = { id: 't1', logicalDate: '2026-11-04', n: 'fresh' };
+  // only the NEW day was refetched (the old day's mark was never written)
+  const out = applyPartial([stale, other], { kind: 'partial', rangeFrom: null, dates: ['2026-11-04'] }, [moved], liveFrom);
+  assert.deepEqual(out.map(s => `${s.id}:${s.logicalDate}:${s.n}`).sort(), ['t1:2026-11-04:fresh', 't2:2026-11-03:x']);
+});
+
+test('uniqueById: last wins, order of first appearance, entries without an id are untouched', () => {
+  const out = uniqueById([{ id: 'a', v: 1 }, { id: 'b', v: 1 }, { v: 9 }, { id: 'a', v: 2 }, { v: 9 }]);
+  assert.deepEqual(out, [{ id: 'a', v: 2 }, { id: 'b', v: 1 }, { v: 9 }, { v: 9 }]);
+  assert.deepEqual(uniqueById([]), []);
 });

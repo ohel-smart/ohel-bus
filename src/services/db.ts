@@ -6,11 +6,12 @@ import { db as firestore, authReady } from './firebase';
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 import { windowBounds, inWindow, type PersonField, type WindowBounds } from './scanWindow';
 import { saveWithCodes, SaveDeadlinePassed } from './scanErrors';
+import { retryKey, idForScan, rememberFailed, forgetFailed, type FailedScan } from './scanRetry';
 import { prevDay } from './nyTime';
 import { withBotMark, withoutBotMark } from './botMark';
 import { idbGet, idbSet, idbDel } from './idbStore';
 import {
-  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict,
+  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict, uniqueById,
   type AdminCache, type Mark,
 } from './adminSync';
 
@@ -294,6 +295,9 @@ class DBService {
   // Trips this device is saving right now. Memory only: a scan whose save fails is cancelled
   // and is never kept or re-sent later (manager's decision, 2026-11-05) - see addScan.
   private savingScans = new Map<string, Scan>();
+  // Ids of scans that failed on screen (A1): the next attempt of the same scan reuses the id, so one that
+  // secretly reached the server is not announced twice (scanRetry.ts).
+  private failedScanIds = new Map<string, FailedScan>();
   private toScan = (d: { data: () => unknown }): Scan => {
     const s = d.data() as Scan;
     return { ...s, logicalDate: this.cleanDate(s.logicalDate) };
@@ -384,7 +388,8 @@ class DBService {
   }
 
   private publishAdmin() {
-    this.publishScans([...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()]);
+    // By id, the live copy winning where a trip is in both parts (e.g. it just moved day).
+    this.publishScans(uniqueById([...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()]));
   }
 
   private openAdminScans(): () => void {
@@ -410,7 +415,7 @@ class DBService {
       const now = Date.now();
       const copy: AdminCache<Scan> = {
         v: CACHE_VERSION,
-        scans: [...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()],
+        scans: uniqueById([...this.adminOlder.filter(s => s.logicalDate < this.adminLiveFrom), ...this.adminLive.values()]),
         savedAtMs: now,
         settledBefore: settledBeforeDate(now, iso => this.getLogicalDate(iso)),
         syncedAtMs,
@@ -444,15 +449,25 @@ class DBService {
           const old = liveUnsub;
           liveUnsub = unsub;
           pending = null;
+          const dayMoved = from > this.adminLiveFrom;
           this.adminLiveFrom = from;
           this.adminLive = docs;
           if (old) old();
           const wasReady = liveReady;
           liveReady = true;
           if (!wasReady) save();
+          // A day just left the live part: pick up what others changed on it (marks), right away.
+          if (dayMoved) resync(true);
         }
         if (this.adminLive === docs) this.publishAdmin();
-      }, (e) => console.error('Firestore scans (manager live) listener error:', e));
+      }, (e) => {
+        console.error('Firestore scans (manager live) listener error:', e);
+        // A listener that reported an error is dead. Forget it, so the next check() (every minute)
+        // sees nothing is open and starts a new one - until now it stayed "open" for good.
+        unsub();
+        if (pending && pending.unsub === unsub) pending = null;
+        if (liveUnsub === unsub) liveUnsub = null;
+      });
       pending = { from, unsub };
     };
 
@@ -476,17 +491,26 @@ class DBService {
       return true;
     };
 
-    const syncOlder = async () => {
-      const cache = allowed() ? await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY) : null;
-      const usable = cache && cache.v === CACHE_VERSION ? cache : null;
-      if (usable && !stopped) {
-        // Draw the saved copy right away; the live part is replaced as soon as its listener answers.
-        this.adminOlder = usable.scans.filter(s => s.logicalDate < this.adminLiveFrom);
-        if (!liveReady) usable.scans.forEach(s => { if (s.logicalDate >= this.adminLiveFrom) this.adminLive.set(s.id, s); });
-        this.publishAdmin();
+    // What the older part is refreshed from: the copy saved on the device for the first sync, and after
+    // that the previous sync's result held in memory - so a page left open for days (C6) re-syncs by
+    // reading only what changed, whether or not the manager allowed a copy on the device.
+    let base: AdminCache<Scan> | null = null;
+
+    const syncOlder = async (initial: boolean) => {
+      if (initial) {
+        const cache = allowed() ? await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY) : null;
+        const fromDevice = cache && cache.v === CACHE_VERSION ? cache : null;
+        if (fromDevice && !stopped) {
+          // Draw the saved copy right away; the live part is replaced as soon as its listener answers.
+          this.adminOlder = fromDevice.scans.filter(s => s.logicalDate < this.adminLiveFrom);
+          if (!liveReady) fromDevice.scans.forEach(s => { if (s.logicalDate >= this.adminLiveFrom) this.adminLive.set(s.id, s); });
+          this.publishAdmin();
+        }
+        base = fromDevice;
       }
       await authReady;
       if (stopped) return;
+      const usable = base;
       const liveFrom = this.adminLiveFrom;
       const marks: Mark[] = usable
         ? (await getDocsFromServer(query(marksCol, where('updatedAt', '>', Timestamp.fromMillis(usable.syncedAtMs))))).docs
@@ -515,6 +539,11 @@ class DBService {
       const verdict = integrityVerdict({ localCount: heldOlder(), serverCount: serverOlder, justReadInFull: plan.kind === 'full' });
       if (verdict !== 'ok') console.warn(`Trip history: ${heldOlder()} trips held, server has ${serverOlder} (${verdict}).`);
       if (verdict === 'reload' && !(await readOlderInFull(liveFrom, 'integrity check'))) return;
+      const doneAt = Date.now();
+      base = {
+        v: CACHE_VERSION, scans: [...this.adminOlder], savedAtMs: doneAt,
+        settledBefore: settledBeforeDate(doneAt, iso => this.getLogicalDate(iso)), syncedAtMs, fullAtMs,
+      };
       olderReady = true;
       this.publishAdmin();
       save();
@@ -528,13 +557,40 @@ class DBService {
       openLive(from);
     };
 
+    // Later syncs of the older part (C6): when the person comes back to the page, when the internet
+    // returns, and when a day leaves the live part. Each one reads the day marks since the last
+    // sync (a minimum of one read) plus the count check, and only the days that changed.
+    let syncing = false;
+    let lastSyncAt = 0;
+    const resync = (force = false) => {
+      if (stopped || syncing || !olderReady) return;
+      if (!force && Date.now() - lastSyncAt < 30_000) return;
+      syncing = true;
+      syncOlder(false)
+        .catch(e => console.error('Trip history re-sync failed:', e))
+        .finally(() => { syncing = false; lastSyncAt = Date.now(); });
+    };
+    const onVisible = () => { if (!document.hidden) resync(); };
+    const onOnline = () => resync();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+
     this.adminSaveNow = save;
-    authReady.then(() => { check(); return syncOlder(); }).catch(e => console.error('Trip history sync failed:', e));
-    const timer = setInterval(check, 60_000);
+    // The minute timer starts only once signed in: before, check() could open the live listener
+    // ahead of the sign-in on a slow start.
+    let timer: ReturnType<typeof setInterval> | null = null;
+    authReady.then(() => {
+      if (stopped) return;
+      check();
+      timer = setInterval(check, 60_000);
+      return syncOlder(true).then(() => { lastSyncAt = Date.now(); });
+    }).catch(e => console.error('Trip history sync failed:', e));
     return () => {
       stopped = true;
       this.adminSaveNow = null;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
       if (pending) pending.unsub();
       if (liveUnsub) liveUnsub();
     };
@@ -791,7 +847,12 @@ class DBService {
       ready: authReady,
       write: (deadline) => runTransaction(firestore, async (tx) => {
         if (Date.now() > deadline) throw new SaveDeadlinePassed();
-        tx.set(doc(firestore, 'scans', scan.id), scan, { merge: true });
+        const ref = doc(firestore, 'scans', scan.id);
+        // Read first (A1): if an earlier attempt of this same scan DID land, the retry only refreshes
+        // its fields and leaves the bot's marks alone, instead of setting "waiting" on a ride that
+        // was already announced.
+        const existing = await tx.get(ref);
+        tx.set(ref, existing.exists() ? withoutBotMark(scan) : scan, { merge: true });
       }, { maxAttempts: 3 }),
       isOnline,
       readyTimeoutMs: SCAN_AUTH_TIMEOUT_MS,
@@ -829,9 +890,10 @@ class DBService {
       expectedArrivalTime = arrivalTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
     }
 
+    const attemptKey = retryKey(scanData);
     const newScan: Scan = withBotMark({
       ...scanData,
-      id: 'scn_' + Math.random().toString(36).substr(2, 9),
+      id: idForScan(this.failedScanIds, attemptKey, Date.now(), () => 'scn_' + Math.random().toString(36).substr(2, 9)),
       driverCapacity: capacity,
       isBigBus,
       remainingSeats,
@@ -841,7 +903,7 @@ class DBService {
         : { etaMinutes, expectedArrivalTime, ...(etaIsEstimate ? { etaIsEstimate: true } : {}) })
     });
 
-    this.scansCache = [...this.scansCache, newScan];
+    this.scansCache = [...this.scansCache.filter(s => s.id !== newScan.id), newScan];
     // A full or blocked localStorage must never stop the scan from being sent (persistScans catches).
     this.persistScans();
     this.notify();
@@ -854,6 +916,9 @@ class DBService {
     // While the save is in flight it is kept in the view even if a snapshot from
     // another trip arrives first (a transaction has no local pending copy).
     this.savingScans.set(newScan.id, newScan);
+    // C2: the day mark is also written BEFORE the trip, so a phone that closes between the two writes
+    // still leaves the manager's device a reason to refresh that day (the mark after the trip stays).
+    this.markScanDays([newScan.logicalDate]);
     try {
       await this.writeNewScan(newScan);
     } catch (e) {
@@ -861,8 +926,10 @@ class DBService {
       this.scansCache = this.scansCache.filter(s => s.id !== newScan.id);
       this.persistScans();
       this.notify();
+      rememberFailed(this.failedScanIds, attemptKey, newScan.id, Date.now());
       throw e;
     }
+    forgetFailed(this.failedScanIds, attemptKey);
     this.savingScans.delete(newScan.id);
     this.markScanDays([newScan.logicalDate]);
     this.patchAdminOlder(newScan.id, newScan);
@@ -900,8 +967,9 @@ class DBService {
     }
     this.patchAdminOlder(freshScan.id, freshScan);
 
+    // Both days: an edit can move a trip to another day. Marked before the write as well as after it (C2).
+    this.markScanDays([previousDate, freshScan.logicalDate]);
     await this.writeScan(freshScan);
-    // Both days: an edit can move a trip to another day.
     this.markScanDays([previousDate, freshScan.logicalDate]);
   }
 
@@ -913,13 +981,18 @@ class DBService {
     this.patchAdminOlder(scanId, null);
 
     await authReady;
-    await deleteDoc(doc(firestore, 'scans', scanId));
     // An unknown day (trip not in this device's list) marks everything rather than miss it.
-    this.markScanDays([deletedDate ?? null]);
-    if (!deletedDate) {
-      setDoc(doc(firestore, 'scan_days', '_all'), { updatedAt: serverTimestamp() }, { merge: true })
-        .catch(e => console.warn('Could not mark all trip days:', e));
-    }
+    // Marked before the delete as well as after it (C2).
+    const markDeleted = () => {
+      this.markScanDays([deletedDate ?? null]);
+      if (!deletedDate) {
+        setDoc(doc(firestore, 'scan_days', '_all'), { updatedAt: serverTimestamp() }, { merge: true })
+          .catch(e => console.warn('Could not mark all trip days:', e));
+      }
+    };
+    markDeleted();
+    await deleteDoc(doc(firestore, 'scans', scanId));
+    markDeleted();
   }
 
   // --- Active Locations ---
@@ -989,6 +1062,7 @@ class DBService {
           this.persistScans();
           this.notify();
         }
+        this.markScanDays([updated.logicalDate]);
         await this.writeScan(updated);
         this.markScanDays([updated.logicalDate]);
       }

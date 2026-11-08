@@ -71,12 +71,29 @@ export function nextSyncedAt(previousMs: number, marks: Mark[]): number {
  * range) is replaced by what the server returned for it, including days that are now empty;
  * days at or after liveFrom are dropped (the live listener owns them).
  */
-export function applyPartial<S extends { logicalDate: string }>(
+export function applyPartial<S extends { logicalDate: string; id?: unknown }>(
   cached: S[], plan: Extract<SyncPlan, { kind: 'partial' }>, fetched: S[], liveFrom: string,
 ): S[] {
   const replaced = (d: string) => plan.dates.includes(d) || (plan.rangeFrom !== null && d >= plan.rangeFrom);
   const kept = cached.filter(s => s.logicalDate < liveFrom && !replaced(s.logicalDate));
-  return [...kept, ...fetched.filter(s => s.logicalDate < liveFrom)];
+  // By id, the fetched copy winning: a trip whose day was edited has a stale copy under its old day
+  // and a fresh one under the new day when only one of the two days was refetched.
+  return uniqueById([...kept, ...fetched.filter(s => s.logicalDate < liveFrom)]);
+}
+
+/** One entry per id; where an id repeats, the LAST one wins (put the authoritative list last). Entries without an id are kept as they are. */
+export function uniqueById<S extends { id?: unknown }>(list: S[]): S[] {
+  const last = new Map<string, S>();
+  for (const s of list) if (typeof s.id === 'string') last.set(s.id, s);
+  const seen = new Set<string>();
+  const out: S[] = [];
+  for (const s of list) {
+    if (typeof s.id !== 'string') { out.push(s); continue; }
+    if (seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push(last.get(s.id)!);
+  }
+  return out;
 }
 
 /** The dates a write touches, as marks to write (valid logical dates only, no duplicates). */

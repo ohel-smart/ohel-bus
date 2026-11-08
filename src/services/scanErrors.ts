@@ -39,8 +39,15 @@ export function codeForFirestoreError(fsCode: string | undefined, online: boolea
     case 'unauthenticated':
       return '888771';
     case 'unavailable':
-    case 'deadline-exceeded':
       return online ? '888772' : '7970770';
+    // The server did not answer within its own limit: on an online phone that is a stuck or
+    // very slow connection (as for our own timeout), not a database that is down.
+    case 'deadline-exceeded':
+      return online ? '7970771' : '7970770';
+    // The request itself was malformed (e.g. an undefined field in the scan): a bug in the site,
+    // not the database - so the manager knows it is not worth waiting for Google.
+    case 'invalid-argument':
+      return '555770';
     default:
       return online ? '888779' : '7970770';
   }
@@ -75,30 +82,40 @@ export interface SaveWithCodesOptions {
    * SaveDeadlinePassed once it has passed.
    */
   write: (deadline: number) => Promise<unknown>;
+  /** Only a hint (navigator.onLine can be wrong, e.g. after a Wi-Fi to cellular switch): it picks the code and shortens the wait, it never stops the attempt. */
   isOnline: () => boolean;
   now?: () => number;
   readyTimeoutMs: number;
   writeTimeoutMs: number;
+  /** Longest wait for sign-in and for the save when the phone says it is offline (default 4 s). */
+  offlineTimeoutMs?: number;
 }
 
 /**
  * Runs a save and turns every way it can go wrong into a ScanSaveError with a code.
- * A save that fails is final: no internet means it is not even started, and a write that is
- * still stuck at the time limit is given a deadline that stops any later attempt, so a scan the
- * dispatcher was told had failed does not suddenly appear (and get announced) minutes later.
+ * A save that fails is final: a write that is still stuck at the time limit is given a deadline
+ * that stops any later attempt, so a scan the dispatcher was told had failed does not suddenly
+ * appear (and get announced) minutes later.
+ *
+ * The attempt is ALWAYS made, even when the phone claims to be offline: the flag is only a hint
+ * and is sometimes wrong, and refusing to try left a connected dispatcher unable to scan. When it
+ * says offline the waits are short, so a really offline phone still gets its answer (7970770)
+ * quickly, and a phone that is in fact connected simply succeeds.
  */
 export async function saveWithCodes(o: SaveWithCodesOptions): Promise<void> {
   const now = o.now ?? Date.now;
-  if (!o.isOnline()) throw new ScanSaveError('7970770');
-  if (await withTimeout(o.ready, o.readyTimeoutMs) === TIMED_OUT) {
+  const hintedOffline = !o.isOnline();
+  const offlineCap = o.offlineTimeoutMs ?? 4000;
+  const readyMs = hintedOffline ? Math.min(o.readyTimeoutMs, offlineCap) : o.readyTimeoutMs;
+  const writeMs = hintedOffline ? Math.min(o.writeTimeoutMs, offlineCap) : o.writeTimeoutMs;
+  if (await withTimeout(o.ready, readyMs) === TIMED_OUT) {
     throw new ScanSaveError(o.isOnline() ? '888771' : '7970770');
   }
-  if (!o.isOnline()) throw new ScanSaveError('7970770');
   // Attempts stop a little before the on-screen time limit, so nothing starts after it.
-  const deadline = now() + Math.round(o.writeTimeoutMs * 0.8);
+  const deadline = now() + Math.round(writeMs * 0.8);
   let result;
   try {
-    result = await withTimeout(o.write(deadline), o.writeTimeoutMs);
+    result = await withTimeout(o.write(deadline), writeMs);
   } catch (e) {
     if (e instanceof SaveDeadlinePassed) throw new ScanSaveError(codeForTimeout(o.isOnline()), e);
     throw new ScanSaveError(codeForFirestoreError((e as { code?: string } | null)?.code, o.isOnline()), e);
