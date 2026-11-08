@@ -9,12 +9,14 @@ export const RETRY_ID_MAX_AGE_MS = 20 * 60 * 1000;
 export interface FailedScan { id: string; atMs: number }
 
 /**
- * What makes two attempts "the same scan": the same driver leaving the same place. A manually
- * entered (late) ride also carries the time that was typed, so entering several past rides for
- * one driver in a row never merges them.
+ * What makes two attempts "the same scan": the same driver leaving the same place. A ride whose
+ * time was TYPED (a manual late entry, or a driver's self-report) also carries that time, so two
+ * different past rides for one driver never merge. A live scan has no typed time (it is "now"),
+ * so there the driver and place are all there is.
  */
-export function retryKey(s: { driverId: string; departureLocation?: string; isLateEntry?: boolean; scannedAt?: string }): string {
-  return [s.driverId, s.departureLocation ?? '', s.isLateEntry === true ? `late@${s.scannedAt ?? ''}` : 'live'].join('|');
+export function retryKey(s: { driverId: string; departureLocation?: string; isLateEntry?: boolean; dispatcherId?: string; scannedAt?: string }): string {
+  const typedTime = s.isLateEntry === true || s.dispatcherId === 'self_report';
+  return [s.driverId, s.departureLocation ?? '', typedTime ? `typed@${s.scannedAt ?? ''}` : 'live'].join('|');
 }
 
 /** The id to use for this attempt: the failed one's, if it is recent enough, else a fresh one. */

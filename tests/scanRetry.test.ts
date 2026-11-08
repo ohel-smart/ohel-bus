@@ -40,3 +40,11 @@ test('manually entered past rides are told apart by the time typed, and never me
   assert.notEqual(a, retryKey(live));
   assert.equal(a, retryKey({ ...live, isLateEntry: true, scannedAt: '2026-11-07T10:00:00.000Z' }), 'the same typed ride retried is the same');
 });
+
+test('a driver self-report carries a typed time too: two different self-reported rides never merge', () => {
+  const r1 = retryKey({ ...live, dispatcherId: 'self_report', scannedAt: '2026-11-08T10:00:00.000Z' });
+  const r2 = retryKey({ ...live, dispatcherId: 'self_report', scannedAt: '2026-11-08T10:40:00.000Z' });
+  assert.notEqual(r1, r2);
+  assert.equal(r1, retryKey({ ...live, dispatcherId: 'self_report', scannedAt: '2026-11-08T10:00:00.000Z' }));
+  assert.notEqual(r1, retryKey({ ...live, dispatcherId: 'disp1' }));
+});

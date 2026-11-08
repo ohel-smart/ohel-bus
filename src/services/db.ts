@@ -11,7 +11,7 @@ import { prevDay } from './nyTime';
 import { withBotMark, withoutBotMark } from './botMark';
 import { idbGet, idbSet, idbDel } from './idbStore';
 import {
-  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict, uniqueById,
+  CACHE_VERSION, liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict, uniqueById, createSyncRunner,
   type AdminCache, type Mark,
 } from './adminSync';
 
@@ -520,7 +520,7 @@ class DBService {
       if (plan.kind === 'full') {
         if (!(await readOlderInFull(liveFrom, plan.reason))) return;
       } else {
-        syncedAtMs = nextSyncedAt(usable!.syncedAtMs, marks);
+        const nextSynced = nextSyncedAt(usable!.syncedAtMs, marks); // applied only once the reads succeeded
         fullAtMs = usable!.fullAtMs;
         const fetched: Scan[] = [];
         if (plan.rangeFrom !== null) {
@@ -530,7 +530,10 @@ class DBService {
           fetched.push(...await fetchScans(query(col, where('logicalDate', 'in', plan.dates.slice(i, i + 30)))));
         }
         if (stopped) return;
-        this.adminOlder = [...applyPartial(usable!.scans, plan, fetched, liveFrom), ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
+        syncedAtMs = nextSynced;
+        // Rebuilt from the older part AS IT IS NOW (not from a copy taken before the awaits): it holds the
+        // days that just left the live part, and this device's own edits (patchAdminOlder).
+        this.adminOlder = [...applyPartial(this.adminOlder, plan, fetched, liveFrom), ...this.adminOlder.filter(s => s.logicalDate >= liveFrom)];
         console.info(`Trip history: from this device, ${plan.dates.length} changed day(s)${plan.rangeFrom ? ` + days since ${plan.rangeFrom}` : ''} refreshed (${fetched.length} trips read).`);
       }
       // Integrity check: the server's own count of the older trips against what we now hold.
@@ -541,7 +544,8 @@ class DBService {
       if (verdict === 'reload' && !(await readOlderInFull(liveFrom, 'integrity check'))) return;
       const doneAt = Date.now();
       base = {
-        v: CACHE_VERSION, scans: [...this.adminOlder], savedAtMs: doneAt,
+        // Only the timing fields of `base` are used for planning; the trips come from this.adminOlder.
+        v: CACHE_VERSION, scans: [], savedAtMs: doneAt,
         settledBefore: settledBeforeDate(doneAt, iso => this.getLogicalDate(iso)), syncedAtMs, fullAtMs,
       };
       olderReady = true;
@@ -560,16 +564,12 @@ class DBService {
     // Later syncs of the older part (C6): when the person comes back to the page, when the internet
     // returns, and when a day leaves the live part. Each one reads the day marks since the last
     // sync (a minimum of one read) plus the count check, and only the days that changed.
-    let syncing = false;
-    let lastSyncAt = 0;
-    const resync = (force = false) => {
-      if (stopped || syncing || !olderReady) return;
-      if (!force && Date.now() - lastSyncAt < 30_000) return;
-      syncing = true;
-      syncOlder(false)
-        .catch(e => console.error('Trip history re-sync failed:', e))
-        .finally(() => { syncing = false; lastSyncAt = Date.now(); });
-    };
+    const runner = createSyncRunner({
+      run: (initial) => syncOlder(initial),
+      isStopped: () => stopped,
+      onError: e => console.error('Trip history sync failed:', e),
+    });
+    const resync = runner.resync;
     const onVisible = () => { if (!document.hidden) resync(); };
     const onOnline = () => resync();
     document.addEventListener('visibilitychange', onVisible);
@@ -583,8 +583,8 @@ class DBService {
       if (stopped) return;
       check();
       timer = setInterval(check, 60_000);
-      return syncOlder(true).then(() => { lastSyncAt = Date.now(); });
-    }).catch(e => console.error('Trip history sync failed:', e));
+      runner.startInitial();
+    });
     return () => {
       stopped = true;
       this.adminSaveNow = null;
@@ -852,6 +852,8 @@ class DBService {
         // its fields and leaves the bot's marks alone, instead of setting "waiting" on a ride that
         // was already announced.
         const existing = await tx.get(ref);
+        // The read takes a round trip: check again, so a scan the dispatcher was told had failed is not committed late.
+        if (Date.now() > deadline) throw new SaveDeadlinePassed();
         tx.set(ref, existing.exists() ? withoutBotMark(scan) : scan, { merge: true });
       }, { maxAttempts: 3 }),
       isOnline,
@@ -983,16 +985,15 @@ class DBService {
     await authReady;
     // An unknown day (trip not in this device's list) marks everything rather than miss it.
     // Marked before the delete as well as after it (C2).
-    const markDeleted = () => {
-      this.markScanDays([deletedDate ?? null]);
-      if (!deletedDate) {
-        setDoc(doc(firestore, 'scan_days', '_all'), { updatedAt: serverTimestamp() }, { merge: true })
-          .catch(e => console.warn('Could not mark all trip days:', e));
-      }
-    };
-    markDeleted();
+    // A known day is marked before the delete as well as after it (C2); "everything" is marked once,
+    // after - two of those would each cost the manager a full read.
+    this.markScanDays([deletedDate ?? null]);
     await deleteDoc(doc(firestore, 'scans', scanId));
-    markDeleted();
+    this.markScanDays([deletedDate ?? null]);
+    if (!deletedDate) {
+      setDoc(doc(firestore, 'scan_days', '_all'), { updatedAt: serverTimestamp() }, { merge: true })
+        .catch(e => console.warn('Could not mark all trip days:', e));
+    }
   }
 
   // --- Active Locations ---

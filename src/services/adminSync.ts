@@ -113,3 +113,46 @@ export function integrityVerdict(input: { localCount: number; serverCount: numbe
   if (input.localCount === input.serverCount) return 'ok';
   return input.justReadInFull ? 'accept' : 'reload';
 }
+
+/**
+ * When the older part of the manager's history is (re)synced, and never two at once.
+ *   - the first sync runs once signed in; if it FAILED (offline start), the next trigger runs it again
+ *     as a first sync, so the screen is not stuck on the device copy for the whole session
+ *   - later syncs are throttled, counted from the last SUCCESSFUL one (a failure never blocks the next try)
+ *   - a forced request that arrives while a sync is running is not lost: it re-runs once afterwards
+ * Pure (the work itself is passed in), so it is tested with fake clocks and fake syncs.
+ */
+export function createSyncRunner(o: {
+  run: (initial: boolean) => Promise<void>;
+  isStopped: () => boolean;
+  onError?: (e: unknown) => void;
+  now?: () => number;
+  throttleMs?: number;
+}) {
+  const now = o.now ?? Date.now;
+  const throttleMs = o.throttleMs ?? 30_000;
+  let running = false;
+  let rerun = false;
+  let initialDone = false;
+  let lastOkAt = 0;
+
+  const launch = (initial: boolean) => {
+    running = true;
+    o.run(initial)
+      .then(() => { if (initial) initialDone = true; lastOkAt = now(); })
+      .catch(e => o.onError?.(e))
+      .finally(() => {
+        running = false;
+        if (rerun && !o.isStopped()) { rerun = false; resync(true); }
+      });
+  };
+
+  function resync(force = false) {
+    if (o.isStopped()) return;
+    if (running) { if (force) rerun = true; return; }
+    if (!force && initialDone && now() - lastOkAt < throttleMs) return;
+    launch(!initialDone);
+  }
+
+  return { startInitial: () => { if (!o.isStopped() && !running) launch(true); }, resync };
+}

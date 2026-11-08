@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict, uniqueById,
+  liveFromDate, settledBeforeDate, planSync, applyPartial, nextSyncedAt, marksFor, integrityVerdict, uniqueById, createSyncRunner,
   CACHE_VERSION, FULL_REFRESH_MS, SETTLE_MS, type AdminCache,
 } from '../src/services/adminSync.ts';
 
@@ -160,4 +160,64 @@ test('uniqueById: last wins, order of first appearance, entries without an id ar
   const out = uniqueById([{ id: 'a', v: 1 }, { id: 'b', v: 1 }, { v: 9 }, { id: 'a', v: 2 }, { v: 9 }]);
   assert.deepEqual(out, [{ id: 'a', v: 2 }, { id: 'b', v: 1 }, { v: 9 }, { v: 9 }]);
   assert.deepEqual(uniqueById([]), []);
+});
+
+const tick = () => new Promise(r => setImmediate(r));
+function runnerHarness(opts: { fail?: Array<boolean> } = {}) {
+  let t = 1_000_000;
+  const calls: boolean[] = [];
+  const gates: Array<() => void> = [];
+  const fail = [...(opts.fail ?? [])];
+  let stopped = false;
+  const r = createSyncRunner({
+    run: (initial) => { calls.push(initial); return new Promise<void>((res, rej) => gates.push(() => (fail.shift() ? rej(new Error('offline')) : res()))); },
+    isStopped: () => stopped, now: () => t, throttleMs: 30_000, onError: () => {},
+  });
+  return { r, calls, finish: async () => { gates.shift()?.(); await tick(); await tick(); }, advance: (ms: number) => { t += ms; }, stop: () => { stopped = true; } };
+}
+
+test('C6: a first sync that failed is run again as a first sync by the next trigger', async () => {
+  const h = runnerHarness({ fail: [true] });
+  h.r.startInitial();
+  await h.finish();
+  h.r.resync();
+  assert.deepEqual(h.calls, [true, true]);
+  await h.finish();
+  h.advance(31_000);
+  h.r.resync();
+  assert.deepEqual(h.calls, [true, true, false], 'after a first sync succeeded, later ones are plain re-syncs');
+});
+
+test('C6: throttle counts from the last SUCCESS - a failed re-sync never blocks the next try', async () => {
+  const h = runnerHarness({ fail: [false, true] });
+  h.r.startInitial(); await h.finish();
+  h.advance(31_000);
+  h.r.resync(); await h.finish();             // fails
+  h.r.resync();                               // immediately: allowed, the last one did not succeed
+  assert.equal(h.calls.length, 3);
+  await h.finish();
+  h.r.resync();                               // right after a success: throttled
+  assert.equal(h.calls.length, 3);
+});
+
+test('C6: a forced request during a running sync is kept and runs once afterwards; unforced ones are dropped', async () => {
+  const h = runnerHarness();
+  h.r.startInitial(); await h.finish();
+  h.advance(31_000);
+  h.r.resync(); assert.equal(h.calls.length, 2);
+  h.r.resync(); h.r.resync();                 // not forced: dropped
+  h.r.resync(true); h.r.resync(true);         // forced twice: one re-run
+  await h.finish();
+  assert.equal(h.calls.length, 3);
+  await h.finish();
+  assert.equal(h.calls.length, 3);
+});
+
+test('C6: nothing starts after the page is gone', async () => {
+  const h = runnerHarness();
+  h.r.startInitial(); await h.finish();
+  h.stop();
+  h.advance(60_000);
+  h.r.resync(true);
+  assert.equal(h.calls.length, 1);
 });
