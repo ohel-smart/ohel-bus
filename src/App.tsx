@@ -1706,6 +1706,36 @@ async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize
 // An invisible marker under a list: when it scrolls into view (the person reached the end of
 // what is loaded) it asks for the next piece. A new observer is created whenever `resetKey` changes,
 // so if the list is still too short to fill the screen after a load, the next piece follows.
+// The manager's fleet board: the title and the four numbers stay in place, and only the fleet list
+// scrolls. The block is given exactly the height that is left on the screen (below its own top edge,
+// above the bottom bar), so the page itself never scrolls on this tab.
+function FrozenDashboard({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = ref.current;
+      if (!el) return;
+      const reserve = el.parentElement ? parseFloat(getComputedStyle(el.parentElement).paddingBottom) || 0 : 0;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const viewport = window.visualViewport?.height ?? window.innerHeight;
+      setHeight(Math.max(320, Math.round(viewport - top - reserve)));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    window.visualViewport?.addEventListener('resize', fit);
+    return () => {
+      window.removeEventListener('resize', fit);
+      window.visualViewport?.removeEventListener('resize', fit);
+    };
+  }, []);
+  return (
+    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: height ?? undefined, minHeight: 0, overflow: 'hidden' }}>
+      {children}
+    </div>
+  );
+}
+
 function LoadMoreSentinel({ onVisible, disabled, resetKey }: { onVisible: () => void; disabled: boolean; resetKey: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const cb = useRef(onVisible);
@@ -6543,7 +6573,7 @@ export default function App() {
                 
                 {/* TAB 1: DASHBOARD & LIVE MAP */}
                 {activeTab === 'dashboard' && (
-                  <>
+                  <FrozenDashboard>
                     {/* Header line */}
                     <div className="manager-dashboard-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div className="manager-dashboard-title-wrap">
@@ -6601,13 +6631,13 @@ export default function App() {
                      {/* SOS Alert box removed */}
 
                     {/* Fleet Status (Live Tracking List) */}
-                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', margin: 0 }}>
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, minHeight: 0 }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', margin: 0, flexShrink: 0 }}>
                         <Clock size={16} color="var(--accent)" />
                         {t('fleetStatus')}
                       </h3>
                       
-                      <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {activeDriversToday.length === 0 ? (
                           <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
                             {lang === 'he' ? 'אין נהגים פעילים היום' : 'No active drivers today'}
@@ -6624,7 +6654,8 @@ export default function App() {
                                   background: 'rgba(255,255,255,0.01)',
                                   display: 'flex', 
                                   justifyContent: 'space-between', 
-                                  alignItems: 'center' 
+                                  alignItems: 'center',
+                                  flexShrink: 0
                                 }}
                               >
                                 <div>
@@ -6654,7 +6685,13 @@ export default function App() {
                                     </div>
                                   ) : (
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      {lang === 'he' ? 'לא בנסיעה / ממתין' : 'Not en route / Idle'}
+                                      {(() => {
+                                        // Not on a trip: he is where his last trip today ended.
+                                        const last = todayScans.find(sc => sc.driverId === drv.id);
+                                        if (last?.departureLocation === '770') return lang === 'he' ? 'באוהל' : 'At the Ohel';
+                                        if (last?.departureLocation === 'Ohel') return lang === 'he' ? 'ב-770' : 'At 770';
+                                        return lang === 'he' ? 'לא בנסיעה - לא זמין' : 'Not en route - unavailable';
+                                      })()}
                                     </span>
                                   )}
                                 </div>
@@ -6664,7 +6701,7 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                  </>
+                  </FrozenDashboard>
                 )}
 
                 {/* TAB: CENTRAL MASTER SUMMARY TABLE */}
