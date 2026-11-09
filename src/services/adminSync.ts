@@ -71,12 +71,29 @@ export function nextSyncedAt(previousMs: number, marks: Mark[]): number {
  * range) is replaced by what the server returned for it, including days that are now empty;
  * days at or after liveFrom are dropped (the live listener owns them).
  */
-export function applyPartial<S extends { logicalDate: string }>(
+export function applyPartial<S extends { logicalDate: string; id?: unknown }>(
   cached: S[], plan: Extract<SyncPlan, { kind: 'partial' }>, fetched: S[], liveFrom: string,
 ): S[] {
   const replaced = (d: string) => plan.dates.includes(d) || (plan.rangeFrom !== null && d >= plan.rangeFrom);
   const kept = cached.filter(s => s.logicalDate < liveFrom && !replaced(s.logicalDate));
-  return [...kept, ...fetched.filter(s => s.logicalDate < liveFrom)];
+  // By id, the fetched copy winning: a trip whose day was edited has a stale copy under its old day
+  // and a fresh one under the new day when only one of the two days was refetched.
+  return uniqueById([...kept, ...fetched.filter(s => s.logicalDate < liveFrom)]);
+}
+
+/** One entry per id; where an id repeats, the LAST one wins (put the authoritative list last). Entries without an id are kept as they are. */
+export function uniqueById<S extends { id?: unknown }>(list: S[]): S[] {
+  const last = new Map<string, S>();
+  for (const s of list) if (typeof s.id === 'string') last.set(s.id, s);
+  const seen = new Set<string>();
+  const out: S[] = [];
+  for (const s of list) {
+    if (typeof s.id !== 'string') { out.push(s); continue; }
+    if (seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push(last.get(s.id)!);
+  }
+  return out;
 }
 
 /** The dates a write touches, as marks to write (valid logical dates only, no duplicates). */
@@ -95,4 +112,47 @@ export function marksFor(dates: Array<string | undefined | null>): string[] {
 export function integrityVerdict(input: { localCount: number; serverCount: number; justReadInFull: boolean }): 'ok' | 'reload' | 'accept' {
   if (input.localCount === input.serverCount) return 'ok';
   return input.justReadInFull ? 'accept' : 'reload';
+}
+
+/**
+ * When the older part of the manager's history is (re)synced, and never two at once.
+ *   - the first sync runs once signed in; if it FAILED (offline start), the next trigger runs it again
+ *     as a first sync, so the screen is not stuck on the device copy for the whole session
+ *   - later syncs are throttled, counted from the last SUCCESSFUL one (a failure never blocks the next try)
+ *   - a forced request that arrives while a sync is running is not lost: it re-runs once afterwards
+ * Pure (the work itself is passed in), so it is tested with fake clocks and fake syncs.
+ */
+export function createSyncRunner(o: {
+  run: (initial: boolean) => Promise<void>;
+  isStopped: () => boolean;
+  onError?: (e: unknown) => void;
+  now?: () => number;
+  throttleMs?: number;
+}) {
+  const now = o.now ?? Date.now;
+  const throttleMs = o.throttleMs ?? 30_000;
+  let running = false;
+  let rerun = false;
+  let initialDone = false;
+  let lastOkAt = 0;
+
+  const launch = (initial: boolean) => {
+    running = true;
+    o.run(initial)
+      .then(() => { if (initial) initialDone = true; lastOkAt = now(); })
+      .catch(e => o.onError?.(e))
+      .finally(() => {
+        running = false;
+        if (rerun && !o.isStopped()) { rerun = false; resync(true); }
+      });
+  };
+
+  function resync(force = false) {
+    if (o.isStopped()) return;
+    if (running) { if (force) rerun = true; return; }
+    if (!force && initialDone && now() - lastOkAt < throttleMs) return;
+    launch(!initialDone);
+  }
+
+  return { startInitial: () => { if (!o.isStopped() && !running) launch(true); }, resync };
 }

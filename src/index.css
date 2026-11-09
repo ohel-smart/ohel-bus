@@ -1452,6 +1452,12 @@ html[dir="rtl"] .mobile-manager-nav {
 .scan-error-glass {
   width: 100%;
   max-width: 380px;
+  /* A phone held sideways or with large system text is shorter than the card: let the card scroll
+     inside the screen so the icon, the code and the OK button can always be reached. */
+  max-height: 100vh;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 26px 22px 20px;
   border-radius: 24px;
   text-align: center;
