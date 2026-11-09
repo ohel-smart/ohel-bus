@@ -476,15 +476,22 @@ class DBService {
       return true;
     };
 
+    // The copy saved on this device is read and drawn the moment the page opens - it does NOT wait for
+    // the sign-in to Firebase (that takes a few seconds on a slow start, and the manager's screens
+    // showed 0 trips for all that time). Only the sync with the server below waits for the sign-in.
+    const deviceCopy: Promise<AdminCache<Scan> | null> = allowed()
+      ? idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY).then(c => (c && c.v === CACHE_VERSION ? c : null))
+      : Promise.resolve(null);
+    deviceCopy.then(usable => {
+      if (!usable || stopped) return;
+      // The live part is replaced as soon as its listener answers; the older part stays until the sync.
+      this.adminOlder = usable.scans.filter(s => s.logicalDate < this.adminLiveFrom);
+      if (!liveReady) usable.scans.forEach(s => { if (s.logicalDate >= this.adminLiveFrom) this.adminLive.set(s.id, s); });
+      this.publishAdmin();
+    });
+
     const syncOlder = async () => {
-      const cache = allowed() ? await idbGet<AdminCache<Scan>>(ADMIN_CACHE_KEY) : null;
-      const usable = cache && cache.v === CACHE_VERSION ? cache : null;
-      if (usable && !stopped) {
-        // Draw the saved copy right away; the live part is replaced as soon as its listener answers.
-        this.adminOlder = usable.scans.filter(s => s.logicalDate < this.adminLiveFrom);
-        if (!liveReady) usable.scans.forEach(s => { if (s.logicalDate >= this.adminLiveFrom) this.adminLive.set(s.id, s); });
-        this.publishAdmin();
-      }
+      const usable = await deviceCopy;
       await authReady;
       if (stopped) return;
       const liveFrom = this.adminLiveFrom;
