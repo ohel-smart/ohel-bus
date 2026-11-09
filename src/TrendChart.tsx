@@ -38,47 +38,6 @@ function niceTicks(lo: number, hi: number, n = 4): number[] {
   return out;
 }
 
-/**
- * A scale that gives most of the height to where most of the days are (fine steps there: 150, 200, 250, 300),
- * and squeezes the rare very low / very high days into coarser steps (100 below, 400, 500, 600 above), so the
- * line sits in the middle of the screen instead of lying flat at the bottom under one tall spike.
- * Returns fractions (0 = bottom, 1 = top) through `frac`.
- */
-function smartScale(vals: number[]): { ticks: number[]; yMin: number; yMax: number; band: [number, number]; frac: (v: number) => number } | null {
-  if (vals.length < 5) return null;
-  const sorted = [...vals].sort((a, b) => a - b);
-  const q = (p: number) => sorted[Math.floor(p * (sorted.length - 1))];
-  const p10 = q(0.1), p90 = q(0.9), min = sorted[0], max = sorted[sorted.length - 1];
-  if (!(p90 > p10) || !(max > min)) return null;
-  const stepOf = (raw: number) => { const mag = 10 ** Math.floor(Math.log10(raw)), r = raw / mag; return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * mag; };
-  const fine = stepOf((p90 - p10) / 4), coarse = fine * 2;
-  const bandLo = Math.floor(p10 / fine) * fine, bandHi = Math.max(bandLo + fine, Math.ceil(p90 / fine) * fine);
-  const yMin = Math.max(0, Math.min(bandLo, Math.floor((min - fine * 0.3) / coarse) * coarse));
-  const yMax = Math.max(bandHi, Math.ceil((max + (max - min) * 0.05) / coarse) * coarse);
-  const round = (v: number) => Math.round(v * 1e6) / 1e6;
-  const ticks: number[] = [];
-  for (let v = Math.ceil(yMin / coarse) * coarse; v < bandLo - 1e-9; v += coarse) ticks.push(round(v));
-  for (let v = bandLo; v <= bandHi + 1e-9; v += fine) ticks.push(round(v));
-  for (let v = Math.ceil((bandHi + 1e-9) / coarse) * coarse; v <= yMax + 1e-9; v += coarse) if (v > bandHi + 1e-9) ticks.push(round(v));
-  if (ticks[0] > yMin + 1e-9) ticks.unshift(round(yMin));
-  if (ticks[ticks.length - 1] < yMax - 1e-9) ticks.push(round(yMax));
-  while (ticks.length > 11) { // too crowded: drop the coarse ones outside the band first
-    const i = ticks.findIndex((t, k) => (t < bandLo || t > bandHi) && k > 0 && k < ticks.length - 1);
-    if (i < 0) break;
-    ticks.splice(i, 1);
-  }
-  // heights: the busy band gets most of it; the rest is shared by what is below and above (only if there is any)
-  const wBand = 0.6, wBelow = bandLo > yMin ? 0.14 : 0, wAbove = yMax > bandHi ? 0.26 : 0;
-  const total = wBand + wBelow + wAbove;
-  const fBelow = wBelow / total, fBand = wBand / total;
-  const frac = (v: number) => {
-    if (v <= bandLo) return bandLo > yMin ? Math.max(0, (v - yMin) / (bandLo - yMin)) * fBelow : 0;
-    if (v <= bandHi) return fBelow + ((v - bandLo) / (bandHi - bandLo)) * fBand;
-    return fBelow + fBand + (yMax > bandHi ? Math.min(1, (v - bandHi) / (yMax - bandHi)) * (1 - fBelow - fBand) : 0);
-  };
-  return { ticks, yMin: ticks[0], yMax: ticks[ticks.length - 1], band: [bandLo, bandHi], frac };
-}
-
 // A day only counts as "up" or "down" when it is clearly different (10% or more); smaller wobbles are steady.
 const SIG = 0.1;
 // 'none' = nothing sensible to compare the day with (too few similar days yet)
@@ -111,6 +70,8 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   const [mode, setMode] = useState<Mode>('line');
   const [selDate, setSelDate] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  // How far the visible window has been moved up from its starting place (in the chart's own units). 0 = the average sits in the middle.
+  const [panState, setPanState] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(340);
 
@@ -165,33 +126,22 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     if (pts.length < 2) return null;
     const n = pts.length;
     const vals = pts.map(p => p.v);
-    const smart = mode === 'line' ? smartScale(vals) : null;
-    let ticks: number[], yMin: number, yMax: number;
-    if (smart) ({ ticks, yMin, yMax } = smart);
-    else {
-      let lo = Math.min(...vals), hi = Math.max(...vals);
-      if (mode === 'bars') lo = 0;
-      else { const pad = Math.max((hi - lo) * 0.12, hi * 0.02, 1); lo = Math.max(0, lo - pad); hi += pad; }
-      ticks = niceTicks(lo, hi);
-      yMin = ticks[0]; yMax = ticks[ticks.length - 1];
-    }
+    const maxVal = Math.max(...vals);
+    // The visible window starts centred on the average (the middle of the screen = the usual day), reaching from
+    // 0 to twice the average. Days above it are one scroll away (panState moves the window up, see panBy).
+    const typ = overall > 0 ? overall : Math.max(maxVal, 1);
+    const span = typ * 2;
+    const panMax = Math.max(0, Math.ceil(maxVal * 1.06 - span));
+    const pan = Math.min(Math.max(0, panState), panMax);
+    const yMin = pan, yMax = span + pan;
+    const ticks = niceTicks(yMin, yMax).filter(t => t >= yMin - 1e-9 && t <= yMax + 1e-9);
     // one slot per logged day, evenly spaced: a day that is left out (Saturday) leaves no hole
     const idx = new Map(pts.map((p, i) => [p.date, i]));
     const xi = (i: number) => PAD.l + (i / (n - 1)) * innerW;
     const x = (date: string) => xi(idx.get(date) ?? 0);
-    const y = (v: number) => PAD.t + (1 - (smart ? smart.frac(v) : (v - yMin) / (yMax - yMin || 1))) * innerH;
-    // labels closer than 17px would overlap: keep the coarse one outside the busy band, drop the band's edge one
-    if (smart) {
-      const [bLo, bHi] = smart.band, kept: number[] = [];
-      for (const t of ticks) {
-        const last = kept[kept.length - 1];
-        if (last == null || Math.abs(y(t) - y(last)) >= 17) kept.push(t);
-        else if (last >= bLo && last <= bHi && (t < bLo || t > bHi)) kept[kept.length - 1] = t;
-      }
-      ticks = kept;
-    }
-    return { n, ticks, yMin, yMax, x, xi, y };
-  }, [pts, mode, innerW, innerH]);
+    const y = (v: number) => PAD.t + (1 - (v - yMin) / (yMax - yMin || 1)) * innerH;
+    return { n, ticks, yMin, yMax, x, xi, y, typ, span, panMax, pan };
+  }, [pts, innerW, innerH, overall, panState]);
 
   // labels under the line: a handful of logged days for short ranges, the first day of each Hebrew month for long ones
   const xTicks = useMemo(() => {
@@ -281,6 +231,25 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
     setNotice('');
   };
 
+  // move the visible window up (positive) or down (negative); it never goes below the start (average in the middle)
+  const panBy = (delta: number) => { if (geo) setPanState(Math.min(geo.panMax, Math.max(0, geo.pan + delta))); };
+  const panByRef = useRef(panBy);
+  panByRef.current = panBy;
+  const axisDrag = useRef<{ y: number; pan: number } | null>(null);
+  const onAxisDown = (e: React.PointerEvent) => {
+    if (!geo) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    axisDrag.current = { y: e.clientY, pan: geo.pan };
+  };
+  const onAxisMove = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (!axisDrag.current || !geo) return;
+    // dragging down pulls the higher part of the chart into view, like dragging a map
+    setPanState(Math.min(geo.panMax, Math.max(0, axisDrag.current.pan + ((e.clientY - axisDrag.current.y) / innerH) * geo.span)));
+  };
+  const onAxisUp = (e: React.PointerEvent) => { e.stopPropagation(); axisDrag.current = null; };
+
   const jumpTo = (ymd: string) => {
     if (!ymd || !series.length) return;
     let i = series.findIndex(p => p.date >= ymd);
@@ -343,12 +312,19 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
   });
   const ghost: CSSProperties = { all: 'unset', cursor: 'pointer', width: '34px', height: '34px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.75)', background: 'rgba(255,255,255,0.05)', boxSizing: 'border-box' };
 
+  const pill = (pos: CSSProperties): CSSProperties => ({
+    all: 'unset', cursor: 'pointer', boxSizing: 'border-box', position: 'absolute', left: PAD.l + 8, padding: '4px 11px', borderRadius: '999px', fontSize: '11.5px', fontWeight: 600,
+    color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15)',
+    backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', direction: he ? 'rtl' : 'ltr', ...pos,
+  });
+
   const rangeLabels: Record<RangeKey, string> = he
     ? { week: 'שבוע', month: 'חודש', quarter: '3 חודשים', year: 'שנה', all: 'הכל' }
     : { week: 'Week', month: 'Month', quarter: '3 months', year: 'Year', all: 'All' };
 
   const selX = geo ? geo.x(shown.date) : 0;
-  const selY = geo ? geo.y(shown.v) : 0;
+  const selInView = !geo || (shown.v >= geo.yMin && shown.v <= geo.yMax);
+  const selY = geo ? Math.min(PAD.t + innerH - 4, Math.max(PAD.t + 4, geo.y(shown.v))) : 0;
 
   const excludedNote = shown.day.excluded === 'month'
     ? (he ? 'מחוץ לחישוב: חודש שהוצא' : 'Left out: excluded month')
@@ -381,7 +357,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
         <div role="group" aria-label={he ? 'מדד' : 'Metric'} style={segWrap}>
           {(['pax', 'trips', 'load'] as Metric[]).map(m => (
-            <button key={m} type="button" className="tc-ctl" aria-pressed={metric === m} onClick={() => { setMetric(m); setNotice(''); }} style={seg(metric === m)}>
+            <button key={m} type="button" className="tc-ctl" aria-pressed={metric === m} onClick={() => { setMetric(m); setPanState(0); setNotice(''); }} style={seg(metric === m)}>
               {m === 'pax' ? (he ? 'נוסעים' : 'People') : m === 'trips' ? (he ? 'נסיעות' : 'Trips') : (he ? 'עומס' : 'Load')}
             </button>
           ))}
@@ -416,7 +392,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         tabIndex={0}
         role="img"
         aria-label={he ? `גרף ${metricLabel} לפי ימים. חצים ימינה ושמאלה מעבירים בין ימים.` : `Daily ${metricLabel} chart. Left and right arrows move between days.`}
-        onKeyDown={e => { if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); } else if (e.key === 'Escape') setSelDate(null); }}
+        onKeyDown={e => { if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); panBy(geo ? geo.span / 4 : 0); } else if (e.key === 'ArrowDown') { e.preventDefault(); panBy(geo ? -geo.span / 4 : 0); } else if (e.key === 'Escape') setSelDate(null); }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -427,6 +403,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
         {geo && (
           <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`} style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
             <defs>
+              <clipPath id="tc-clip"><rect x={PAD.l - 8} y={PAD.t} width={innerW + 16} height={innerH} /></clipPath>
             </defs>
 
             {geo.ticks.map(t => (
@@ -440,13 +417,26 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
               <text key={t.date} x={Math.min(Math.max(geo.x(t.date), PAD.l + 14), PAD.l + innerW - 14)} y={PAD.t + innerH + 17} textAnchor="middle" fontSize="10.5" fill="rgba(255,255,255,0.45)">{t.label}</text>
             ))}
 
-            <g key={`${metric}-${range}-${mode}`} className="tc-in">
+            {/* the average: a faint line across the middle (it moves down when the window is moved up) */}
+            {geo.typ >= geo.yMin && geo.typ <= geo.yMax && (
+              <g>
+                <line x1={PAD.l} x2={PAD.l + innerW} y1={geo.y(geo.typ)} y2={geo.y(geo.typ)} stroke={`rgba(${GOLD}, 0.32)`} strokeDasharray="3 5" />
+                <text x={PAD.l + innerW - 2} y={geo.y(geo.typ) - 5} textAnchor="end" fontSize="10" fill={`rgba(${GOLD}, 0.7)`}>{he ? 'ממוצע' : 'average'}</text>
+              </g>
+            )}
+
+            <g key={`${metric}-${range}-${mode}`} className="tc-in" clipPath="url(#tc-clip)">
               {mode === 'line' ? (() => {
                 // runs of days with no long hole between them; a hole is bridged by a faint dashed line, never drawn as a change
                 const runs: Pt[][] = [];
                 pts.forEach((p, i) => { if (i === 0 || dayNum(p.date) - dayNum(pts[i - 1].date) > 3) runs.push([p]); else runs[runs.length - 1].push(p); });
-                const yTop = PAD.t, yBot = PAD.t + innerH;
-                const paths = runs.map(r => smoothPath(r.map(p => [geo.x(p.date), geo.y(p.v)] as [number, number]), yTop, yBot));
+                const yBot = PAD.t + innerH;
+                // the curve is kept between its own highest and lowest point (it never overshoots), even where they are outside the window
+                const paths = runs.map(r => {
+                  const P = r.map(p => [geo.x(p.date), geo.y(p.v)] as [number, number]);
+                  const ys = P.map(q => q[1]);
+                  return smoothPath(P, Math.min(...ys), Math.max(...ys));
+                });
                 return (
                   <>
                     <defs>
@@ -488,10 +478,11 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
 
             {/* the day being looked at */}
             <line x1={selX} x2={selX} y1={PAD.t} y2={PAD.t + innerH} stroke={`rgba(${GOLD}, 0.55)`} />
-            <circle cx={selX} cy={selY} r="8" fill={`rgba(${headRgb}, 0.18)`} />
-            <circle cx={selX} cy={selY} r="3.6" fill="#0b0f1a" stroke={`rgb(${headRgb})`} strokeWidth="2" />
+            {selInView && <circle cx={selX} cy={selY} r="8" fill={`rgba(${headRgb}, 0.18)`} />}
+            {selInView && <circle cx={selX} cy={selY} r="3.6" fill="#0b0f1a" stroke={`rgb(${headRgb})`} strokeWidth="2" />}
             {(() => {
-              const label = fmt(shown.v), w = Math.max(40, label.length * 8 + 18);
+              // a day outside the window is marked at the edge with an arrow showing where it is
+              const label = (selInView ? '' : shown.v > (geo?.yMax ?? 0) ? '▲ ' : '▼ ') + fmt(shown.v), w = Math.max(40, label.length * 8 + 18);
               const tx = Math.min(Math.max(selX, PAD.l + w / 2), PAD.l + innerW - w / 2), ty = Math.max(0, selY - 38);
               return (
                 <g>
@@ -501,6 +492,27 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
               );
             })()}
           </svg>
+        )}
+        {geo && geo.panMax > 0 && (
+          <>
+            {/* drag (or scroll) here to move the window up and down */}
+            <div
+              onPointerDown={onAxisDown} onPointerMove={onAxisMove} onPointerUp={onAxisUp} onPointerCancel={onAxisUp}
+              onWheel={e => { e.preventDefault(); panByRef.current(-e.deltaY * (geo.span / innerH)); }}
+              aria-hidden="true"
+              style={{ position: 'absolute', left: 0, top: PAD.t, width: PAD.l, height: innerH, touchAction: 'none', cursor: 'ns-resize' }}
+            />
+            {pts.some(p => p.v > geo.yMax) && (
+              <button type="button" className="tc-ctl" onPointerDown={e => e.stopPropagation()} onClick={() => panBy(geo.span * 0.8)} style={pill({ top: PAD.t + 4 })}>
+                ▲ {he ? `${pts.filter(p => p.v > geo.yMax).length} ימים גבוהים יותר` : `${pts.filter(p => p.v > geo.yMax).length} higher days`}
+              </button>
+            )}
+            {geo.pan > 0 && (
+              <button type="button" className="tc-ctl" onPointerDown={e => e.stopPropagation()} onClick={() => setPanState(0)} style={pill({ bottom: PAD.b + 6 })}>
+                ▼ {he ? 'חזרה לממוצע' : 'back to the average'}
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -518,7 +530,7 @@ export default function TrendChart({ days, lang }: { days: DayStat[]; lang: 'he'
 
       <div role="group" aria-label={he ? 'תקופה' : 'Period'} style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${hair}`, paddingTop: '2px' }}>
         {(Object.keys(RANGE_DAYS) as RangeKey[]).map(k => (
-          <button key={k} type="button" className="tc-ctl" aria-pressed={range === k} onClick={() => { setRange(k); setZoom(null); setSelDate(null); setNotice(''); }} style={tab(range === k)}>{rangeLabels[k]}</button>
+          <button key={k} type="button" className="tc-ctl" aria-pressed={range === k} onClick={() => { setRange(k); setZoom(null); setPanState(0); setSelDate(null); setNotice(''); }} style={tab(range === k)}>{rangeLabels[k]}</button>
         ))}
       </div>
 
