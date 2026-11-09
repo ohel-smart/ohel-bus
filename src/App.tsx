@@ -1703,9 +1703,9 @@ async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize
 // screen (devicePixelRatio > 1), which is what was making the logo look soft
 // - a plain <img> doesn't have this problem, but a canvas's intrinsic
 // resolution and display size are independent and both need setting.
-// An invisible marker under a list: when it scrolls into view (the person reached the end of
-// what is loaded) it asks for the next piece. A new observer is created whenever `resetKey` changes,
-// so if the list is still too short to fill the screen after a load, the next piece follows.
+// A driver whose last trip ended more than this long ago is shown as "unavailable" on the manager's board.
+const DRIVER_UNAVAILABLE_AFTER_MIN = 120;
+
 // The manager's fleet board: the title and the four numbers stay in place, and only the fleet list
 // scrolls. The block is given exactly the height that is left on the screen (below its own top edge,
 // above the bottom bar), so the page itself never scrolls on this tab.
@@ -1736,6 +1736,9 @@ function FrozenDashboard({ children }: { children: React.ReactNode }) {
   );
 }
 
+// An invisible marker under a list: when it scrolls into view (the person reached the end of
+// what is loaded) it asks for the next piece. A new observer is created whenever `resetKey` changes,
+// so if the list is still too short to fill the screen after a load, the next piece follows.
 function LoadMoreSentinel({ onVisible, disabled, resetKey }: { onVisible: () => void; disabled: boolean; resetKey: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const cb = useRef(onVisible);
@@ -6686,11 +6689,17 @@ export default function App() {
                                   ) : (
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                       {(() => {
-                                        // Not on a trip: he is where his last trip today ended.
+                                        // Not on a trip: where his last trip today ended (he waits there), or "unavailable" once
+                                        // that trip ended long ago - he is no longer working (went home).
                                         const last = todayScans.find(sc => sc.driverId === drv.id);
-                                        if (last?.departureLocation === '770') return lang === 'he' ? 'באוהל' : 'At the Ohel';
-                                        if (last?.departureLocation === 'Ohel') return lang === 'he' ? 'ב-770' : 'At 770';
-                                        return lang === 'he' ? 'לא בנסיעה - לא זמין' : 'Not en route - unavailable';
+                                        if (last) {
+                                          const endedAt = dbService.parseScannedAt(last.scannedAt, last.logicalDate).getTime() + (last.etaMinutes || 28) * 60000;
+                                          if (currentLiveTime.getTime() - endedAt < DRIVER_UNAVAILABLE_AFTER_MIN * 60000) {
+                                            if (last.departureLocation === '770') return lang === 'he' ? 'באוהל' : 'At the Ohel';
+                                            if (last.departureLocation === 'Ohel') return lang === 'he' ? 'ב-770' : 'At 770';
+                                          }
+                                        }
+                                        return lang === 'he' ? 'לא זמין' : 'Unavailable';
                                       })()}
                                     </span>
                                   )}

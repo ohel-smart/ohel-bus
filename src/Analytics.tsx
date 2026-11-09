@@ -45,6 +45,18 @@ const glassBar = (rgb: string): CSSProperties => ({
 });
 
 const num = (n: number) => Math.round(n).toLocaleString('en-US');
+// Two parts of one total, rounded so that the rounded parts add up to the rounded total
+// (156.67 + 141.67 = 298.33 shows as 157 + 141 = 298, never 157 + 142 = 299). The part with the
+// larger fraction takes the missing unit.
+function splitRound(a: number, b: number): [number, number] {
+  const target = Math.round(a + b);
+  let ra = Math.floor(a), rb = Math.floor(b);
+  const aFirst = a - ra >= b - rb;
+  for (let missing = target - ra - rb; missing > 0; missing--) {
+    if (aFirst === (missing % 2 === 1)) ra++; else rb++;
+  }
+  return [ra, rb];
+}
 // The busiest hour of each direction (they are usually not the same hour).
 function peaksByPlace(hours: HourAvg[]): { p770: HourAvg | null; pOhel: HourAvg | null } {
   const best = (f: (h: HourAvg) => number) => hours.reduce<HourAvg | null>((b, h) => (f(h) > 0 && (!b || f(h) > f(b)) ? h : b), null);
@@ -98,6 +110,8 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
   // Tap a day to open its details, tap the same day again to close them.
   const selected = weekdays.find(w => w.dow === pickedDow && w.days > 0) ?? null;
   const [showGeneral, setShowGeneral] = useState(false);
+  const selPeople = selected ? splitRound(selected.hours.reduce((a, h) => a + h.p770, 0), selected.hours.reduce((a, h) => a + h.pOhel, 0)) : [0, 0];
+  const selTrips = selected ? splitRound(selected.avgTrips770, selected.avgTripsOhel) : [0, 0];
 
   const mainNormal = main.period.days - main.period.special;
   const mainPeaks = useMemo(() => peaksByPlace(main.hours), [main]);
@@ -105,6 +119,8 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
   const totOhel = main.hours.reduce((a, h) => a + h.pOhel, 0);
   const trips770 = main.hours.reduce((a, h) => a + h.t770, 0);
   const tripsOhel = main.hours.reduce((a, h) => a + h.tOhel, 0);
+  const [people770Shown, peopleOhelShown] = splitRound(tot770, totOhel);
+  const [trips770Shown, tripsOhelShown] = splitRound(trips770, tripsOhel);
 
   const toggleMonth = (key: string) => {
     const has = activeRules.excludeHebMonths.includes(key);
@@ -195,8 +211,8 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
               rgb="6, 182, 212"
               detail={[{ label: he ? 'מ-770' : 'from 770', value: pctText(main.period.load770) }, { label: he ? 'מהאוהל' : 'from Ohel', value: pctText(main.period.loadOhel) }]}
             />
-            <Tile label={he ? 'ממוצע יומי (נוסעים)' : 'Daily average (people)'} splitLabel={he ? 'נוסעים לפי מקום' : 'people by place'} value={num(main.period.avgPerDay)} rgb="139, 92, 246" detail={[{ label: he ? 'מ-770' : 'from 770', value: num(tot770) }, { label: he ? 'מהאוהל' : 'from Ohel', value: num(totOhel) }]} />
-            <Tile label={he ? 'ממוצע יומי (סה״כ נסיעות)' : 'Daily average (total trips)'} splitLabel={he ? 'נסיעות לפי מקום' : 'trips by place'} value={num(main.period.avgTripsPerDay)} rgb="16, 185, 129" detail={[{ label: he ? 'נסיעות מ-770' : 'trips from 770', value: num(trips770) }, { label: he ? 'נסיעות מהאוהל' : 'trips from Ohel', value: num(tripsOhel) }]} />
+            <Tile label={he ? 'ממוצע יומי (נוסעים)' : 'Daily average (people)'} splitLabel={he ? 'נוסעים לפי מקום' : 'people by place'} value={num(main.period.avgPerDay)} rgb="139, 92, 246" detail={[{ label: he ? 'מ-770' : 'from 770', value: String(people770Shown) }, { label: he ? 'מהאוהל' : 'from Ohel', value: String(peopleOhelShown) }]} />
+            <Tile label={he ? 'ממוצע יומי (סה״כ נסיעות)' : 'Daily average (total trips)'} splitLabel={he ? 'נסיעות לפי מקום' : 'trips by place'} value={num(main.period.avgTripsPerDay)} rgb="16, 185, 129" detail={[{ label: he ? 'נסיעות מ-770' : 'trips from 770', value: String(trips770Shown) }, { label: he ? 'נסיעות מהאוהל' : 'trips from Ohel', value: String(tripsOhelShown) }]} />
             <Tile
               label={he ? 'שעת השיא הממוצעת' : 'Average peak hour'}
               value="—"
@@ -224,8 +240,8 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
               {dayName(selected.dow, lang, true)}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <SplitStat title={he ? 'אנשים' : 'People'} a={num(selected.hours.reduce((a, h) => a + h.p770, 0))} b={num(selected.hours.reduce((a, h) => a + h.pOhel, 0))} he={he} />
-              <SplitStat title={he ? 'נסיעות' : 'Trips'} a={num(selected.avgTrips770)} b={num(selected.avgTripsOhel)} he={he} />
+              <SplitStat title={he ? 'אנשים' : 'People'} a={String(selPeople[0])} b={String(selPeople[1])} he={he} />
+              <SplitStat title={he ? 'נסיעות' : 'Trips'} a={String(selTrips[0])} b={String(selTrips[1])} he={he} />
               <SplitStat title={he ? 'עומס' : 'Load'} a={pctText(selected.load770)} b={pctText(selected.loadOhel)} he={he} />
             </div>
             <DirectionCharts hours={selected.hours} he={he} />
@@ -319,10 +335,12 @@ function DirectionCharts({ hours, he }: { hours: HourAvg[]; he: boolean }) {
   const totalMax = Math.max(1, ...hours.map(h => h.pax));
   const peaks = peaksByPlace(hours);
   const totalPeak = hours.reduce<HourAvg | null>((b, h) => (h.pax > 0 && (!b || h.pax > b.pax) ? h : b), null);
+  const sum770 = hours.reduce((a, h) => a + h.p770, 0), sumOhel = hours.reduce((a, h) => a + h.pOhel, 0);
+  const [shown770, shownOhel] = splitRound(sum770, sumOhel);
   const parts: { key: string; title: string; rgb: string; total: number; rows: { hour: number; v: number }[]; max: number; peak?: number }[] = [
-    { key: 'all', title: he ? 'סה״כ, שני הכיוונים יחד' : 'Total, both directions', rgb: '139, 92, 246', total: hours.reduce((a, h) => a + h.pax, 0), rows: hours.map(h => ({ hour: h.hour, v: h.pax })), max: totalMax, peak: totalPeak?.hour },
-    { key: '770', title: he ? 'מ-770 לאוהל' : '770 → Ohel', rgb: GOLD_RGB, total: hours.reduce((a, h) => a + h.p770, 0), rows: hours.map(h => ({ hour: h.hour, v: h.p770 })), max: dirMax, peak: peaks.p770?.hour },
-    { key: 'ohel', title: he ? 'מהאוהל ל-770' : 'Ohel → 770', rgb: TEAL_RGB, total: hours.reduce((a, h) => a + h.pOhel, 0), rows: hours.map(h => ({ hour: h.hour, v: h.pOhel })), max: dirMax, peak: peaks.pOhel?.hour },
+    { key: 'all', title: he ? 'סה״כ, שני הכיוונים יחד' : 'Total, both directions', rgb: '139, 92, 246', total: shown770 + shownOhel, rows: hours.map(h => ({ hour: h.hour, v: h.pax })), max: totalMax, peak: totalPeak?.hour },
+    { key: '770', title: he ? 'מ-770 לאוהל' : '770 → Ohel', rgb: GOLD_RGB, total: shown770, rows: hours.map(h => ({ hour: h.hour, v: h.p770 })), max: dirMax, peak: peaks.p770?.hour },
+    { key: 'ohel', title: he ? 'מהאוהל ל-770' : 'Ohel → 770', rgb: TEAL_RGB, total: shownOhel, rows: hours.map(h => ({ hour: h.hour, v: h.pOhel })), max: dirMax, peak: peaks.pOhel?.hour },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -476,7 +494,7 @@ function DayTile({ w, lang, active, onPick }: { w: WeekdayAvg; lang: 'he' | 'en'
         {metric(
           split ? (he ? 'לפי מקום ▾' : 'by place ▾') : (he ? 'סה״כ נסיעות ▾' : 'total trips ▾'),
           split && has ? (
-            pair(num(w.avgTrips770), num(w.avgTripsOhel))
+            pair(...splitRound(w.avgTrips770, w.avgTripsOhel).map(String) as [string, string])
           ) : num(w.avgTrips),
           { slot: 30 }
         )}
