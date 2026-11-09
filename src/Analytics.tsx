@@ -5,7 +5,7 @@
 // It always looks at the last 90 logical days and only ever shows averages:
 //   - Sunday to Thursday are averaged together (the headline numbers),
 //   - Friday and Saturday each get their own average, over all the Fridays / Saturdays.
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
 import type { Scan } from './services/db';
 import { buildAnalytics, windowSummary, weekdayAverages, dowOf, DEFAULT_RULES, type AnalyticsRules, type DayStat, type HourAvg, type WeekdayAvg } from './services/analytics';
@@ -126,23 +126,21 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
     const has = activeRules.excludeHebMonths.includes(key);
     onRulesChange({ ...activeRules, excludeHebMonths: has ? activeRules.excludeHebMonths.filter(m => m !== key) : [...activeRules.excludeHebMonths, key] });
   };
-  const commitCeiling = () => {
-    const n = Number(ceilingText);
-    onRulesChange({ ...activeRules, maxPaxPerDay: Number.isFinite(n) && n >= 50 ? Math.round(n) : null });
-  };
-  // The ceiling applies as you type (a moment after the last key), not only after leaving the field.
-  // An empty field means no ceiling; a number below 50 is taken as still being typed and waits.
-  const latest = useRef({ rules: activeRules, onRulesChange });
-  latest.current = { rules: activeRules, onRulesChange };
+  // The ceiling is applied only after the manager confirms it, and the screen then says it worked.
+  const ceilingNum = Number(ceilingText);
+  const ceilingTyped: number | null | undefined = ceilingText === '' ? null : Number.isFinite(ceilingNum) && ceilingNum >= 50 ? Math.round(ceilingNum) : undefined;
+  const ceilingChanged = ceilingTyped !== undefined && ceilingTyped !== activeRules.maxPaxPerDay;
+  const [ceilingDone, setCeilingDone] = useState<number | null | 'none'>('none');
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const n = Number(ceilingText);
-      const next = ceilingText === '' ? null : Number.isFinite(n) && n >= 50 ? Math.round(n) : undefined;
-      if (next === undefined || next === latest.current.rules.maxPaxPerDay) return;
-      latest.current.onRulesChange({ ...latest.current.rules, maxPaxPerDay: next });
-    }, 350);
+    if (ceilingDone === 'none') return;
+    const timer = setTimeout(() => setCeilingDone('none'), 5000);
     return () => clearTimeout(timer);
-  }, [ceilingText]);
+  }, [ceilingDone]);
+  const confirmCeiling = () => {
+    if (!ceilingChanged || ceilingTyped === undefined) return;
+    onRulesChange({ ...activeRules, maxPaxPerDay: ceilingTyped });
+    setCeilingDone(ceilingTyped);
+  };
 
   const r = report.reconcile;
 
@@ -184,19 +182,31 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
                 })}
               </div>
             </div>
-            <label htmlFor="analytics-ceiling" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <span style={{ ...muted, color: '#fff' }}>{he ? 'תקרה ליום: יום עם יותר נוסעים מזה לא נכנס לחישוב' : 'Daily ceiling: a day with more people than this is left out'}</span>
-              <input
-                id="analytics-ceiling"
-                value={ceilingText}
-                onChange={e => setCeilingText(e.target.value.replace(/[^0-9]/g, ''))}
-                onBlur={commitCeiling}
-                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                inputMode="numeric"
-                placeholder="700"
-                style={{ width: '90px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', color: '#fff', textAlign: 'center', fontSize: '14px' }}
-              />
-            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label htmlFor="analytics-ceiling" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ ...muted, color: '#fff' }}>{he ? 'תקרה ליום: יום עם יותר נוסעים מזה לא נכנס לחישוב' : 'Daily ceiling: a day with more people than this is left out'}</span>
+                <input
+                  id="analytics-ceiling"
+                  value={ceilingText}
+                  onChange={e => { setCeilingText(e.target.value.replace(/[^0-9]/g, '')); setCeilingDone('none'); }}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmCeiling(); }}
+                  inputMode="numeric"
+                  placeholder="700"
+                  style={{ width: '90px', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', color: '#fff', textAlign: 'center', fontSize: '14px' }}
+                />
+                <button type="button" onClick={confirmCeiling} disabled={!ceilingChanged} className={`btn ${ceilingChanged ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '7px 16px', fontSize: '13px', color: ceilingChanged ? '#000' : 'rgba(255,255,255,0.4)', opacity: ceilingChanged ? 1 : 0.7 }}>
+                  {he ? 'אישור' : 'Confirm'}
+                </button>
+              </label>
+              {ceilingChanged && <span style={{ ...muted, color: 'var(--accent)' }}>{he ? 'עוד לא נשמר. לחץ אישור כדי לעדכן את החישוב.' : 'Not saved yet. Press Confirm to update the calculation.'}</span>}
+              {ceilingTyped === undefined && <span style={{ ...muted, color: '#fb7185' }}>{he ? 'התקרה צריכה להיות 50 לפחות (או ריקה, בלי תקרה).' : 'The ceiling must be at least 50 (or empty for none).'}</span>}
+              {ceilingDone !== 'none' && !ceilingChanged && (
+                <span style={{ ...muted, color: '#34d399', fontWeight: 700 }}>
+                  ✓ {ceilingDone === null ? (he ? 'התקרה בוטלה והחישוב עודכן.' : 'Ceiling removed, calculation updated.') : (he ? `התקרה עודכנה ל-${ceilingDone} והחישוב עודכן.` : `Ceiling set to ${ceilingDone}, calculation updated.`)}
+                </span>
+              )}
+            </div>
             <p style={{ ...muted, fontSize: '11px' }}>
               {he
                 ? `התאמה: ${r.validRides} נסיעות תקינות · ${r.countedRides} נכללו · ${r.excludedRides} הוצאו לפי הכללים (${r.excludedMonthDays} ימי חודש שהוצא, ${r.excludedCeilingDays} ימים מעל התקרה)${r.skippedToday ? ` · ${r.skippedToday} מהיום עד שייגמר` : ''}${r.skippedBadDate ? ` · ${r.skippedBadDate} עם תאריך לא תקין` : ''}.`
