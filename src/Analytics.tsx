@@ -5,7 +5,7 @@
 // It always looks at the last 90 logical days and only ever shows averages:
 //   - Sunday to Thursday are averaged together (the headline numbers),
 //   - Friday and Saturday each get their own average, over all the Fridays / Saturdays.
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
 import type { Scan } from './services/db';
 import { buildAnalytics, windowSummary, weekdayAverages, dowOf, DEFAULT_RULES, type AnalyticsRules, type DayStat, type HourAvg, type WeekdayAvg } from './services/analytics';
@@ -130,6 +130,19 @@ export default function Analytics({ scans, lang, todayLogical, parse, rules, onR
     const n = Number(ceilingText);
     onRulesChange({ ...activeRules, maxPaxPerDay: Number.isFinite(n) && n >= 50 ? Math.round(n) : null });
   };
+  // The ceiling applies as you type (a moment after the last key), not only after leaving the field.
+  // An empty field means no ceiling; a number below 50 is taken as still being typed and waits.
+  const latest = useRef({ rules: activeRules, onRulesChange });
+  latest.current = { rules: activeRules, onRulesChange };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const n = Number(ceilingText);
+      const next = ceilingText === '' ? null : Number.isFinite(n) && n >= 50 ? Math.round(n) : undefined;
+      if (next === undefined || next === latest.current.rules.maxPaxPerDay) return;
+      latest.current.onRulesChange({ ...latest.current.rules, maxPaxPerDay: next });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [ceilingText]);
 
   const r = report.reconcile;
 
