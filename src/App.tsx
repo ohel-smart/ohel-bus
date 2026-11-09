@@ -1703,9 +1703,6 @@ async function drawQrWithLogo(canvas: HTMLCanvasElement, data: string, pixelSize
 // screen (devicePixelRatio > 1), which is what was making the logo look soft
 // - a plain <img> doesn't have this problem, but a canvas's intrinsic
 // resolution and display size are independent and both need setting.
-// A driver whose last trip ended more than this long ago is shown as "unavailable" on the manager's board.
-const DRIVER_UNAVAILABLE_AFTER_MIN = 120;
-
 // The manager's fleet board: the title and the four numbers stay in place, and only the fleet list
 // scrolls. The block is given exactly the height that is left on the screen (below its own top edge,
 // above the bottom bar), so the page itself never scrolls on this tab.
@@ -6689,17 +6686,12 @@ export default function App() {
                                   ) : (
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                       {(() => {
-                                        // Not on a trip: where his last trip today ended (he waits there), or "unavailable" once
-                                        // that trip ended long ago - he is no longer working (went home).
+                                        // Not on a trip: "<where his last trip today ended> / unavailable", e.g. "770 / לא זמין".
                                         const last = todayScans.find(sc => sc.driverId === drv.id);
-                                        if (last) {
-                                          const endedAt = dbService.parseScannedAt(last.scannedAt, last.logicalDate).getTime() + (last.etaMinutes || 28) * 60000;
-                                          if (currentLiveTime.getTime() - endedAt < DRIVER_UNAVAILABLE_AFTER_MIN * 60000) {
-                                            if (last.departureLocation === '770') return lang === 'he' ? 'באוהל' : 'At the Ohel';
-                                            if (last.departureLocation === 'Ohel') return lang === 'he' ? 'ב-770' : 'At 770';
-                                          }
-                                        }
-                                        return lang === 'he' ? 'לא זמין' : 'Unavailable';
+                                        const place = last?.departureLocation === '770' ? (lang === 'he' ? 'אוהל' : 'Ohel')
+                                          : last?.departureLocation === 'Ohel' ? '770' : '';
+                                        const unavailable = lang === 'he' ? 'לא זמין' : 'Unavailable';
+                                        return place ? `${place} / ${unavailable}` : unavailable;
                                       })()}
                                     </span>
                                   )}
