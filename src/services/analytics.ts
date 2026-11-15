@@ -15,7 +15,8 @@
 //      week, Hebrew month and rolling 7/30/90 days.
 import { HDate, HebrewCalendar, flags } from '@hebcal/core';
 import type { Scan } from './db';
-import { roundToHourStr } from './hebrewDate';
+import { roundToHourStr } from './hebrewDate.ts';
+import { hourPosInDay, hourAtPos } from './logicalDay.ts';
 
 export type DayType = 'weekday' | 'sunday' | 'erev' | 'shabbat' | 'yomtov' | 'cholhamoed';
 export const DAY_TYPES: DayType[] = ['weekday', 'erev', 'shabbat', 'sunday', 'yomtov', 'cholhamoed'];
@@ -244,8 +245,12 @@ function hourAverages(normal: DayStat[]): HourAvg[] {
   normal.forEach(d => Object.keys(d.byHour).forEach(h => hourSet.add(Number(h))));
   const hours: HourAvg[] = [];
   if (!n || !hourSet.size) return hours;
-  const lo = Math.min(...hourSet), hi = Math.max(...hourSet);
-  for (let h = lo; h <= hi; h++) {
+  // In the order the day runs (04:00 ... 23:00, then 00:00 ... 03:00), so a trip just after midnight
+  // sits at the END of its day's axis, not at the start.
+  const positions = [...hourSet].map(hourPosInDay);
+  const lo = Math.min(...positions), hi = Math.max(...positions);
+  for (let pos = lo; pos <= hi; pos++) {
+    const h = hourAtPos(pos);
     const per = normal.map(d => d.byHour[h] ?? { pax: 0, trips: 0, p770: 0, pOhel: 0, t770: 0, tOhel: 0 });
     const avg = (f: (b: HourBucket) => number) => per.reduce((acc, b) => acc + f(b), 0) / n;
     const paxs = per.map(b => b.pax);

@@ -179,6 +179,7 @@ const HOURLY_SUMMARY_NUMERIC_COLS: { key: HourlySummaryNumericField; label: { he
 ];
 import { NY_TZ, nyDateStr, nyLocalInput, isoToNyLocalInput, nyWallToDate, prevDay } from './services/nyTime';
 import { Html5Qrcode } from 'html5-qrcode';
+import { hourPosInDay } from './services/logicalDay';
 import QRCode from 'qrcode';
 import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
@@ -895,11 +896,11 @@ const RUN_MIN_HOURS = 3;
 const RUN_MIN_AVG_PER_HOUR = 3;
 
 interface DayHourBreakdown {
-  dateKey: string; // YYYY-MM-DD in America/New_York
+  dateKey: string; // logical day, YYYY-MM-DD
   segments: string[]; // pre-formatted, localized text segments for that day, chronological
 }
 
-// Buckets scan timestamps into (NY calendar day, clock hour), then within each day emits
+// Buckets scan timestamps into (logical day, clock hour), then within each day emits
 // either itemized "HH:00 - N" segments or collapsed "from HH:00 to HH:00 - N rides"
 // segments per the rule documented above. Returns one entry per distinct day, sorted
 // chronologically.
@@ -922,7 +923,8 @@ const computeHourlyBreakdown = (scannedAtTimes: string[], locale: string): DayHo
     if (isNaN(d.getTime())) continue;
     const parts = fmt.formatToParts(d);
     const get = (type: string) => parts.find(p => p.type === type)?.value ?? '';
-    const dateKey = `${get('year')}-${get('month')}-${get('day')}`;
+    // The logical day (a trip at 00:30 belongs to the day that is ending), not the calendar day.
+    const dateKey = dbService.getLogicalDate(t);
     const hour = parseInt(get('hour'), 10) % 24;
     if (!buckets[dateKey]) buckets[dateKey] = {};
     buckets[dateKey][hour] = (buckets[dateKey][hour] || 0) + 1;
@@ -933,14 +935,15 @@ const computeHourlyBreakdown = (scannedAtTimes: string[], locale: string): DayHo
 
   for (const dateKey of dateKeys) {
     const hourCounts = buckets[dateKey];
-    const activeHours = Object.keys(hourCounts).map(h => parseInt(h, 10)).sort((a, b) => a - b);
+    // In the order the day runs (04:00 ... 23:00, then 00:00 ... 03:00).
+    const activeHours = Object.keys(hourCounts).map(h => parseInt(h, 10)).sort((a, b) => hourPosInDay(a) - hourPosInDay(b));
     const segments: string[] = [];
 
     let i = 0;
     while (i < activeHours.length) {
       // Extend to the maximal run of consecutive clock hours starting at i.
       let j = i;
-      while (j + 1 < activeHours.length && activeHours[j + 1] === activeHours[j] + 1) {
+      while (j + 1 < activeHours.length && hourPosInDay(activeHours[j + 1]) === hourPosInDay(activeHours[j]) + 1) {
         j++;
       }
       const runHours = activeHours.slice(i, j + 1);
@@ -2426,7 +2429,7 @@ export default function App() {
     return map;
   }, [scans]);
 
-  // Logical Today (01:00 AM reset rule)
+  // Logical today (the day runs 04:00-03:59 New York time; see services/logicalDay.ts)
   const logicalToday = useMemo(() => {
     return dbService.getLogicalDate(currentLiveTime.toISOString());
   }, [scans, currentLiveTime]);
