@@ -21,13 +21,12 @@ test('the same in summer time (UTC-4)', () => {
   assert.strictEqual(logicalDateOf('2026-07-14T08:00:00Z'), '2026-07-14');
 });
 
-test('Sunday runs from 04:00 Sunday to 03:59 Monday, but Shabbat is left as it was (midnight)', () => {
-  // Sat 2026-11-14 is Shabbat -> it ends at midnight, so Sunday starts at 00:00
-  assert.ok(isRestDay('2026-11-14'));
-  assert.strictEqual(logicalDateOf('2026-11-15T05:00:00Z'), '2026-11-15'); // Sun 00:00 NY
-  assert.strictEqual(logicalDateOf('2026-11-15T07:00:00Z'), '2026-11-15'); // Sun 02:00 NY
-  assert.strictEqual(logicalDateOf('2026-11-15T12:00:00Z'), '2026-11-15'); // Sun 07:00 NY
-  // ...and Sunday (a regular day) runs on until Monday 04:00
+test('Shabbat runs to Sunday 03:59 like any regular day; Sunday runs from 04:00 to Monday 03:59', () => {
+  assert.ok(isRestDay('2026-11-14')); // Saturday 14 Nov 2026 is Shabbat
+  assert.strictEqual(logicalDateOf('2026-11-15T05:00:00Z'), '2026-11-14'); // Sun 00:00 NY - still Shabbat's day
+  assert.strictEqual(logicalDateOf('2026-11-15T07:00:00Z'), '2026-11-14'); // Sun 02:00 NY
+  assert.strictEqual(logicalDateOf('2026-11-15T08:59:00Z'), '2026-11-14'); // Sun 03:59 NY
+  assert.strictEqual(logicalDateOf('2026-11-15T09:00:00Z'), '2026-11-15'); // Sun 04:00 NY - Sunday starts
   assert.strictEqual(logicalDateOf('2026-11-16T08:59:00Z'), '2026-11-15'); // Mon 03:59 NY
   assert.strictEqual(logicalDateOf('2026-11-16T09:00:00Z'), '2026-11-16'); // Mon 04:00 NY
 });
@@ -41,15 +40,17 @@ test('Erev Shabbat ends 15 minutes before sunset, as before - and its small hour
   assert.strictEqual(logicalDateOf('2026-11-13T09:00:00Z'), '2026-11-13'); // Fri 04:00 NY -> Friday
 });
 
-test('Saturday night: Shabbat day 2026-11-14 runs to midnight, trips after midnight are Sunday', () => {
+test('Shabbat starts when the erev ends (not at midnight) and its small hours are still Saturday', () => {
   assert.strictEqual(logicalDateOf('2026-11-15T04:59:00Z'), '2026-11-14'); // Sat 23:59 NY
   assert.strictEqual(logicalDateOf('2026-11-14T06:00:00Z'), '2026-11-14'); // Sat 01:00 NY (Friday erev ended at sunset)
 });
 
-test('Yom Tov is treated like Shabbat (Rosh Hashana 5787: Sat 12 and Sun 13 Sep 2026)', () => {
+test('a Yom Tov day that is not Shabbat still ends at midnight (Rosh Hashana 5787: Sat 12 and Sun 13 Sep 2026)', () => {
   assert.ok(isRestDay('2026-09-12') && isRestDay('2026-09-13'));
   assert.ok(getEarlyCutover('2026-09-11'), 'Friday 11 Sep is the erev');
-  // Monday 14 Sep 02:00 NY (06:00Z) follows a Yom Tov day -> it already is Monday
+  // Sun 13 Sep 02:00 NY follows Shabbat (Sat 12) -> still Saturday's day
+  assert.strictEqual(logicalDateOf('2026-09-13T06:00:00Z'), '2026-09-12');
+  // Monday 14 Sep 02:00 NY (06:00Z) follows a Yom Tov day (Sunday, not Shabbat) -> it already is Monday
   assert.strictEqual(logicalDateOf('2026-09-14T06:00:00Z'), '2026-09-14');
   // Tuesday 15 Sep 02:00 NY follows a regular Monday -> still Monday
   assert.strictEqual(logicalDateOf('2026-09-15T06:00:00Z'), '2026-09-14');

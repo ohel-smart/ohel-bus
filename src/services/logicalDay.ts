@@ -4,11 +4,12 @@
 //
 // The rule, all in America/New_York time:
 //  - A regular day runs from 04:00 until 03:59 the next morning. A trip at 00:30 still belongs to
-//    the day that is just ending.
+//    the day that is just ending. Shabbat is a regular day in this respect: it runs from the
+//    Erev Shabbat cutover until Sunday 03:59.
 //  - Erev Shabbat / Erev Yom Tov: the day ends 15 minutes before that evening's sunset (the trips
 //    after that moment already belong to the next day).
-//  - Shabbat and Yom Tov themselves (and with them Motzei Shabbat / Motzei Yom Tov): the day ends at
-//    midnight, as it always did, so the next day starts at 00:00.
+//  - Yom Tov days that are not Shabbat: the day ends at midnight, as it always did, so the next
+//    day starts at 00:00.
 
 import { Location, Zmanim, isAssurBemlacha } from '@hebcal/core';
 
@@ -86,9 +87,20 @@ export function isRestDay(ymd: string): boolean {
   return result;
 }
 
+/** Is `ymd` a Saturday? */
+export function isSaturday(ymd: string): boolean {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 6;
+}
+
+/** A Yom Tov day that is not Shabbat: its day still ends at midnight. */
+export function endsAtMidnight(ymd: string): boolean {
+  return isRestDay(ymd) && !isSaturday(ymd);
+}
+
 /** Does the day `ymd` end at the regular 04:00 (not at an early erev cutover, not at midnight)? */
 export function endsAtRegularHour(ymd: string): boolean {
-  return getEarlyCutover(ymd) === null && !isRestDay(ymd);
+  return getEarlyCutover(ymd) === null && !endsAtMidnight(ymd);
 }
 
 /** The logical day (YYYY-MM-DD) that the moment `iso` belongs to. */
