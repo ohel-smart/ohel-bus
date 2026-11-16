@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Bell, BellOff, Send, RotateCcw, ChevronDown, ChevronUp, Smartphone, Users, History } from 'lucide-react';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { createPortal } from 'react-dom';
+import { Bell, BellOff, Send, RotateCcw, ChevronDown, ChevronUp, Smartphone, Users, History, Inbox, X } from 'lucide-react';
+import { collection, getDocs, query, orderBy, limit, doc, onSnapshot } from 'firebase/firestore';
 import { db, authReady } from './services/firebase';
 import { getPushState, enablePush, disablePush, syncPush, type PushState } from './services/push';
 import type { User } from './services/db';
@@ -426,5 +427,116 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Inbox: the messages the manager sent to this person, shown when a notification is tapped or when
+// the person opens it from the header. One document per person (push_inbox/{userId}, written by api/send-push.js).
+
+export interface InboxItem { id: string; title: string; body: string; sentAt: string }
+const seenKey = (userId: string) => `tp_inbox_seen_${userId}`;
+const readSeen = (userId: string): string => { try { return localStorage.getItem(seenKey(userId)) ?? ''; } catch { return ''; } };
+
+export function useInbox(userId: string | null) {
+  const [items, setItems] = useState<InboxItem[]>([]);
+  const [seen, setSeen] = useState('');
+  useEffect(() => {
+    if (!userId) { setItems([]); return; }
+    setSeen(readSeen(userId));
+    let unsubscribe: (() => void) | null = null;
+    let alive = true;
+    (async () => {
+      try {
+        await authReady;
+        if (!alive) return;
+        unsubscribe = onSnapshot(doc(db, 'push_inbox', userId), snap => {
+          setItems(((snap.data()?.items as InboxItem[] | undefined) ?? []).slice().sort((a, b) => b.sentAt.localeCompare(a.sentAt)));
+        }, () => { /* offline or blocked: the inbox just stays as it was */ });
+      } catch { /* ignore */ }
+    })();
+    return () => { alive = false; unsubscribe?.(); };
+  }, [userId]);
+  const unread = items.filter(i => i.sentAt > seen).length;
+  const markSeen = useCallback(() => {
+    if (!userId || !items.length) return;
+    const newest = items[0].sentAt;
+    try { localStorage.setItem(seenKey(userId), newest); } catch { /* private mode */ }
+    setSeen(newest);
+  }, [userId, items]);
+  return { items, unread, markSeen };
+}
+
+const inboxCopy = {
+  he: { title: 'התראות שקיבלתי', empty: 'עוד לא קיבלת התראות', open: 'התראות שקיבלתי', close: 'סגור' },
+  en: { title: 'My notifications', empty: 'No notifications yet', open: 'My notifications', close: 'Close' },
+};
+
+/** Header button with an unread badge. */
+export function InboxButton({ lang, unread, onClick }: { lang: Lang; unread: number; onClick: () => void }) {
+  const label = inboxCopy[lang].open;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={unread ? `${label} (${unread})` : label}
+      style={{ position: 'relative', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 8px', color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+    >
+      <Inbox size={14} />
+      {unread > 0 && (
+        <span style={{ position: 'absolute', top: '-6px', insetInlineEnd: '-6px', minWidth: '16px', height: '16px', padding: '0 4px', borderRadius: '999px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {unread > 9 ? '9+' : unread}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** The list itself - opens full-screen over whatever the person was doing. */
+export function InboxModal({ lang, open, items, seenBefore, onClose }: { lang: Lang; open: boolean; items: InboxItem[]; seenBefore: string; onClose: () => void }) {
+  const t = inboxCopy[lang];
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.title}
+      dir={lang === 'he' ? 'rtl' : 'ltr'}
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(1,2,4,0.82)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: '460px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', borderRadius: '24px', background: 'linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.13)', boxShadow: '0 20px 60px rgba(0,0,0,0.55)', overflow: 'hidden' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <strong style={{ color: '#fff', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><Bell size={16} color="var(--accent)" />{t.title}</strong>
+          <button type="button" onClick={onClose} aria-label={t.close} style={{ all: 'unset', cursor: 'pointer', color: '#fff', display: 'flex', padding: '4px' }}><X size={18} /></button>
+        </div>
+        <div style={{ overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {items.length === 0 && <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '20px', textAlign: 'center' }}>{t.empty}</div>}
+          {items.map(item => {
+            const fresh = item.sentAt > seenBefore;
+            return (
+              <div key={item.id} style={{ padding: '12px 14px', borderRadius: '16px', background: fresh ? 'rgba(226, 176, 78, 0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${fresh ? 'rgba(226, 176, 78, 0.45)' : 'rgba(255,255,255,0.1)'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline' }}>
+                  <strong style={{ color: '#fff', fontSize: '14px' }}>{item.title}</strong>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{fmtTime(item.sentAt, lang)}</span>
+                </div>
+                <div style={{ marginTop: '6px', fontSize: '13px', color: 'rgba(255,255,255,0.85)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

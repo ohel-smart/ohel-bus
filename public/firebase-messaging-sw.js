@@ -30,7 +30,11 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of all) {
-      if (new URL(client.url).origin === self.location.origin && 'focus' in client) return client.focus();
+      if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+        // The app is already open: bring it forward and tell it to show the message.
+        client.postMessage({ type: 'open-inbox' });
+        return client.focus();
+      }
     }
     return self.clients.openWindow(target);
   })());

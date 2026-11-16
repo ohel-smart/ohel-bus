@@ -184,7 +184,7 @@ import { NY_TZ, nyDateStr, nyLocalInput, isoToNyLocalInput, nyWallToDate, prevDa
 import { Html5Qrcode } from 'html5-qrcode';
 import { hourPosInDay } from './services/logicalDay';
 import QRCode from 'qrcode';
-import { PushBell, NotificationsCenter } from './PushPanel';
+import { PushBell, NotificationsCenter, InboxButton, InboxModal, useInbox } from './PushPanel';
 import { disablePush } from './services/push';
 import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
@@ -1892,6 +1892,29 @@ export default function App() {
     return null;
   });
   const [users, setUsers] = useState<User[]>([]);
+  // Notification inbox (managers and dispatchers only - drivers do not get one).
+  const inbox = useInbox(currentUser && currentUser.role !== 'driver' && currentUser.role !== 'screen' ? currentUser.id : null);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [inboxSeenBefore, setInboxSeenBefore] = useState('');
+  const openInbox = () => {
+    try { setInboxSeenBefore(localStorage.getItem(`tp_inbox_seen_${currentUser?.id}`) ?? ''); } catch { setInboxSeenBefore(''); }
+    setInboxOpen(true);
+    inbox.markSeen();
+  };
+  const openInboxRef = useRef(openInbox);
+  openInboxRef.current = openInbox;
+  // A tapped notification opens the app on /?inbox=1, or tells the already-open app to show it.
+  useEffect(() => {
+    if (!currentUser || currentUser.role === 'driver' || currentUser.role === 'screen') return;
+    const fromUrl = new URLSearchParams(window.location.search).get('inbox') === '1';
+    if (fromUrl) {
+      window.history.replaceState(null, '', window.location.pathname);
+      openInboxRef.current();
+    }
+    const onMessage = (e: MessageEvent) => { if (e.data?.type === 'open-inbox') openInboxRef.current(); };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [currentUser]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [activeLocations, setActiveLocations] = useState<ActiveLocation[]>([]);
   const [currentLiveTime, setCurrentLiveTime] = useState<Date>(new Date());
@@ -5148,6 +5171,7 @@ export default function App() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
                   <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                   {/* Language Switch Button */}
                   <button 
@@ -6489,6 +6513,7 @@ export default function App() {
                   >
                     <Send size={14} />
                   </button>
+                  <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
                   <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                   <button 
                     onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
@@ -6525,6 +6550,7 @@ export default function App() {
                   >
                     {lang === 'he' ? 'English' : 'עברית'}
                   </button>
+                  <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
                   <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                 </div>
 
@@ -8806,6 +8832,8 @@ export default function App() {
 
             </div>
           )}
+
+          <InboxModal lang={lang} open={inboxOpen} items={inbox.items} seenBefore={inboxSeenBefore} onClose={() => setInboxOpen(false)} />
 
           {/* Quick Scanner modal */}
           {scannerModalDriver && (

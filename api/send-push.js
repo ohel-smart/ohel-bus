@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     for (const part of chunk(devices, 500)) {
       const result = await getMessaging().sendEach(part.map((d) => ({
         token: d.token,
-        data: { title, body: text, url: '/' },
+        data: { title, body: text, url: '/?inbox=1' },
         webpush: { headers: { Urgency: 'high', TTL: '86400' } },
       })));
       result.responses.forEach((r, i) => {
@@ -101,6 +101,21 @@ export default async function handler(req, res) {
       removed: dead.length,
       results: [...perUser.values()].slice(0, 300),
     });
+
+    // Each recipient's own inbox (what the app shows when the notification is tapped): newest first, last 30.
+    try {
+      const sentAt = new Date().toISOString();
+      const refs = [...recipients].map((id) => db.collection('push_inbox').doc(id));
+      const current = refs.length ? await db.getAll(...refs) : [];
+      const batch = db.batch();
+      current.forEach((snap, i) => {
+        const items = [{ id: logRef.id, title, body: text, sentAt }, ...((snap.exists && snap.data().items) || [])].slice(0, 30);
+        batch.set(refs[i], { items, updatedAt: sentAt });
+      });
+      await batch.commit();
+    } catch (e) {
+      console.error('push inbox write failed', e);
+    }
 
     return res.status(200).json({ ok: true, id: logRef.id, recipients: recipients.size, reachable, sent, failed, removed: dead.length });
   } catch (e) {
