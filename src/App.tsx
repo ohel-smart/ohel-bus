@@ -6505,6 +6505,8 @@ export default function App() {
                   <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {/* Manager only: the four small controls sit as two rows of two */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '6px', alignItems: 'stretch', justifyItems: 'stretch' }}>
                   <button
                     onClick={() => setActiveTab('notifications')}
                     title={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
@@ -6521,6 +6523,7 @@ export default function App() {
                   >
                     {lang === 'he' ? 'EN' : 'עב'}
                   </button>
+                  </div>
                   <button 
                     onClick={handleLogout} 
                     className="btn btn-danger" 
