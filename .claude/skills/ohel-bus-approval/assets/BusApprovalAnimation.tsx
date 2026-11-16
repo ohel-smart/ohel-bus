@@ -72,7 +72,7 @@ export default function BusApprovalAnimation({visible, stage, completed = [], la
             <g className={`obs-loading ${finished ? 'obs-loading-hidden' : ''}`}>
               <circle cx="160" cy="135" r="125" fill={url('glow')}/>
               <circle cx="160" cy="135" r="78" stroke="#BC9555" strokeOpacity=".3" strokeDasharray="2 7"/>
-              {nodes.map((n,i) => <g key={n.key}><path d={n.path} stroke={completed.includes(n.key) ? '#2C885E' : '#8E713D'} strokeOpacity=".47" strokeWidth="1.3"/><path d={n.path} stroke={completed.includes(n.key) ? '#49E79E' : '#EEBC5D'} strokeWidth="2.2" strokeLinecap="round" className="obs-beam" style={{animationDelay:`${i * -.25}s`}}/></g>)}
+              {nodes.map((n,i) => <g key={n.key}><path d={n.path} stroke={completed.includes(n.key) ? '#2F6FB5' : '#8E713D'} strokeOpacity=".47" strokeWidth="1.3"/><path d={n.path} stroke={completed.includes(n.key) ? '#5BB0FF' : '#EEBC5D'} strokeWidth="2.2" strokeLinecap="round" className="obs-beam" style={{animationDelay:`${i * -.25}s`}}/></g>)}
               <circle cx="160" cy="135" r="62" stroke="#BD9553" strokeOpacity=".22" strokeWidth="3"/>
               <circle className="obs-ring" cx="160" cy="135" r="62" stroke={url('gold')} strokeWidth="4" strokeLinecap="round" strokeDasharray="110 280"/>
               <circle className="obs-ring-secondary" cx="160" cy="135" r="72" stroke="#DCB269" strokeOpacity=".53" strokeDasharray="18 435" strokeWidth="1.5"/>
@@ -82,8 +82,8 @@ export default function BusApprovalAnimation({visible, stage, completed = [], la
                 const done = completed.includes(n.key), active = stage === n.key;
                 return <g key={n.key}>
                   {active && <rect x={n.x-28} y={n.y-28} width="56" height="56" rx="18" stroke="#E7B453" className="obs-node-pulse"/>}
-                  <rect x={n.x-25} y={n.y-25} width="50" height="50" rx="15" fill="#1B1C22" stroke={done ? '#328B63' : active ? '#E7B453' : '#7B6949'} className="obs-node-box"/>
-                  <use href={ref(n.icon)} x={n.x} y={n.y} color={done ? '#62DFA1' : '#E3BC75'}/>
+                  <rect x={n.x-25} y={n.y-25} width="50" height="50" rx="15" fill={done ? '#12233D' : '#1B1C22'} stroke={done ? '#4DA3FF' : active ? '#E7B453' : '#7B6949'} className="obs-node-box"/>
+                  <use href={ref(n.icon)} x={n.x} y={n.y} color={done ? '#8CC4FF' : '#E3BC75'}/>
                   <text x={n.x} y={n.y+43} textAnchor="middle" fontSize="11" fill="#D4C8B5">{t.labels[i]}</text>
                   {done && <g className="obs-small-check"><use href={ref('check')} x={n.x+22} y={n.y-21}/></g>}
                 </g>;
