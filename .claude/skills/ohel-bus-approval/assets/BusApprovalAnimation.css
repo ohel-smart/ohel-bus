@@ -1,7 +1,7 @@
 /* OHEL SMART — scoped departure overlay */
-.obs-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(3,4,7,.73);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);font-family:inherit;color:#fff;overflow:auto;overscroll-behavior:contain;animation:obs-fade-in 240ms ease-out both}
+.obs-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(3,4,7,.58);backdrop-filter:blur(26px) saturate(170%);-webkit-backdrop-filter:blur(26px) saturate(170%);font-family:inherit;color:#fff;overflow:auto;overscroll-behavior:contain;animation:obs-fade-in 240ms ease-out both}
 .obs-overlay *{box-sizing:border-box}
-.obs-content{position:relative;width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;text-align:center;animation:obs-content-enter 400ms cubic-bezier(.22,1,.36,1) both}
+.obs-content{position:relative;width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;text-align:center;animation:obs-content-enter 650ms cubic-bezier(.16,1,.3,1) both}
 .obs-brand{color:#cbb27e;font-size:10px;font-weight:500;letter-spacing:3px;direction:ltr;opacity:.8;margin-bottom:6px}
 .obs-graphic{position:relative;width:100%;max-width:320px;aspect-ratio:320/280}
 .obs-graphic svg{display:block;width:100%;height:100%;overflow:visible}
@@ -22,10 +22,10 @@
 @keyframes obs-check-pop{0%{transform:scale(0);opacity:0}70%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
 .obs-announcement{width:100%}
 .obs-status-copy{min-height:65px;width:100%;margin-top:6px;animation:obs-text-enter 280ms ease-out both}
-.obs-title{margin:0;font-size:clamp(16px,4.5vw,18px);font-weight:650;line-height:1.5;color:#fff}
-.obs-subtitle{margin:9px 0 0;font-size:12px;font-weight:400;line-height:1.5;color:#a7a8ad}
+.obs-title{margin:0;font-size:clamp(16px,4.5vw,18px);font-weight:700;line-height:1.5;color:#fff}
+.obs-subtitle{margin:9px 0 0;font-size:12px;font-weight:500;line-height:1.5;color:rgba(255,255,255,.68)}
 @keyframes obs-text-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-.obs-progress{position:relative;width:110px;height:3px;margin-top:12px;background:rgba(190,148,74,.15);border-radius:10px;overflow:hidden}
+.obs-progress{position:relative;width:110px;height:4px;margin-top:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.2);border-radius:10px;overflow:hidden}
 .obs-progress-bar{position:absolute;inset-block:0;left:0;width:42%;border-radius:10px;background:linear-gradient(90deg,#946628,#f3c365,#e7b453);box-shadow:0 0 8px rgba(231,180,83,.4);animation:obs-progress-flow 1.5s ease-in-out infinite}
 @keyframes obs-progress-flow{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
 .obs-success-graphic{transform-box:fill-box;transform-origin:center;animation:obs-success-enter 500ms cubic-bezier(.22,1,.36,1) both}
@@ -36,13 +36,20 @@
 .obs-success-pulse{animation:obs-success-pulse 1.7s ease-out infinite}
 @keyframes obs-success-pulse{0%{transform:scale(.9);opacity:.7}100%{transform:scale(1.45);opacity:0}}
 .obs-overlay.is-success .obs-title{font-size:clamp(20px,5.5vw,23px);font-weight:700;color:#59e7a4}
-.obs-overlay.is-success .obs-subtitle{font-size:14px;color:#ccd8d0}
+.obs-overlay.is-success .obs-subtitle{font-size:14px;color:rgba(255,255,255,.78)}
 .obs-overlay.is-error .obs-title{font-size:20px;color:#fca5a5}
-.obs-dismiss{margin-top:15px;padding:12px 24px;background:#1b1c22;color:#fff;border:1px solid #45464d;border-radius:12px;font:inherit;font-size:14px;cursor:pointer}
-.obs-dismiss:hover{background:#292b32}
+.obs-dismiss{margin-top:15px;padding:12px 24px;background:rgba(255,255,255,.12);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);color:#fff;border:1px solid rgba(255,255,255,.28);box-shadow:0 10px 40px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.35);border-radius:999px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.obs-dismiss:hover{background:rgba(255,255,255,.18)}
 .obs-dismiss:focus-visible{outline:2px solid #e7b453;outline-offset:4px}
 @keyframes obs-fade-in{from{opacity:0}to{opacity:1}}
-@keyframes obs-content-enter{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes obs-content-enter{from{opacity:0;transform:scale(.9);filter:blur(10px)}to{opacity:1;transform:scale(1);filter:blur(0)}}
+.obs-node{transform-box:fill-box;transform-origin:center;animation:obs-node-in 600ms cubic-bezier(.16,1,.3,1) both}
+@keyframes obs-node-in{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
+.obs-node-tint{transition:opacity 380ms ease}
+.obs-sweep{animation:obs-sweep 4.4s ease-in-out infinite;opacity:0}
+@keyframes obs-sweep{0%{transform:translateX(0);opacity:0}8%{opacity:1}30%{transform:translateX(120px);opacity:1}36%,100%{transform:translateX(120px);opacity:0}}
 @media(max-width:380px){.obs-content{padding:20px 12px}.obs-graphic{max-width:290px}.obs-title{font-size:16px}.obs-overlay.is-success .obs-title{font-size:20px}}
 @media(max-height:500px){.obs-graphic{max-width:200px}.obs-content{padding:12px}}
 @media(prefers-reduced-motion:reduce){.obs-overlay,.obs-overlay *{animation:none!important;transition:none!important}.obs-success-check{stroke-dashoffset:0}.obs-success-pulse,.obs-node-pulse{opacity:0}.obs-progress-bar{width:100%;opacity:.7}}
+
+@media(prefers-reduced-transparency:reduce){.obs-overlay{background:rgba(3,4,7,.94);backdrop-filter:none;-webkit-backdrop-filter:none}.obs-dismiss{background:#1b1c22;backdrop-filter:none;-webkit-backdrop-filter:none}}

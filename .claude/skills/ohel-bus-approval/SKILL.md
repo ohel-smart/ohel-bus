@@ -20,7 +20,8 @@ Read `assets/BusApprovalAnimation.tsx` and `assets/BusApprovalAnimation.css` in 
 - Background/scrim: #0B0C10 / rgba(3,4,7,.73); node surfaces #1B1C22.
 - Gold: #E7B453, #FFDFA0, #A47835; muted borders #7B6949.
 - Success: #49E79E, #79FFC0; failure: #F87171.
-- Confirmed node (changed at the owner's request): the square, its icon and its light line turn blue (#4DA3FF border, #12233D fill, #8CC4FF icon, #5BB0FF line); only the small check badge is green.
+- Confirmed node (changed at the owner's request): a DARK blue glass square - #3A6BD8 border, #2A4FB5 / #14286B fill, #9DBBF7 icon, #5C8DF0 light line; only the small check badge is green.
+- Look (changed at the owner's request): transparent Apple glass - frosted scrim (blur 26px, saturate 170%), glass squares and centre disc (white sheen .12/.045/.02, hairline border, bright 1px top edge, soft shadow), subtle light sweep, materialize entrance; text white / white .68; `prefers-reduced-transparency` makes the scrim near-solid.
 - Central bus outline with two rotating gold rings, four surrounding rounded square icons: passengers, driver, data, location. Animated light travels along the four curved connections toward the bus. A completed node gets a small green check only when completion is actually known. No arbitrary time-based verification.
 - Brand OHEL SMART above, status title and subtle subtitle below, indeterminate gold progress line. Keep current localization (Hebrew/English if available), RTL text and actual project font.
 - Final success: loading graphic crossfades/scales away, green circular check draws itself, gentle expanding ring, text «האוטובוס אושר ליציאה!» and «נסיעה טובה ובטוחה». No ticket. Keep success visible about 1.5 seconds, then continue existing UI/navigation. This is post-confirmation visual feedback only: never delay submission or backend processing. Avoid an artificial minimum loading time.
