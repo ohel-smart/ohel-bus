@@ -1,6 +1,6 @@
 {
-  "name": "אוהל בוס - מעקב הסעות",
-  "short_name": "אוהל בוס",
+  "name": "אוהל סמרט",
+  "short_name": "אוהל סמרט",
   "description": "מערכת ניהול ומעקב הסעות בזמן אמת של אוהל בוס",
   "start_url": "/",
   "display": "standalone",
