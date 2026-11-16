@@ -39,13 +39,14 @@ export default async function handler(req, res) {
     const adminSnap = await db.collection('users').where('code', '==', adminCode).limit(1).get();
     if (adminSnap.docs[0]?.data().role !== 'admin') return res.status(403).json({ error: 'not authorized' });
 
+    const adminDoc = adminSnap.docs[0];
+
     // Who is meant: the chosen groups (by role) plus the individually picked people.
-    const recipients = new Set(pickedIds);
-    if (groups.length) {
-      const roles = new Set(groups.map((g) => GROUP_ROLE[g]));
-      const all = await db.collection('users').get();
-      all.docs.forEach((d) => { if (roles.has(d.data().role)) recipients.add(d.id); });
-    }
+    const all = await db.collection('users').get();
+    const known = new Map(all.docs.map((d) => [d.id, { name: String(d.data().name || ''), role: String(d.data().role || '') }]));
+    const recipients = new Set(pickedIds.filter((id) => known.has(id)));
+    const roles = new Set(groups.map((g) => GROUP_ROLE[g]));
+    known.forEach((u, id) => { if (roles.has(u.role)) recipients.add(id); });
 
     const devices = [];
     for (const ids of chunk([...recipients], 30)) {
@@ -53,7 +54,9 @@ export default async function handler(req, res) {
       snap.docs.forEach((d) => devices.push({ docId: d.id, userId: d.data().userId, token: d.data().token }));
     }
 
-    const reachable = new Set(devices.map((d) => d.userId));
+    const perUser = new Map([...recipients].map((id) => [id, { userId: id, name: known.get(id).name, role: known.get(id).role, devices: 0, sent: 0, failed: 0 }]));
+    devices.forEach((d) => { perUser.get(d.userId).devices += 1; });
+
     let sent = 0;
     let failed = 0;
     const dead = [];
@@ -64,9 +67,11 @@ export default async function handler(req, res) {
         webpush: { headers: { Urgency: 'high', TTL: '86400' } },
       })));
       result.responses.forEach((r, i) => {
-        if (r.success) sent += 1;
+        const row = perUser.get(part[i].userId);
+        if (r.success) { sent += 1; row.sent += 1; }
         else {
           failed += 1;
+          row.failed += 1;
           if (DEAD_TOKEN_CODES.has(r.error?.code)) dead.push(part[i]);
           else console.warn('push failed', r.error?.code);
         }
@@ -79,7 +84,25 @@ export default async function handler(req, res) {
       await db.collection('push_status').doc(d.userId).set({ devices: FieldValue.increment(-1), updatedAt: new Date().toISOString() }, { merge: true });
     }
 
-    return res.status(200).json({ ok: true, recipients: recipients.size, reachable: reachable.size, sent, failed, removed: dead.length });
+    const reachable = [...perUser.values()].filter((u) => u.devices > 0).length;
+    const logRef = db.collection('push_log').doc();
+    await logRef.set({
+      id: logRef.id,
+      title,
+      body: text,
+      sentAt: new Date().toISOString(),
+      sentBy: { id: adminDoc.id, name: String(adminDoc.data().name || '') },
+      groups,
+      pickedCount: pickedIds.length,
+      recipients: recipients.size,
+      reachable,
+      sent,
+      failed,
+      removed: dead.length,
+      results: [...perUser.values()].slice(0, 300),
+    });
+
+    return res.status(200).json({ ok: true, id: logRef.id, recipients: recipients.size, reachable, sent, failed, removed: dead.length });
   } catch (e) {
     console.error('send-push failed', e);
     return res.status(500).json({ error: 'server error' });

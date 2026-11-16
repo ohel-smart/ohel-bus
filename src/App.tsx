@@ -9,7 +9,7 @@ import {
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
   RefreshCw, ShieldAlert, FileText, UserCheck, AlertOctagon,
   Mail, Download, Copy, MessageSquare, Navigation, Map, Table,
-  ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, WifiOff, Database, TriangleAlert,
+  Bell, ChevronDown, ChevronRight, ChevronLeft, X, Smartphone, BarChart3, Settings, WifiOff, Database, TriangleAlert,
   type LucideIcon
 } from 'lucide-react';
 import dbService, { LOCATIONS } from './services/db';
@@ -147,6 +147,7 @@ const MOBILE_TAB_OPTIONS: { key: string; icon: LucideIcon; label: { he: string; 
   { key: 'hourlySummary', icon: RefreshCw, label: { he: 'סיכום לפי שעות', en: 'Hourly Summary' }, short: { he: 'שעות', en: 'Hours' } },
   { key: 'roundingCalendar', icon: Clock, label: { he: 'לוח עיגול זמנים', en: 'Rounding Calendar' }, short: { he: 'עיגול', en: 'Rounding' } },
   { key: 'analytics', icon: BarChart3, label: { he: 'אנליטיקה', en: 'Analytics' }, short: { he: 'אנליטיקה', en: 'Analytics' } },
+  { key: 'notifications', icon: Bell, label: { he: 'התראות', en: 'Notifications' }, short: { he: 'התראות', en: 'Alerts' } },
 ];
 const DEFAULT_MOBILE_TABS = ['dashboard', 'situation', 'history', 'central'];
 
@@ -183,7 +184,7 @@ import { NY_TZ, nyDateStr, nyLocalInput, isoToNyLocalInput, nyWallToDate, prevDa
 import { Html5Qrcode } from 'html5-qrcode';
 import { hourPosInDay } from './services/logicalDay';
 import QRCode from 'qrcode';
-import { PushBell, PushSendCard } from './PushPanel';
+import { PushBell, NotificationsCenter } from './PushPanel';
 import { disablePush } from './services/push';
 import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
@@ -6480,6 +6481,14 @@ export default function App() {
                   <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setActiveTab('notifications')}
+                    title={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
+                    aria-label={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
+                    style={{ background: activeTab === 'notifications' ? 'rgba(226, 176, 78, 0.18)' : 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 8px', color: activeTab === 'notifications' ? 'var(--accent)' : '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    <Send size={14} />
+                  </button>
                   <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                   <button 
                     onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
@@ -6579,6 +6588,14 @@ export default function App() {
                   >
                     <BarChart3 size={16} />
                     <span>{lang === 'he' ? 'אנליטיקה' : 'Analytics'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('notifications')}
+                    className={`sidebar-item ${activeTab === 'notifications' ? 'active' : ''}`}
+                  >
+                    <Bell size={16} />
+                    <span>{lang === 'he' ? 'מרכז התראות' : 'Notifications'}</span>
                   </button>
 
                   <button
@@ -7760,12 +7777,15 @@ export default function App() {
                 )}
 
                 {/* TAB 3: USER MANAGEMENT */}
+                {activeTab === 'notifications' && currentUser && (
+                  <NotificationsCenter lang={lang} adminCode={currentUser.code} users={users} onToast={triggerToast} />
+                )}
+
                 {activeTab === 'users' && (
                   <div className="users-grid">
                     
                     {/* Add user form & Reset Data column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                      {currentUser && <PushSendCard lang={lang} adminCode={currentUser.code} users={users} onToast={triggerToast} />}
                       {pendingRegistrations.length > 0 && (
                         <div className="card" style={{ border: '1px solid rgba(226, 176, 78, 0.3)', background: 'rgba(226, 176, 78, 0.03)' }}>
                           <h3 className="card-title">

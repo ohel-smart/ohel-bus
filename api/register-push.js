@@ -18,9 +18,15 @@ function getDb() {
 const MAX_DEVICES_PER_USER = 5;
 const docIdOf = (token) => createHash('sha256').update(token).digest('hex').slice(0, 40);
 
-async function refreshStatus(db, userId) {
+async function refreshStatus(db, userId, user) {
   const snap = await db.collection('push_devices').where('userId', '==', userId).get();
-  await db.collection('push_status').doc(userId).set({ devices: snap.size, updatedAt: new Date().toISOString() });
+  const list = snap.docs
+    .map((d) => ({ device: String(d.data().device || ''), lastSeenAt: String(d.data().lastSeenAt || '') }))
+    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  // No tokens here - this doc is readable by the app so the manager can see who can receive notifications.
+  const status = { devices: snap.size, list, updatedAt: new Date().toISOString() };
+  if (user) { status.name = String(user.name || ''); status.role = String(user.role || ''); }
+  await db.collection('push_status').doc(userId).set(status, { merge: true });
   return snap;
 }
 
@@ -45,7 +51,7 @@ export default async function handler(req, res) {
       const existing = await ref.get();
       if (existing.exists && existing.data().userId === userDoc.id) {
         await ref.delete();
-        await refreshStatus(db, userDoc.id);
+        await refreshStatus(db, userDoc.id, user);
       }
       return res.status(200).json({ ok: true });
     }
@@ -63,7 +69,7 @@ export default async function handler(req, res) {
       lastSeenAt: now,
     });
 
-    const mine = await refreshStatus(db, userDoc.id);
+    const mine = await refreshStatus(db, userDoc.id, user);
     // Keep the newest few devices per person; a phone that was replaced simply ages out.
     if (mine.size > MAX_DEVICES_PER_USER) {
       const oldest = mine.docs
@@ -71,7 +77,7 @@ export default async function handler(req, res) {
         .sort((a, b) => a.seen.localeCompare(b.seen))
         .slice(0, mine.size - MAX_DEVICES_PER_USER);
       await Promise.all(oldest.map((o) => db.collection('push_devices').doc(o.id).delete()));
-      await refreshStatus(db, userDoc.id);
+      await refreshStatus(db, userDoc.id, user);
     }
     // A shared phone that another person signed in on: the previous owner no longer has it.
     if (previousOwner && previousOwner !== userDoc.id) await refreshStatus(db, previousOwner);
