@@ -183,6 +183,8 @@ import { NY_TZ, nyDateStr, nyLocalInput, isoToNyLocalInput, nyWallToDate, prevDa
 import { Html5Qrcode } from 'html5-qrcode';
 import { hourPosInDay } from './services/logicalDay';
 import QRCode from 'qrcode';
+import { PushBell, PushSendCard } from './PushPanel';
+import { disablePush } from './services/push';
 import logo from './assets/logo.png';
 import logoDark from './assets/logo-dark.png'; // black-lettered variant for light/printed backgrounds (PDF report)
 import loginBackground from './assets/login-background.jpg'; // the Rebbe's Ohel - login screen background
@@ -3296,6 +3298,7 @@ export default function App() {
   // "stuck" for a moment with zero feedback.
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const handleLogout = () => {
+    if (currentUser) void disablePush(currentUser.code);
     setIsLoggingOut(true);
     setTimeout(() => {
       localStorage.removeItem('tp_current_user');
@@ -5143,22 +5146,25 @@ export default function App() {
                   <strong style={{ fontSize: '14px', color: '#fff' }}>{currentUser.name.replace(' (סדרן)', '')}</strong>
                 </div>
 
-                {/* Language Switch Button */}
-                <button 
-                  onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
-                  style={{ 
-                    background: 'rgba(255,255,255,0.05)', 
-                    border: '1px solid var(--border-color)', 
-                    borderRadius: '6px',
-                    padding: '4px 10px',
-                    color: '#fff', 
-                    cursor: 'pointer', 
-                    fontSize: '11px', 
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {lang === 'he' ? 'EN' : 'עב'}
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
+                  {/* Language Switch Button */}
+                  <button 
+                    onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
+                    style={{ 
+                      background: 'rgba(255,255,255,0.05)', 
+                      border: '1px solid var(--border-color)', 
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      color: '#fff', 
+                      cursor: 'pointer', 
+                      fontSize: '11px', 
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {lang === 'he' ? 'EN' : 'עב'}
+                  </button>
+                </div>
                 
                 <div style={{ textAlign: lang === 'he' ? 'left' : 'right' }}>
                   <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block' }}>{t('gpsDetectedOrigin')}</span>
@@ -5717,6 +5723,7 @@ export default function App() {
                       );
                     })()}
 
+                    <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                     {/* Language Switch Button */}
                     <button
                       onClick={() => setLang(lang === 'he' ? 'en' : 'he')}
@@ -6473,6 +6480,7 @@ export default function App() {
                   <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                   <button 
                     onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
                     style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 10px', color: '#fff', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
@@ -6508,6 +6516,7 @@ export default function App() {
                   >
                     {lang === 'he' ? 'English' : 'עברית'}
                   </button>
+                  <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                 </div>
 
                 <div style={{ background: 'var(--glass-bg)', padding: '12px', borderRadius: '16px', border: '1px solid var(--glass-border)', fontSize: '12px', marginBottom: '20px' }}>
@@ -7756,6 +7765,7 @@ export default function App() {
                     
                     {/* Add user form & Reset Data column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                      {currentUser && <PushSendCard lang={lang} adminCode={currentUser.code} users={users} onToast={triggerToast} />}
                       {pendingRegistrations.length > 0 && (
                         <div className="card" style={{ border: '1px solid rgba(226, 176, 78, 0.3)', background: 'rgba(226, 176, 78, 0.03)' }}>
                           <h3 className="card-title">
