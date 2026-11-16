@@ -45,6 +45,11 @@ export default async function handler(req, res) {
     const userDoc = userSnap.docs[0];
     if (!userDoc) return res.status(403).json({ error: 'not authorized' });
     const user = userDoc.data();
+    // Drivers do not use notifications at all.
+    if (user.role === 'driver') {
+      await db.collection('push_devices').doc(docIdOf(token)).delete().catch(() => {});
+      return res.status(403).json({ error: 'not available for drivers' });
+    }
     const ref = db.collection('push_devices').doc(docIdOf(token));
 
     if (body.action === 'remove') {

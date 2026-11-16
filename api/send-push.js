@@ -15,7 +15,7 @@ function getDb() {
   return getFirestore();
 }
 
-const GROUP_ROLE = { drivers: 'driver', dispatchers: 'dispatcher', admins: 'admin' };
+const GROUP_ROLE = { dispatchers: 'dispatcher', admins: 'admin' };
 const DEAD_TOKEN_CODES = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
 const chunk = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size));
 
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
     // Who is meant: the chosen groups (by role) plus the individually picked people.
     const all = await db.collection('users').get();
-    const known = new Map(all.docs.map((d) => [d.id, { name: String(d.data().name || ''), role: String(d.data().role || '') }]));
+    const known = new Map(all.docs.filter((d) => d.data().role === 'admin' || d.data().role === 'dispatcher').map((d) => [d.id, { name: String(d.data().name || ''), role: String(d.data().role || '') }]));
     const recipients = new Set(pickedIds.filter((id) => known.has(id)));
     const roles = new Set(groups.map((g) => GROUP_ROLE[g]));
     known.forEach((u, id) => { if (roles.has(u.role)) recipients.add(id); });

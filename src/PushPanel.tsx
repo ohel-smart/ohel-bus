@@ -9,7 +9,7 @@ import { NY_TZ } from './services/nyTime';
 
 type Lang = 'he' | 'en';
 type Toast = (message: string, type?: 'success' | 'danger') => void;
-type GroupKey = 'dispatchers' | 'drivers' | 'admins';
+type GroupKey = 'dispatchers' | 'admins';
 
 const copy = {
   he: {
@@ -157,7 +157,7 @@ const panel = { background: 'rgba(255,255,255,0.03)', border: '1px solid var(--b
 export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang: Lang; adminCode: string; users: User[]; onToast: Toast }) {
   const t = copy[lang];
   const [view, setView] = useState<'compose' | 'history' | 'devices'>('compose');
-  const [groups, setGroups] = useState<Record<GroupKey, boolean>>({ dispatchers: false, drivers: false, admins: false });
+  const [groups, setGroups] = useState<Record<GroupKey, boolean>>({ dispatchers: false, admins: false });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [showPeople, setShowPeople] = useState(false);
   const [search, setSearch] = useState('');
@@ -185,18 +185,18 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
   useEffect(() => { void load(); }, [load]);
 
   const people = useMemo(
-    () => users.filter(u => u.role !== 'screen' && String(u.code ?? '').trim() !== '').sort((a, b) => cleanName(a.name).localeCompare(cleanName(b.name), 'he')),
+    () => users.filter(u => (u.role === 'admin' || u.role === 'dispatcher') && String(u.code ?? '').trim() !== '').sort((a, b) => cleanName(a.name).localeCompare(cleanName(b.name), 'he')),
     [users],
   );
   const deviceCount = (id: string) => status[id]?.devices ?? 0;
-  const everyone = groups.dispatchers && groups.drivers && groups.admins;
-  const setAll = (on: boolean) => setGroups({ dispatchers: on, drivers: on, admins: on });
+  const everyone = groups.dispatchers && groups.admins;
+  const setAll = (on: boolean) => setGroups({ dispatchers: on, admins: on });
   const toggleGroup = (key: GroupKey) => setGroups(g => ({ ...g, [key]: !g[key] }));
   const togglePerson = (id: string) => setPicked(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   // Live preview of who the message would reach.
   const audience = useMemo(() => {
-    const roleOf: Record<GroupKey, string> = { dispatchers: 'dispatcher', drivers: 'driver', admins: 'admin' };
+    const roleOf: Record<GroupKey, string> = { dispatchers: 'dispatcher', admins: 'admin' };
     const roles = new Set((Object.keys(groups) as GroupKey[]).filter(g => groups[g]).map(g => roleOf[g]));
     const ids = new Set<string>(picked);
     people.forEach(u => { if (roles.has(u.role)) ids.add(u.id); });
@@ -232,7 +232,7 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
     setTitle(entry.title);
     setText(entry.body);
     const g = new Set(entry.groups ?? []);
-    setGroups({ dispatchers: g.has('dispatchers'), drivers: g.has('drivers'), admins: g.has('admins') });
+    setGroups({ dispatchers: g.has('dispatchers'), admins: g.has('admins') });
     setPicked(new Set());
     setView('compose');
   };
@@ -320,7 +320,6 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button type="button" style={chip(everyone)} onClick={() => setAll(!everyone)}>{t.all}</button>
               <button type="button" style={chip(groups.dispatchers)} onClick={() => toggleGroup('dispatchers')}>{t.dispatchers}</button>
-              <button type="button" style={chip(groups.drivers)} onClick={() => toggleGroup('drivers')}>{t.drivers}</button>
               <button type="button" style={chip(groups.admins)} onClick={() => toggleGroup('admins')}>{t.admins}</button>
               <button type="button" style={{ ...chip(picked.size > 0), display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => setShowPeople(v => !v)}>
                 <Users size={12} />{t.pick}{picked.size ? ` (${picked.size} ${t.picked})` : ''}

@@ -5748,7 +5748,6 @@ export default function App() {
                       );
                     })()}
 
-                    <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
                     {/* Language Switch Button */}
                     <button
                       onClick={() => setLang(lang === 'he' ? 'en' : 'he')}
