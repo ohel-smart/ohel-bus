@@ -6499,8 +6499,8 @@ export default function App() {
           {currentUser.role === 'admin' && (
             <div className="desktop-layout">
               {/* MOBILE HEADER */}
-              <header className="mobile-manager-header" style={{ display: 'none', flexDirection: 'column', alignItems: 'stretch', gap: '8px', padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 1000 }}>
-                {/* Manager only: all the icons on one line, the system name underneath */}
+              <header className="mobile-manager-header" style={{ display: 'none', flexDirection: 'column', alignItems: 'stretch', padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 1000 }}>
+                {/* Manager only: all the icons on one line */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                   <img src={logo} alt="Ohel Bus Logo" style={{ height: '32px' }} />
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -6529,7 +6529,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
               </header>
               
               {/* DESKTOP SIDEBAR MENU (Human designed feel) */}
