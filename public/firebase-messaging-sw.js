@@ -16,6 +16,10 @@ self.addEventListener('push', (event) => {
     badge: '/logo.png',
     dir: 'rtl',
     lang: 'he',
+    // Android: vibrate pattern, and every message alerts again (a unique tag). iPhone ignores both and uses its own sound settings.
+    vibrate: [250, 120, 250, 120, 250],
+    tag: 'ohel-' + Date.now(),
+    renotify: true,
     data: { url: data.url || '/' },
   }));
 });
