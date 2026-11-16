@@ -52,6 +52,9 @@ export default function BusApprovalAnimation({visible, stage, completed = [], la
   if (!visible || typeof document === 'undefined') return null;
   const t = copy[language];
   const success = stage === 'success', error = stage === 'error', finished = success || error;
+  // A real progress line: it starts empty, grows by a quarter for every confirmation the request really made
+  // (driver, passengers, route, saved) and is full the moment the system confirms the departure. Never by time.
+  const progress = success ? 100 : Math.round((completed.length / nodes.length) * 100);
   return createPortal(
     <div className={`obs-overlay ${success ? 'is-success' : ''} ${error ? 'is-error' : ''}`} dir={language === 'he' ? 'rtl' : 'ltr'}>
       <div className="obs-content">
@@ -114,7 +117,7 @@ export default function BusApprovalAnimation({visible, stage, completed = [], la
         <div role={error ? 'alert' : 'status'} aria-live={error ? 'assertive' : 'polite'} aria-atomic="true" className="obs-announcement">
           <div key={stage} className="obs-status-copy"><h2 className="obs-title">{t[stage][0]}</h2><p className="obs-subtitle">{error && errorMessage ? errorMessage : t[stage][1]}</p></div>
         </div>
-        {!finished && <div className="obs-progress" aria-hidden="true"><div className="obs-progress-bar"/></div>}
+        {!error && <div className="obs-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div className="obs-progress-bar" style={{width: `${progress}%`}}/></div>}
         {error && onDismiss && <button type="button" className="obs-dismiss" onClick={onDismiss}>{t.close}</button>}
       </div>
     </div>, document.body
