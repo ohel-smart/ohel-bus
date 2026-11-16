@@ -6549,8 +6549,11 @@ export default function App() {
                   >
                     {lang === 'he' ? 'English' : 'עברית'}
                   </button>
-                  <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
-                  <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
+                  {/* Desktop sidebar: the inbox and the bell side by side */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center' }}>
+                    <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
+                    <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
+                  </div>
                 </div>
 
                 <div style={{ background: 'var(--glass-bg)', padding: '12px', borderRadius: '16px', border: '1px solid var(--glass-border)', fontSize: '12px', marginBottom: '20px' }}>
