@@ -2,6 +2,8 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, 
 import { HISTORY_MAX_DAYS, mergeHistory, nextHistorySlice } from './services/personHistory.ts';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
+import BusApprovalAnimation from './BusApprovalAnimation';
+import { createApprovalPresenter, type ApprovalView } from './services/scanApproval.ts';
 import {
   MapPin, Users, Calendar, QrCode, LogOut,
   Plus, Trash, Edit, Search, Clock, Send, CheckCircle,
@@ -1945,6 +1947,11 @@ export default function App() {
   // save actually resolves, so the wait is visible instead of the screen going
   // silent between tap and the success/error toast.
   const [isSavingScan, setIsSavingScan] = useState(false);
+  // What the departure overlay (BusApprovalAnimation) shows: it mirrors the request below (pending while it
+  // is unresolved, then the green approval for ~1.5 s once it RESOLVED). It never starts or delays the save.
+  const [approval, setApproval] = useState<ApprovalView>({ visible: false, stage: 'pending' });
+  const approvalPresenter = useMemo(() => createApprovalPresenter({ onChange: setApproval }), []);
+  useEffect(() => () => approvalPresenter.dispose(), [approvalPresenter]);
   // A scan that did not reach the server: stays on screen (not a 4-second toast) so the
   // dispatcher can read the code out to the manager. See services/scanErrors.ts for the list.
   const [scanErrorCode, setScanErrorCode] = useState<ScanErrorCode | null>(null);
@@ -4625,12 +4632,20 @@ export default function App() {
         ))}
       </div>
 
-      {/* Scan-saving / logout overlay: visible feedback from tap until it resolves */}
-      {(isSavingScan || isLoggingOut) && (
+      {/* Logout keeps the plain spinner */}
+      {isLoggingOut && (
         <div className="saving-overlay">
           <div className="saving-spinner" />
         </div>
       )}
+
+      {/* A departure being sent after a scan: visible from tap until the save resolves - the animation while
+          it is pending, then the green "approved" state once it was confirmed (see services/scanApproval.ts) */}
+      <BusApprovalAnimation
+        visible={isSavingScan || approval.visible}
+        stage={approval.visible ? approval.stage : 'pending'}
+        language={lang}
+      />
 
       {/* Manager, first login on this device: may the trip history be stored here? */}
       {askCacheConsent && !scanErrorCode && (
@@ -6091,6 +6106,7 @@ export default function App() {
                                     setNoPhoneDispatcher(null);
                                     setNoPhonePassengers(null);
                                     setNoPhonePaidCount(0);
+                                    const approvalTicket = approvalPresenter.begin();
                                     setIsSavingScan(true);
                                     try {
                                       await dbService.addScan({
@@ -6104,10 +6120,13 @@ export default function App() {
                                         departureLocation: currentDepartureLocation,
                                         ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
                                       });
-                                      confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
-                                      triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
+                                      approvalPresenter.succeed(approvalTicket, () => {
+                                        confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
+                                        triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
+                                      });
                                     } catch (err) {
                                       console.error('Failed to save no-phone scan:', err);
+                                      approvalPresenter.fail(approvalTicket);
                                       showScanError(err);
                                     } finally {
                                       setIsSavingScan(false);
@@ -8843,6 +8862,7 @@ export default function App() {
                       setScannerModalPassengers(null);
                       setScannerModalPaidCount(0);
 
+                      const approvalTicket = approvalPresenter.begin();
                       setIsSavingScan(true);
                       try {
                         await dbService.addScan({
@@ -8857,15 +8877,19 @@ export default function App() {
                           ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
                         });
 
-                        confetti({
-                          particleCount: 100,
-                          spread: 70,
-                          origin: { y: 0.8 }
-                        });
+                        // Saved on the server: the green approval shows at once; the usual confetti + toast follow when it closes.
+                        approvalPresenter.succeed(approvalTicket, () => {
+                          confetti({
+                            particleCount: 100,
+                            spread: 70,
+                            origin: { y: 0.8 }
+                          });
 
-                        triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${driverForScan.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${driverForScan.name}`, 'success');
+                          triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${driverForScan.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${driverForScan.name}`, 'success');
+                        });
                       } catch (err) {
                         console.error('Failed to save scan:', err);
+                        approvalPresenter.fail(approvalTicket);
                         showScanError(err);
                       } finally {
                         setIsSavingScan(false);
