@@ -6499,39 +6499,37 @@ export default function App() {
           {currentUser.role === 'admin' && (
             <div className="desktop-layout">
               {/* MOBILE HEADER */}
-              <header className="mobile-manager-header" style={{ display: 'none', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 1000 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <header className="mobile-manager-header" style={{ display: 'none', flexDirection: 'column', alignItems: 'stretch', gap: '8px', padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 1000 }}>
+                {/* Manager only: all the icons on one line, the system name underneath */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                   <img src={logo} alt="Ohel Bus Logo" style={{ height: '32px' }} />
-                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {/* Manager only: the four small controls sit as two rows of two */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '6px', alignItems: 'stretch', justifyItems: 'stretch' }}>
-                  <button
-                    onClick={() => setActiveTab('notifications')}
-                    title={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
-                    aria-label={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
-                    style={{ background: activeTab === 'notifications' ? 'rgba(226, 176, 78, 0.18)' : 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 8px', color: activeTab === 'notifications' ? 'var(--accent)' : '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
-                  >
-                    <Send size={14} />
-                  </button>
-                  <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
-                  <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
-                  <button 
-                    onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 10px', color: '#fff', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    {lang === 'he' ? 'EN' : 'עב'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <button
+                      onClick={() => setActiveTab('notifications')}
+                      title={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
+                      aria-label={lang === 'he' ? 'מרכז התראות' : 'Notifications'}
+                      style={{ background: activeTab === 'notifications' ? 'rgba(226, 176, 78, 0.18)' : 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 8px', color: activeTab === 'notifications' ? 'var(--accent)' : '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <Send size={14} />
+                    </button>
+                    <InboxButton lang={lang} unread={inbox.unread} onClick={openInbox} />
+                    <PushBell lang={lang} user={currentUser} onToast={triggerToast} />
+                    <button 
+                      onClick={() => setLang(lang === 'he' ? 'en' : 'he')} 
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 10px', color: '#fff', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      {lang === 'he' ? 'EN' : 'עב'}
+                    </button>
+                    <button 
+                      onClick={handleLogout} 
+                      className="btn btn-danger" 
+                      style={{ padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <LogOut size={12} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={handleLogout} 
-                    className="btn btn-danger" 
-                    style={{ padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <LogOut size={12} />
-                  </button>
                 </div>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: '#fff' }}>{t('title')}</span>
               </header>
               
               {/* DESKTOP SIDEBAR MENU (Human designed feel) */}
