@@ -88,7 +88,8 @@ const cleanName = (name: string) => name.replace(/ \((נהג|סדרן|מנהל|�
 const fmtTime = (iso: string, lang: Lang) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(lang === 'he' ? 'he-IL' : 'en-US', { timeZone: NY_TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  // The left-to-right mark keeps "16.11, 11:15" from being flipped inside right-to-left text.
+  return '\u200E' + d.toLocaleString(lang === 'he' ? 'he-IL' : 'en-US', { timeZone: NY_TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 };
 
 /** The bell each signed-in person taps once, inside their own account, to receive notifications on this device. */
@@ -304,7 +305,7 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
       </h2>
 
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        {stat(t.statPeople, `${totalPeople} / ${people.length}`)}
+        {stat(t.statPeople, `\u200E${totalPeople} / ${people.length}`)}
         {stat(t.statDevices, totalDevices)}
         {stat(t.statSent, log?.length ?? 0)}
         {stat(t.statLast, log?.[0] ? fmtTime(log[0].sentAt, lang) : t.never)}
