@@ -797,9 +797,24 @@ class DBService {
     });
   }
 
-  public async addScan(scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity' | 'isBigBus'>) {
+  /**
+   * `onVerified` (optional, presentation only - the departure overlay's green checks): called when this very
+   * request has actually confirmed one thing - 'driver' (found in the system), 'passengers' (a valid whole
+   * number), 'location' (the route was computed by Google from the trip's real endpoints, not the rough
+   * estimate), 'data' (the trip is saved on the server). It cannot change or delay the save: it is called
+   * inside try/catch and nothing waits for it.
+   */
+  public async addScan(
+    scanData: Omit<Scan, 'id' | 'logicalDate' | 'remainingSeats' | 'driverCapacity' | 'isBigBus'>,
+    onVerified?: (stage: 'passengers' | 'driver' | 'data' | 'location') => void,
+  ) {
+    const verified = (stage: 'passengers' | 'driver' | 'data' | 'location') => {
+      try { onVerified?.(stage); } catch { /* presentation only: must never affect saving */ }
+    };
     const usersList = this.getUsers();
     const driver = usersList.find(u => u.id === scanData.driverId);
+    if (driver) verified('driver');
+    if (Number.isInteger(scanData.passengersCount) && scanData.passengersCount >= 0) verified('passengers');
     // ?? not || - a driver's capacity can be deliberately 0 (a placeholder
     // account whose real seat count the manager hasn't filled in yet), and
     // that must NOT silently fall back to 15 the way `0 || 15` would.
@@ -820,6 +835,7 @@ class DBService {
       const eta = await this.getRouteEta(startLoc.latitude, startLoc.longitude, targetDirection);
       etaMinutes = eta.minutes;
       etaIsEstimate = eta.estimated;
+      if (!eta.estimated) verified('location');
 
       // Calculate expected arrival time clock string
       const startTime = new Date(scanData.scannedAt || new Date().toISOString()).getTime();
@@ -867,6 +883,7 @@ class DBService {
       throw e;
     }
     forgetFailed(this.failedScanIds, attemptKey);
+    verified('data');
     this.savingScans.delete(newScan.id);
     this.markScanDays([newScan.logicalDate]);
     this.patchAdminOlder(newScan.id, newScan);

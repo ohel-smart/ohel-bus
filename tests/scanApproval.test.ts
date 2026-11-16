@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { createApprovalPresenter, APPROVAL_HOLD_MS, type ApprovalView } from '../src/services/scanApproval.ts';
 
+const shape = (v: ApprovalView) => ({ visible: v.visible, stage: v.stage });
+
 // A fake clock: timers only fire when the test advances time.
 function setup() {
   let now = 0;
@@ -24,9 +26,9 @@ function setup() {
 test('a slow request keeps the loading overlay up, however long it takes, with no timer running', () => {
   const { presenter, views, advance, timersPending } = setup();
   presenter.begin();
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'pending' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'pending' });
   advance(60_000);
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'pending' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'pending' });
   assert.strictEqual(timersPending(), 0, 'nothing is timed while the request is unresolved (no fake progress, no minimum)');
   assert.strictEqual(views.length, 1);
 });
@@ -36,12 +38,12 @@ test('a fast success shows the green approval at once (no minimum loading time),
   let closed = 0;
   const t = presenter.begin();
   presenter.succeed(t, () => closed++); // resolved immediately after begin
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'success' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'success' });
   advance(APPROVAL_HOLD_MS - 1);
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'success' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'success' });
   assert.strictEqual(closed, 0);
   advance(1);
-  assert.deepStrictEqual(presenter.view(), { visible: false, stage: 'pending' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: false, stage: 'pending' });
   assert.strictEqual(closed, 1);
   advance(10_000);
   assert.strictEqual(closed, 1, 'the closing step runs exactly once');
@@ -66,7 +68,7 @@ test('a failure after the approval was shown does not take it back or fire twice
   const t = presenter.begin();
   presenter.succeed(t, () => closed++);
   presenter.fail(t);
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'success' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'success' });
   advance(APPROVAL_HOLD_MS);
   assert.strictEqual(closed, 1);
 });
@@ -77,11 +79,11 @@ test('an older request answering after a newer one began cannot approve it (stal
   const old = presenter.begin();
   const fresh = presenter.begin();
   presenter.succeed(old, () => closedOld++);
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'pending' }, 'the new scan is still pending');
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'pending' }, 'the new scan is still pending');
   presenter.fail(old);
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'pending' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'pending' });
   presenter.succeed(fresh, () => closedNew++);
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'success' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'success' });
   assert.strictEqual(closedOld, 0);
   assert.strictEqual(closedNew, 0);
 });
@@ -103,10 +105,10 @@ test('a new request during the success hold cancels the old closing step', () =>
   presenter.succeed(a, () => closedOld++);
   advance(500);
   const b = presenter.begin();
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'pending' });
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'pending' });
   advance(APPROVAL_HOLD_MS * 2);
   assert.strictEqual(closedOld, 0, "the first scan's confetti/toast must not fire for the second scan");
-  assert.deepStrictEqual(presenter.view(), { visible: true, stage: 'pending' }, 'the second scan is still pending');
+  assert.deepStrictEqual(shape(presenter.view()), { visible: true, stage: 'pending' }, 'the second scan is still pending');
   presenter.fail(b);
   assert.strictEqual(presenter.view().visible, false);
 });
@@ -132,4 +134,51 @@ test('unmount: the timer is cleared, a late answer is ignored, and the presenter
   presenter.succeed(again, () => closed++);
   advance(APPROVAL_HOLD_MS);
   assert.strictEqual(closed, 1);
+});
+
+test('green checks appear only when the request itself confirms them, in the order confirmed', () => {
+  const { presenter, advance } = setup();
+  const t = presenter.begin();
+  assert.deepStrictEqual(presenter.view().completed, [], 'nothing is checked off by time');
+  advance(30_000);
+  assert.deepStrictEqual(presenter.view().completed, []);
+  presenter.stageDone(t, 'driver');
+  presenter.stageDone(t, 'passengers');
+  assert.deepStrictEqual(presenter.view().completed, ['driver', 'passengers']);
+  presenter.stageDone(t, 'driver'); // the same confirmation twice counts once
+  assert.deepStrictEqual(presenter.view().completed, ['driver', 'passengers']);
+  presenter.stageDone(t, 'location');
+  presenter.stageDone(t, 'data');
+  assert.deepStrictEqual(presenter.view().completed, ['driver', 'passengers', 'location', 'data']);
+});
+
+test('a confirmation that never came (e.g. the route was only estimated) leaves that square unchecked, even on success', () => {
+  const { presenter } = setup();
+  const t = presenter.begin();
+  presenter.stageDone(t, 'driver');
+  presenter.stageDone(t, 'passengers');
+  presenter.stageDone(t, 'data'); // saved, but the route was the rough estimate: no 'location'
+  presenter.succeed(t);
+  assert.deepStrictEqual(presenter.view().completed, ['driver', 'passengers', 'data']);
+  assert.ok(!presenter.view().completed.includes('location'));
+});
+
+test('checks from an older request, or after the request ended, are ignored; a new request starts clean', () => {
+  const { presenter } = setup();
+  const old = presenter.begin();
+  presenter.stageDone(old, 'driver');
+  const fresh = presenter.begin();
+  assert.deepStrictEqual(presenter.view().completed, [], 'a new scan does not inherit the old checks');
+  presenter.stageDone(old, 'data'); // late confirmation of the old scan
+  assert.deepStrictEqual(presenter.view().completed, []);
+  presenter.stageDone(fresh, 'driver');
+  presenter.fail(fresh);
+  presenter.stageDone(fresh, 'passengers'); // after the failure
+  assert.deepStrictEqual(shape(presenter.view()), { visible: false, stage: 'pending' });
+  assert.deepStrictEqual(presenter.view().completed, ['driver'], 'frozen as it was; the overlay is closed anyway');
+  const next = presenter.begin();
+  assert.deepStrictEqual(presenter.view().completed, []);
+  presenter.succeed(next);
+  presenter.stageDone(next, 'data'); // after success: ignored
+  assert.deepStrictEqual(presenter.view().completed, []);
 });

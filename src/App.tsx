@@ -1949,7 +1949,7 @@ export default function App() {
   const [isSavingScan, setIsSavingScan] = useState(false);
   // What the departure overlay (BusApprovalAnimation) shows: it mirrors the request below (pending while it
   // is unresolved, then the green approval for ~1.5 s once it RESOLVED). It never starts or delays the save.
-  const [approval, setApproval] = useState<ApprovalView>({ visible: false, stage: 'pending' });
+  const [approval, setApproval] = useState<ApprovalView>({ visible: false, stage: 'pending', completed: [] });
   const approvalPresenter = useMemo(() => createApprovalPresenter({ onChange: setApproval }), []);
   useEffect(() => () => approvalPresenter.dispose(), [approvalPresenter]);
   // A scan that did not reach the server: stays on screen (not a 4-second toast) so the
@@ -4644,6 +4644,7 @@ export default function App() {
       <BusApprovalAnimation
         visible={isSavingScan || approval.visible}
         stage={approval.visible ? approval.stage : 'pending'}
+        completed={approval.visible ? approval.completed : []}
         language={lang}
       />
 
@@ -6119,7 +6120,7 @@ export default function App() {
                                         location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
                                         departureLocation: currentDepartureLocation,
                                         ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
-                                      });
+                                      }, stage => approvalPresenter.stageDone(approvalTicket, stage));
                                       approvalPresenter.succeed(approvalTicket, () => {
                                         confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
                                         triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
@@ -8875,7 +8876,7 @@ export default function App() {
                           location: { latitude: dispatcherLocation.latitude, longitude: dispatcherLocation.longitude },
                           departureLocation: currentDepartureLocation,
                           ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
-                        });
+                        }, stage => approvalPresenter.stageDone(approvalTicket, stage));
 
                         // Saved on the server: the green approval shows at once; the usual confetti + toast follow when it closes.
                         approvalPresenter.succeed(approvalTicket, () => {
