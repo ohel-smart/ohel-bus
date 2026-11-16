@@ -184,7 +184,7 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
   useEffect(() => { void load(); }, [load]);
 
   const people = useMemo(
-    () => users.filter(u => u.role !== 'screen').sort((a, b) => cleanName(a.name).localeCompare(cleanName(b.name), 'he')),
+    () => users.filter(u => u.role !== 'screen' && String(u.code ?? '').trim() !== '').sort((a, b) => cleanName(a.name).localeCompare(cleanName(b.name), 'he')),
     [users],
   );
   const deviceCount = (id: string) => status[id]?.devices ?? 0;
@@ -244,6 +244,35 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
     background: active ? 'rgba(226, 176, 78, 0.18)' : 'rgba(255,255,255,0.04)',
     color: active ? 'var(--accent)' : '#fff',
   } as const);
+  // One small rectangle per person: name, role, and a dot that is green when they have notifications on.
+  const tileGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '10px' } as const;
+  const tile = (u: User, selected: boolean | null, onClick?: () => void) => {
+    const n = deviceCount(u.id);
+    return (
+      <button
+        key={u.id}
+        type="button"
+        onClick={onClick}
+        aria-pressed={selected ?? undefined}
+        title={n ? t.deviceCount(n) : t.deviceCount(0)}
+        style={{
+          all: 'unset', boxSizing: 'border-box', cursor: onClick ? 'pointer' : 'default',
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '6px', padding: '14px 14px', minHeight: '72px', borderRadius: '14px', minWidth: 0,
+          border: `1px solid ${selected ? 'var(--accent)' : 'var(--border-color)'}`,
+          background: selected ? 'rgba(226, 176, 78, 0.16)' : 'rgba(255,255,255,0.04)',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+          <span style={{ width: '10px', height: '10px', borderRadius: '50%', flex: 'none', background: n ? '#49e79e' : 'rgba(255,255,255,0.25)' }} />
+          <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanName(u.name)}</span>
+        </span>
+        <span style={{ fontSize: '11px', color: selected ? 'var(--accent)' : 'var(--text-secondary)' }}>
+          {t.roleLabel[u.role] ?? u.role} · {n ? t.deviceCount(n) : t.noDevice}
+        </span>
+      </button>
+    );
+  };
+
   const audienceLabel = (e: LogEntry) => [
     ...(e.groups ?? []).map(g => t.groupLabel[g] ?? g),
     ...(e.pickedCount ? [`${e.pickedCount} ${t.people}`] : []),
@@ -305,14 +334,8 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
           {showPeople && (
             <div>
               <input className="form-input" value={search} onChange={e => setSearch(e.target.value)} placeholder={t.search} />
-              <div style={{ maxHeight: '220px', overflowY: 'auto', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {shownShown.map(u => (
-                  <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', padding: '5px 2px' }}>
-                    <input type="checkbox" checked={picked.has(u.id)} onChange={() => togglePerson(u.id)} />
-                    <span style={{ flex: 1 }}>{cleanName(u.name)} <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>· {t.roleLabel[u.role] ?? u.role}</span></span>
-                    <span style={{ fontSize: '11px', color: deviceCount(u.id) > 0 ? '#49e79e' : 'var(--text-secondary)' }}>{t.deviceCount(deviceCount(u.id))}</span>
-                  </label>
-                ))}
+              <div style={{ ...tileGrid, maxHeight: '260px', overflowY: 'auto', marginTop: '8px' }}>
+                {shownShown.map(u => tile(u, picked.has(u.id), () => togglePerson(u.id)))}
               </div>
             </div>
           )}
@@ -397,23 +420,9 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
       {view === 'devices' && (
         <div style={panel}>
           {totalPeople === 0 && <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{t.noDevicesYet}</div>}
-          {people.map(u => {
-            const st = status[u.id];
-            const n = st?.devices ?? 0;
-            return (
-              <div key={u.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                  <span>{cleanName(u.name)} <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>· {t.roleLabel[u.role] ?? u.role}</span></span>
-                  <span style={{ color: n ? '#49e79e' : 'var(--text-secondary)', fontSize: '12px' }}>{n ? t.onList : t.notOn}</span>
-                </div>
-                {n > 0 && (st?.list ?? []).map((d, i) => (
-                  <div key={i} style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    {d.device || '—'} · {t.lastSeen} {fmtTime(d.lastSeenAt, lang)}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+          <div style={tileGrid}>
+            {people.map(u => tile(u, null))}
+          </div>
         </div>
       )}
     </div>
