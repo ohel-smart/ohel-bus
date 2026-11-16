@@ -46,6 +46,7 @@ const copy = {
     groupLabel: { drivers: 'נהגים', dispatchers: 'סדרנים', admins: 'מנהלים' } as Record<string, string>,
     roleLabel: { driver: 'נהג', dispatcher: 'סדרן', admin: 'מנהל' } as Record<string, string>,
     people: 'אנשים',
+    deviceCode: 'קוד מכשיר', registered: 'נרשם', deviceN: (n: number) => `מכשיר ${n}`, tapForDevices: 'לחץ על אדם כדי לראות את המכשירים שלו',
   },
   en: {
     bellOn: 'Notifications are on for this device. Tap to turn off',
@@ -79,6 +80,7 @@ const copy = {
     groupLabel: { drivers: 'Drivers', dispatchers: 'Dispatchers', admins: 'Managers' } as Record<string, string>,
     roleLabel: { driver: 'Driver', dispatcher: 'Dispatcher', admin: 'Manager' } as Record<string, string>,
     people: 'People',
+    deviceCode: 'Device code', registered: 'Registered', deviceN: (n: number) => `Device ${n}`, tapForDevices: 'Tap a person to see their devices',
   },
 };
 
@@ -143,7 +145,7 @@ export function PushBell({ lang, user, onToast }: { lang: Lang; user: User; onTo
   );
 }
 
-interface PushStatus { devices: number; list?: { device: string; lastSeenAt: string }[] }
+interface PushStatus { devices: number; list?: { id?: string; device: string; lastSeenAt: string; createdAt?: string }[] }
 interface LogResult { userId: string; name: string; role: string; devices: number; sent: number; failed: number }
 interface LogEntry {
   id: string; title: string; body: string; sentAt: string; sentBy?: { id: string; name: string };
@@ -168,6 +170,7 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
   const [log, setLog] = useState<LogEntry[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [historySearch, setHistorySearch] = useState('');
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -419,10 +422,45 @@ export function NotificationsCenter({ lang, adminCode, users, onToast }: { lang:
 
       {view === 'devices' && (
         <div style={panel}>
-          {totalPeople === 0 && <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>{t.noDevicesYet}</div>}
-          <div style={tileGrid}>
-            {people.map(u => tile(u, null))}
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            {totalPeople === 0 ? t.noDevicesYet : t.tapForDevices}
           </div>
+          <div style={tileGrid}>
+            {people.map(u => tile(u, detailId === u.id, () => setDetailId(detailId === u.id ? null : u.id)))}
+          </div>
+          {detailId && (() => {
+            const person = people.find(u => u.id === detailId);
+            const devs = status[detailId]?.list ?? [];
+            if (!person) return null;
+            return (
+              <div style={{ marginTop: '14px', padding: '14px', borderRadius: '14px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--accent)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
+                  <strong style={{ color: '#fff', fontSize: '14px' }}>{cleanName(person.name)} <span style={{ color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 400 }}>· {t.roleLabel[person.role] ?? person.role}</span></strong>
+                  <span style={{ fontSize: '12px', color: deviceCount(person.id) ? '#49e79e' : 'var(--text-secondary)' }}>{t.deviceCount(deviceCount(person.id))}</span>
+                </div>
+                {devs.length === 0 && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t.noDevice}</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {devs.map((d, i) => (
+                    <div key={d.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)' }}>
+                      <Smartphone size={18} color="var(--accent)" />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: '13px', color: '#fff', fontWeight: 600 }}>{t.deviceN(i + 1)} · {d.device || '—'}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          {t.lastSeen} {fmtTime(d.lastSeenAt, lang)}{d.createdAt ? ` · ${t.registered} ${fmtTime(d.createdAt, lang)}` : ''}
+                        </div>
+                      </div>
+                      {d.id && (
+                        <div style={{ textAlign: 'center', direction: 'ltr' }}>
+                          <div style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t.deviceCode}</div>
+                          <div style={{ fontSize: '14px', fontWeight: 800, letterSpacing: '1px', color: 'var(--accent)', fontFamily: 'monospace' }}>{d.id}</div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

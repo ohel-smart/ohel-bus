@@ -21,7 +21,7 @@ const docIdOf = (token) => createHash('sha256').update(token).digest('hex').slic
 async function refreshStatus(db, userId, user) {
   const snap = await db.collection('push_devices').where('userId', '==', userId).get();
   const list = snap.docs
-    .map((d) => ({ device: String(d.data().device || ''), lastSeenAt: String(d.data().lastSeenAt || '') }))
+    .map((d) => ({ id: d.id.slice(0, 6).toUpperCase(), device: String(d.data().device || ''), lastSeenAt: String(d.data().lastSeenAt || ''), createdAt: String(d.data().createdAt || '') }))
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
   // No tokens here - this doc is readable by the app so the manager can see who can receive notifications.
   const status = { devices: snap.size, list, updatedAt: new Date().toISOString() };
