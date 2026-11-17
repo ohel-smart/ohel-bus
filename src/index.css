@@ -1106,9 +1106,32 @@ body {
   touch-action: manipulation;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
+.phone-bar .nimbus-nav {
+  width: 100%;
+  max-width: 520px;
+  gap: 0;
+  padding: 5px;
+}
+/* icon with its text underneath */
 .phone-bar .nimbus-item {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 54px;
+  padding: 0 2px !important;
+  flex-direction: column;
   justify-content: center;
+  gap: 3px;
+}
+.phone-bar .nimbus-label {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  clip: auto !important;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 .phone-bar .nimbus-item[aria-current="page"] {
   color: var(--accent);

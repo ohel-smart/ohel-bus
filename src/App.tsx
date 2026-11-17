@@ -42,7 +42,7 @@ function PhoneBar({ items, activeKey, admin }: { items: PhoneBarItem[]; activeKe
     <div className={`phone-bar${admin ? ' phone-bar-admin' : ''}`}>
       <LiquidNavbar
         tone="dark"
-        compact
+        compact={false}
         items={navItems}
         active={activeIndex}
         onChange={i => items[i]?.onSelect()}
