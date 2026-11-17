@@ -6,6 +6,7 @@ import ReturnReport from './ReturnReport.tsx'
 import BoardView from './BoardView.tsx'
 import RegisterRequest from './RegisterRequest.tsx'
 import UpdateWatcher from './UpdateWatcher.tsx'
+import IntroSplash from './IntroSplash.tsx'
 
 // A driver self-report link (…/?report=return) opens the standalone return page.
 const isReturnReport = new URLSearchParams(window.location.search).get('report') === 'return';
@@ -17,7 +18,7 @@ const isRegisterRequest = window.location.pathname === '/join' || window.locatio
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isBoardView ? <BoardView /> : isReturnReport ? <ReturnReport /> : isRegisterRequest ? <RegisterRequest /> : <App />}
+    {isBoardView ? <BoardView /> : isReturnReport ? <ReturnReport /> : isRegisterRequest ? <RegisterRequest /> : <><App /><IntroSplash /></>}
     {/* The arrival board runs unattended on a screen, so it may reload on its own; the rest never do under a person's hands. */}
     <UpdateWatcher mode={isBoardView ? 'auto' : 'idle'} />
   </StrictMode>,
