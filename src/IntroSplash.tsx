@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { GlassIconReveal } from './components/ui/liquid-glass-logo-reveal';
 
 // Opening screen: the app icon is revealed by a liquid-glass tile (WebGL) while the app loads underneath.
-// TEST MODE: only shown when the address has `?intro=1` (so real users are not affected yet).
+// Shown to everyone on each app open (TEST_ONLY = true would limit it to addresses with `?intro=1`).
 // To make it permanent change TEST_ONLY to false; `?intro=0` then turns it off. Tap skips it; skipped for reduced-motion users.
-const TEST_ONLY = true;
+const TEST_ONLY = false;
 const BG = '#05070c';
 const skip = (() => {
   try {
