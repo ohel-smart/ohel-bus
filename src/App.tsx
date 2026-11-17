@@ -3,6 +3,7 @@ import { HISTORY_MAX_DAYS, mergeHistory, nextHistorySlice } from './services/per
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import BusApprovalAnimation from './BusApprovalAnimation';
+import { LiquidNavbar, type LiquidNavItem } from './components/ui/liquid-glass-navbar';
 import { createApprovalPresenter, type ApprovalView } from './services/scanApproval.ts';
 import {
   MapPin, Users, Calendar, QrCode, LogOut,
@@ -19,115 +20,35 @@ import { reportMonthRange, cycleStartingOn, shortRange } from './services/report
 import { getWeeklyParsha, getHebrewDate, getHebrewDayLabel, roundToHalfHourStr, roundToHourStr, exactTimeStr, getDayOfWeekHe, getHebrewYearMonth, renderHebrewYear, HEBREW_MONTH_OPTIONS, getHebrewMonthDays, shiftHebrewMonth, hebrewDayLetters } from './services/hebrewDate';
 // Admin-only, so it's split off the main bundle (drivers/dispatchers never download it).
 const Analytics = lazy(() => import('./Analytics'));
-// Drives the sliding highlight of the phone bottom bars (see .bottom-nav in index.css):
-// how many items the bar has, and which one is active (-1 = none, the highlight hides).
-const navVars = (activeIndex: number, count: number): CSSProperties =>
-  ({ '--n': count, '--i': Math.max(activeIndex, 0), '--show': activeIndex < 0 ? 0 : 1 } as CSSProperties);
-// Lets a finger drag the sliding highlight along a phone bottom bar: while dragging, the
-// highlight follows the finger (the CSS transition is off) and turns into a gold lens that
-// shows the item under it enlarged, and on release that item is selected. Items marked data-nodrag (logout) can't be dropped on.
-function attachBarDrag(nav: HTMLElement | null) {
-  if (!nav) return;
-  const tabs = () => Array.from(nav.querySelectorAll<HTMLElement>('.bottom-nav-item:not([data-nodrag])'));
-  let startX = 0;
-  let pointer = -1;
-  let dragging = false;
-  const lens = document.createElement('span');
-  lens.className = 'nav-lens';
-  lens.setAttribute('aria-hidden', 'true');
-  const scene = document.createElement('span');
-  scene.className = 'nav-lens-scene';
-  lens.appendChild(scene);
-  // while dragging, the real items are hidden and this neutral copy of the bar is shown
-  // in their place, with a hole cut out under the glass (so nothing doubles up there)
-  const base = document.createElement('span');
-  base.className = 'nav-base-scene';
-  base.setAttribute('aria-hidden', 'true');
-  nav.appendChild(base);
-  nav.appendChild(lens);
-  const copyOf = (cls: string) => Array.from(nav.querySelectorAll<HTMLElement>('.bottom-nav-item')).map(t => {
-    const cell = document.createElement('span');
-    cell.className = cls;
-    const icon = t.querySelector('svg');
-    const label = t.querySelector('span');
-    if (icon) cell.appendChild(icon.cloneNode(true));
-    if (label) cell.appendChild(label.cloneNode(true));
-    return cell;
+// The phone bottom bar (every role): the liquid-glass pill from components/ui. One item per tab, plus
+// optional non-tab items (logout) that run an action and never become the selected one.
+interface PhoneBarItem { key: string; label: string; icon: LucideIcon; onSelect: () => void; badge?: number; tab?: boolean }
+function PhoneBar({ items, activeKey, admin }: { items: PhoneBarItem[]; activeKey: string; admin?: boolean }) {
+  const navItems: LiquidNavItem[] = items.map(it => {
+    const Icon = it.icon;
+    return {
+      label: it.label,
+      fx: 'pop' as const,
+      icon: (
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <Icon size={20} strokeWidth={1.8} />
+          {it.badge ? <span className="phone-bar-badge">{it.badge > 99 ? '99+' : it.badge}</span> : null}
+        </span>
+      ),
+    };
   });
-  const buildScene = () => {
-    const innerW = nav.getBoundingClientRect().width - 12;
-    scene.style.width = `${innerW}px`;
-    scene.replaceChildren(...copyOf('nav-lens-item'));
-    base.replaceChildren(...copyOf('nav-base-item'));
-  };
-  const position = (clientX: number) => {
-    const rect = nav.getBoundingClientRect();
-    const pad = 6;
-    const n = Number(getComputedStyle(nav).getPropertyValue('--n')) || tabs().length || 1;
-    const itemW = (rect.width - 2 * pad) / n;
-    const rtl = getComputedStyle(nav).direction === 'rtl';
-    const raw = (rtl ? rect.right - pad - clientX : clientX - rect.left - pad) / itemW - 0.5;
-    return Math.min(Math.max(raw, 0), Math.max(tabs().length - 1, 0));
-  };
-  const down = (e: PointerEvent) => { pointer = e.pointerId; startX = e.clientX; dragging = false; };
-  const move = (e: PointerEvent) => {
-    if (e.pointerId !== pointer) return;
-    if (!dragging && Math.abs(e.clientX - startX) < 6) return;
-    if (!dragging) {
-      dragging = true;
-      nav.classList.add('dragging');
-      buildScene();
-      try { nav.setPointerCapture(e.pointerId); } catch { /* pointer already gone: keep dragging without capture */ } }
-    nav.style.setProperty('--show', '1');
-    const at = position(e.clientX);
-    nav.style.setProperty('--i', String(at));
-    // the highlight itself is a gold magnifying glass: it shows a scaled-up copy of whatever
-    // part of the bar is under it (the copy stays put while the glass slides over it)
-    const rect = nav.getBoundingClientRect();
-    const n = Number(getComputedStyle(nav).getPropertyValue('--n')) || 1;
-    const itemW = (rect.width - 12) / n;
-    const sign = getComputedStyle(nav).direction === 'rtl' ? -1 : 1;
-    scene.style.transform = `translateX(${-(at * itemW * sign)}px)`;
-    // hole in the neutral copy, exactly where the (enlarged) glass sits
-    const innerW = rect.width - 12;
-    const innerH = rect.height - 12;
-    const w = itemW * 1.28;
-    const h = innerH * 1.28;
-    const r = Math.min(28 * 1.28, h / 2, w / 2);
-    const cx = sign === -1 ? innerW - (at + 0.5) * itemW : (at + 0.5) * itemW;
-    const x = cx - w / 2;
-    const y = (innerH - h) / 2;
-    base.style.clipPath =
-      `path(evenodd, "M -60 -60 H ${innerW + 60} V ${innerH + 60} H -60 Z ` +
-      `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} ` +
-      `H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} Z")`;
-  };
-  const up = (e: PointerEvent) => {
-    if (e.pointerId !== pointer) return;
-    pointer = -1;
-    if (!dragging) return;
-    dragging = false;
-    nav.classList.remove('dragging');
-    const idx = Math.round(position(e.clientX));
-    nav.style.setProperty('--i', String(idx));
-    tabs()[idx]?.click();
-    // the release also produces a click on the bar itself - swallow it
-    const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
-    nav.addEventListener('click', swallow, { capture: true, once: true });
-    setTimeout(() => nav.removeEventListener('click', swallow, true), 0);
-  };
-  nav.addEventListener('pointerdown', down);
-  nav.addEventListener('pointermove', move);
-  nav.addEventListener('pointerup', up);
-  nav.addEventListener('pointercancel', up);
-  return () => {
-    lens.remove();
-    base.remove();
-    nav.removeEventListener('pointerdown', down);
-    nav.removeEventListener('pointermove', move);
-    nav.removeEventListener('pointerup', up);
-    nav.removeEventListener('pointercancel', up);
-  };
+  const activeIndex = items.findIndex(it => it.key === activeKey && it.tab !== false);
+  return (
+    <div className={`phone-bar${admin ? ' phone-bar-admin' : ''}`}>
+      <LiquidNavbar
+        tone="dark"
+        compact
+        items={navItems}
+        active={activeIndex}
+        onChange={i => items[i]?.onSelect()}
+      />
+    </div>
+  );
 }
 
 const parseScanTime = (scannedAt: string, logicalDate: string) => dbService.parseScannedAt(scannedAt, logicalDate);
@@ -5681,36 +5602,15 @@ export default function App() {
               </div>
 
               {/* Dispatcher Bottom Menu */}
-              <nav className="bottom-nav" ref={attachBarDrag} style={navVars(['scan', 'my-history', 'arrivals'].indexOf(activeTab), 4)}>
-                <button 
-                  onClick={() => setActiveTab('scan')} 
-                  className={`bottom-nav-item ${activeTab === 'scan' ? 'active' : ''}`}
-                >
-                  <QrCode size={22} />
-                  <span>{lang === 'he' ? 'סריקה' : 'Scan'}</span>
-                </button>
-                
-                <button 
-                  onClick={() => setActiveTab('my-history')} 
-                  className={`bottom-nav-item ${activeTab === 'my-history' ? 'active' : ''}`}
-                >
-                  <Calendar size={22} />
-                  <span>{lang === 'he' ? 'היום' : 'Today'} {myScansToday.length}</span>
-                </button>
-
-                <button 
-                  onClick={() => setActiveTab('arrivals')} 
-                  className={`bottom-nav-item ${activeTab === 'arrivals' ? 'active' : ''}`}
-                >
-                  <Clock size={22} />
-                  <span>{lang === 'he' ? 'הגעות' : 'Arrivals'}</span>
-                </button>
-
-                <button onClick={handleLogout} className="bottom-nav-item" data-nodrag>
-                  <LogOut size={22} />
-                  <span>{lang === 'he' ? 'יציאה' : 'Exit'}</span>
-                </button>
-              </nav>
+              <PhoneBar
+                activeKey={activeTab}
+                items={[
+                  { key: 'scan', label: lang === 'he' ? 'סריקה' : 'Scan', icon: QrCode, onSelect: () => setActiveTab('scan') },
+                  { key: 'my-history', label: lang === 'he' ? 'היום' : 'Today', icon: Calendar, badge: myScansToday.length, onSelect: () => setActiveTab('my-history') },
+                  { key: 'arrivals', label: lang === 'he' ? 'הגעות' : 'Arrivals', icon: Clock, onSelect: () => setActiveTab('arrivals') },
+                  { key: 'logout', label: lang === 'he' ? 'יציאה' : 'Exit', icon: LogOut, tab: false, onSelect: handleLogout },
+                ]}
+              />
 
             </div>
           )}
@@ -6458,36 +6358,15 @@ export default function App() {
               </div>
 
               {/* Driver Bottom Menu */}
-              <nav className="bottom-nav" ref={attachBarDrag} style={navVars(['qr', 'my-trips', 'arrivals'].indexOf(activeTab), 4)}>
-                <button 
-                  onClick={() => setActiveTab('qr')} 
-                  className={`bottom-nav-item ${activeTab === 'qr' ? 'active' : ''}`}
-                >
-                  <QrCode size={22} />
-                  <span>QR</span>
-                </button>
-                
-                <button 
-                  onClick={() => setActiveTab('my-trips')} 
-                  className={`bottom-nav-item ${activeTab === 'my-trips' ? 'active' : ''}`}
-                >
-                  <Calendar size={22} />
-                  <span>{lang === 'he' ? 'נסיעות' : 'Trips'} {myTripsToday.length}</span>
-                </button>
-
-                <button 
-                  onClick={() => setActiveTab('arrivals')} 
-                  className={`bottom-nav-item ${activeTab === 'arrivals' ? 'active' : ''}`}
-                >
-                  <Clock size={22} />
-                  <span>{lang === 'he' ? 'הגעות' : 'Arrivals'}</span>
-                </button>
-
-                <button onClick={handleLogout} className="bottom-nav-item" data-nodrag>
-                  <LogOut size={22} />
-                  <span>{lang === 'he' ? 'יציאה' : 'Exit'}</span>
-                </button>
-              </nav>
+              <PhoneBar
+                activeKey={activeTab}
+                items={[
+                  { key: 'qr', label: 'QR', icon: QrCode, onSelect: () => setActiveTab('qr') },
+                  { key: 'my-trips', label: lang === 'he' ? 'נסיעות' : 'Trips', icon: Calendar, badge: myTripsToday.length, onSelect: () => setActiveTab('my-trips') },
+                  { key: 'arrivals', label: lang === 'he' ? 'הגעות' : 'Arrivals', icon: Clock, onSelect: () => setActiveTab('arrivals') },
+                  { key: 'logout', label: lang === 'he' ? 'יציאה' : 'Exit', icon: LogOut, tab: false, onSelect: handleLogout },
+                ]}
+              />
 
             </div>
           )}
@@ -8803,34 +8682,16 @@ export default function App() {
 
               {/* MOBILE BOTTOM NAVIGATION - the admin's own chosen 4 tabs
                   (Users tab picker), Users Management always shown last. */}
-              <nav className="mobile-manager-nav" ref={attachBarDrag} style={navVars(
-                [...MOBILE_TAB_OPTIONS.filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key)).map(opt => opt.key), 'users'].indexOf(activeTab),
-                MOBILE_TAB_OPTIONS.filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key)).length + 1
-              )}>
-                {MOBILE_TAB_OPTIONS
-                  .filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key))
-                  .map(opt => {
-                    const Icon = opt.icon;
-                    return (
-                      <button
-                        key={opt.key}
-                        onClick={() => setActiveTab(opt.key)}
-                        className={`bottom-nav-item ${activeTab === opt.key ? 'active' : ''}`}
-                      >
-                        <Icon size={22} />
-                        <span>{opt.short[lang]}</span>
-                      </button>
-                    );
-                  })}
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={`bottom-nav-item ${activeTab === 'users' ? 'active' : ''}`}
-                >
-                  <Users size={22} />
-                  <span>{lang === 'he' ? 'משתמשים' : 'Users'}</span>
-                </button>
-                {/* Settings button removed */}
-              </nav>
+              <PhoneBar
+                admin
+                activeKey={activeTab}
+                items={[
+                  ...MOBILE_TAB_OPTIONS
+                    .filter(opt => (currentUser.mobileTabs ?? DEFAULT_MOBILE_TABS).includes(opt.key))
+                    .map(opt => ({ key: opt.key, label: opt.short[lang], icon: opt.icon, onSelect: () => setActiveTab(opt.key) })),
+                  { key: 'users', label: lang === 'he' ? 'משתמשים' : 'Users', icon: Users, onSelect: () => setActiveTab('users') },
+                ]}
+              />
 
             </div>
           )}
