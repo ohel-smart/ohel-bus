@@ -37,7 +37,7 @@ export default function IntroSplash() {
         background={BG}
         plateColor="#0a1030"
         tileSize={380}
-        logoScale={0.95}
+        logoScale={0.62}
         finalScale={1}
         onFinished={() => window.setTimeout(fade, 600)}
         style={{ position: 'absolute', inset: 0 }}
