@@ -123,7 +123,7 @@ uniform vec4 uBlob[6];uniform float uSy[6];uniform vec4 uRip[6];uniform vec3 uMo
 float sdRB(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return length(max(q,0.))+min(max(q.x,q.y),0.)-r;}
 float sdCap(vec2 p,vec4 B,float sy){p-=B.xy;p.y/=sy;p.x=max(abs(p.x)-B.z,0.);return(length(p)-B.w)*min(1.,sy);}
 float smin(float a,float b,float k){float h=clamp(.5+.5*(b-a)/k,0.,1.);return mix(b,a,h)-k*h*(1.-h);}
-float dropD(vec2 p){float d=1e4;for(int i=0;i<6;i++){if(uBlob[i].w>.5){d=smin(d,sdCap(p,uBlob[i],uSy[i]),22.);}}return d;}
+float dropD(vec2 p){float d=1e4;for(int i=0;i<6;i++){if(uBlob[i].w>.5){d=smin(d,sdCap(p,uBlob[i],uSy[i]),13.);}}return d;}
 float pillD(vec2 p){vec2 h=uPill.zw*.5;return sdRB(p-uPill.xy-h,h,h.y);}
 float lens(float d,float w){float t=clamp(-d/w,0.,1.);return sqrt(1.-(1.-t)*(1.-t));}
 float waves(vec2 p){float w=0.;
@@ -317,21 +317,21 @@ export function LiquidNavbar({
     } else {
       bodies.forEach((B, i) => {
         const lead = i === s.lead
-        const k = lead ? 120 : 60
-        const c = lead ? 20 : 14
+        const k = lead ? 210 : 72
+        const c = lead ? 25 : 13
         const f = !lead && now < s.lagFrom ? 0.08 : 1
         B.v += (k * (T.x - B.x) - c * B.v) * dt * f
         B.x += B.v * dt
         const lo = PAD + 6 + s.q + T.r - 3, hi = PAD + s.w - 6 - s.q - T.r + 3
         if (B.x < lo || B.x > hi) {
-          s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0005
+          s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0016
           B.x = Math.max(lo, Math.min(hi, B.x))
           B.v *= -0.25
         }
         if (Math.abs(T.x - B.x) > 0.3 || Math.abs(B.v) > 3) still = false
       })
       const L = bodies[s.lead]
-      const syT = 1 - 0.07 * Math.min(Math.abs(L.v) / 1500, 1)
+      const syT = 1 - 0.2 * Math.min(Math.abs(L.v) / 1500, 1)
       s.sy.v += (280 * (syT - s.sy.s) - 9 * s.sy.v) * dt
       s.sy.s += s.sy.v * dt
       if (Math.abs(s.sy.s - 1) > 0.002 || Math.abs(s.sy.v) > 0.02) still = false
@@ -341,13 +341,13 @@ export function LiquidNavbar({
       if (!s.split && s.moving && sep - 2 * T.q - 2 * r > -6) {
         s.split = true
         const lo = bodies[1 - s.lead], hi = bodies[s.lead]
-        ;[0.5].forEach((t, j) => {
+        ;[0.3, 0.5, 0.72].forEach((t, j) => {
           s.sats.push({
-            x: lo.x + (hi.x - lo.x) * t + (Math.random() - 0.5) * 3,
+            x: lo.x + (hi.x - lo.x) * t + (Math.random() - 0.5) * 6,
             y: T.cy + (Math.random() - 0.5) * 10,
             vx: (lo.v + hi.v) * 0.45,
             vy: (Math.random() - 0.5) * 60,
-            r: 3.5 + Math.random() * 1.5 - j * 0.5,
+            r: 5 + Math.random() * 3 - j * 0.5,
             k: 70 + Math.random() * 90,
           })
         })
@@ -406,7 +406,7 @@ export function LiquidNavbar({
       return
     }
     const T = s.t
-    T.r = el.offsetHeight / 2 + 3 // a little bigger than the item
+    T.r = el.offsetHeight / 2
     T.q = Math.max(0, el.offsetWidth / 2 - T.r)
     T.cy = PAD + el.offsetTop + el.offsetHeight / 2
     const nx = PAD + el.offsetLeft + el.offsetWidth / 2
