@@ -35,7 +35,7 @@ export default function IntroSplash() {
         speed={1.2}
         originalColors
         background={BG}
-        plateColor="#0a1030"
+        plateColor="#000000"
         tileSize={380}
         logoScale={0.62}
         finalScale={1}
