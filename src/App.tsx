@@ -6153,7 +6153,6 @@ export default function App() {
                                         ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
                                       }, stage => approvalPresenter.stageDone(approvalTicket, stage));
                                       approvalPresenter.succeed(approvalTicket, () => {
-                                        confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
                                         triggerToast(lang === 'he' ? 'הסריקה נשלחה בהצלחה' : 'Scan sent successfully', 'success');
                                       });
                                     } catch (err) {
@@ -8938,14 +8937,8 @@ export default function App() {
                           ...(currentDepartureLocation === 'Ohel' ? { paidCount: paidCountForScan } : {})
                         }, stage => approvalPresenter.stageDone(approvalTicket, stage));
 
-                        // Saved on the server: the green approval shows at once; the usual confetti + toast follow when it closes.
+                        // Saved on the server: the green approval shows at once; the toast follows when it closes (no confetti).
                         approvalPresenter.succeed(approvalTicket, () => {
-                          confetti({
-                            particleCount: 100,
-                            spread: 70,
-                            origin: { y: 0.8 }
-                          });
-
                           triggerToast(lang === 'he' ? `סריקה נשמרה בהצלחה עבור ${driverForScan.name.replace(' (נהג)', '')}` : `Scan saved successfully for ${driverForScan.name}`, 'success');
                         });
                       } catch (err) {
